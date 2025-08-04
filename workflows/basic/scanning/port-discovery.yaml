@@ -1,0 +1,31 @@
+name: "Port Discovery Scan"
+description: "Fast port discovery scan to identify open ports using naabu"
+provides:
+  - "discovered_ports"
+report:
+  enabled: true
+  agents:
+    - receiver
+    - naabu_processor
+    - validator
+    - reporter
+  coordination: true
+steps:
+  - tool: "naabu"
+    args:
+      - "-host"            # Target host
+      - "{{target}}"       # Target to scan
+      - "-top-ports"       # Use top ports mode for speed
+      - "full"             # Scan all known top ports (faster than -p -)
+      - "-rate"            # Packets per second
+      - "3000"             # Higher rate for faster scanning
+      - "-c"               # Worker threads
+      - "50"               # Higher concurrency
+      - "-timeout"         # Timeout per probe
+      - "1000"             # 1 second timeout
+      - "-retries"         # Number of retries
+      - "1"                # Minimal retries for speed
+      - "-silent"          # Clean output
+      - "-json"            # JSON output format
+      - "-o"               # Output file
+      - "{{report_dir}}/raw/naabu_port_discovery_{{target}}.json"

@@ -208,8 +208,19 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 			vars[key] = value
 		}
 		
+		// Special handling for nuclei workflows - convert discovered_ports to target_urls
+		if strings.Contains(workflowKey, "nuclei") {
+			if discoveredPorts, exists := providedData["discovered_ports"]; exists {
+				vars["target_urls"] = core.ConvertPortsToURLs(target, discoveredPorts)
+			} else {
+				vars["target_urls"] = target
+			}
+		}
+		
 		// Replace placeholders
 		workflow.ReplaceVars(vars)
+		
+		var workflowResults *core.ScanResults
 		
 		if debugMode {
 			pterm.DefaultSection.Printf("[%s] %s", workflowKey, workflow.Name)
@@ -219,6 +230,46 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 			if len(workflow.Requires) > 0 {
 				pterm.Info.Printf("  Dependencies: %v\n", workflow.Requires)
 			}
+			
+			// Debug mode: Execute each step with detailed output
+			for i, step := range workflow.Steps {
+				cmd := workflow.GetCommand(step)
+				pterm.Info.Printf("  Executing Step %d: %s\n", i+1, cmd)
+				
+				// For nmap, nuclei, and naabu commands, use enhanced execution to get results
+				if step.Tool == "nmap" || step.Tool == "nuclei" || step.Tool == "naabu" {
+					results, err := core.ExecuteCommandWithRealTimeResults(step.Tool, step.Args, debugMode)
+					if err != nil {
+						pterm.Error.Printf("  ❌ Error: %v\n", err)
+						log.Printf("Command execution failed: %v", err)
+					} else {
+						pterm.Success.Printf("  ✅ Completed\n")
+						workflowResults = results
+					}
+				} else {
+					// Execute the command
+					if err := core.ExecuteCommand(step.Tool, step.Args, debugMode); err != nil {
+						pterm.Error.Printf("  ❌ Error: %v\n", err)
+						log.Printf("Command execution failed: %v", err)
+					} else {
+						pterm.Success.Printf("  ✅ Completed\n")
+					}
+				}
+			}
+			
+			// Show intermediate results in debug mode
+			if workflowResults != nil {
+				if workflowResults.ScanType == "port-discovery" {
+					pterm.Info.Printf("  📊 Scan Results:\n")
+					core.ShowPortDiscoveryResults(workflowResults)
+				} else if workflowResults.ScanType == "deep-scan" {
+					pterm.Info.Printf("  📊 Scan Results:\n")
+					core.ShowDeepScanResults(workflowResults)
+				} else if workflowResults.ScanType == "vulnerability-scan" {
+					pterm.Info.Printf("  📊 Vulnerability Results:\n")
+					core.ShowNucleiResults(workflowResults)
+				}
+			}
 		} else {
 			// Clean format for normal mode with white spinner
 			whiteSpinner := pterm.DefaultSpinner.WithMessageStyle(pterm.NewStyle(pterm.FgWhite)).
@@ -227,39 +278,56 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 			
 			// Execute each step
 			for _, step := range workflow.Steps {
-				// Execute the command
-				if err := core.ExecuteCommand(step.Tool, step.Args, debugMode); err != nil {
-					spinner.Fail("❌ Failed")
-					log.Printf("Command execution failed: %v", err)
-					goto nextWorkflow
+				// For nmap, nuclei, and naabu commands, use enhanced execution to get results
+				if step.Tool == "nmap" || step.Tool == "nuclei" || step.Tool == "naabu" {
+					results, err := core.ExecuteCommandWithRealTimeResults(step.Tool, step.Args, debugMode)
+					if err != nil {
+						spinner.Fail("❌ Failed")
+						log.Printf("Command execution failed: %v", err)
+						goto nextWorkflow
+					}
+					workflowResults = results
+				} else {
+					// For non-nmap commands, use regular execution
+					if err := core.ExecuteCommand(step.Tool, step.Args, debugMode); err != nil {
+						spinner.Fail("❌ Failed")
+						log.Printf("Command execution failed: %v", err)
+						goto nextWorkflow
+					}
 				}
 			}
 			
 			spinner.Success("✅ Complete")
-			goto nextWorkflow
-		}
-		
-		// Debug mode: Execute each step with detailed output
-		for i, step := range workflow.Steps {
-			cmd := workflow.GetCommand(step)
-			if debugMode {
-				pterm.Info.Printf("  Executing Step %d: %s\n", i+1, cmd)
-			}
 			
-			// Execute the command
-			if err := core.ExecuteCommand(step.Tool, step.Args, debugMode); err != nil {
-				if debugMode {
-					pterm.Error.Printf("  ❌ Error: %v\n", err)
-					log.Printf("Command execution failed: %v", err)
+			// Show intermediate results based on workflow type
+			if workflowResults != nil {
+				if workflowResults.ScanType == "port-discovery" {
+					core.ShowPortDiscoveryResults(workflowResults)
+				} else if workflowResults.ScanType == "deep-scan" {
+					core.ShowDeepScanResults(workflowResults)
+				} else if workflowResults.ScanType == "vulnerability-scan" {
+					core.ShowNucleiResults(workflowResults)
 				}
-			} else {
-				if debugMode {
-					pterm.Success.Printf("  ✅ Completed\n")
-				}
+				pterm.Println()
 			}
 		}
 		
 		nextWorkflow:
+		
+		// Immediate data provision from scan results (before reporting pipeline)
+		if workflowResults != nil && workflowResults.ScanType == "port-discovery" && len(workflowResults.Ports) > 0 {
+			var openPorts []string
+			for _, port := range workflowResults.Ports {
+				if port.State == "open" {
+					openPorts = append(openPorts, strconv.Itoa(port.Number))
+				}
+			}
+			if len(openPorts) > 0 {
+				providedData["discovered_ports"] = strings.Join(openPorts, ",")
+				// Always show this info to help with debugging
+				pterm.Success.Printf("  📤 Discovered ports: %s\n", providedData["discovered_ports"])
+			}
+		}
 		
 		// Handle data provision after workflow completion
 		if len(workflow.Provides) > 0 && workflow.HasReporting() {
