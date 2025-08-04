@@ -2,6 +2,7 @@ package core
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -80,8 +81,12 @@ func CreateReportDirectory(baseDir, target string) (string, error) {
 
 // ExecuteCommand executes a security tool command with the given arguments
 func ExecuteCommand(tool string, args []string, debugMode bool) error {
-	// Create command
-	cmd := exec.Command(tool, args...)
+	return ExecuteCommandWithContext(context.Background(), tool, args, debugMode)
+}
+
+func ExecuteCommandWithContext(ctx context.Context, tool string, args []string, debugMode bool) error {
+	// Create command with context
+	cmd := exec.CommandContext(ctx, tool, args...)
 	
 	// Set up stdout and stderr based on debug mode
 	if debugMode {
@@ -96,6 +101,9 @@ func ExecuteCommand(tool string, args []string, debugMode bool) error {
 	
 	// Run the command
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("command cancelled: %w", ctx.Err())
+		}
 		return fmt.Errorf("failed to execute %s: %w", tool, err)
 	}
 	
@@ -104,6 +112,10 @@ func ExecuteCommand(tool string, args []string, debugMode bool) error {
 
 // ExecuteCommandWithRealTimeResults executes a command and returns parsed results
 func ExecuteCommandWithRealTimeResults(tool string, args []string, debugMode bool, useSudo bool) (*ScanResults, error) {
+	return ExecuteCommandWithRealTimeResultsContext(context.Background(), tool, args, debugMode, useSudo)
+}
+
+func ExecuteCommandWithRealTimeResultsContext(ctx context.Context, tool string, args []string, debugMode bool, useSudo bool) (*ScanResults, error) {
 	// Log the full command being executed for debugging
 	fullCmd := fmt.Sprintf("%s %s", tool, strings.Join(args, " "))
 	if debugMode {
@@ -120,17 +132,17 @@ func ExecuteCommandWithRealTimeResults(tool string, args []string, debugMode boo
 		return nil, fmt.Errorf("command validation failed: %w", err)
 	}
 	
-	// Create command with sudo if needed
+	// Create command with context and sudo if needed
 	var cmd *exec.Cmd
 	if needsSudo(tool, args, useSudo) {
 		// Prepend sudo to the command
 		sudoArgs := append([]string{tool}, args...)
-		cmd = exec.Command("sudo", sudoArgs...)
+		cmd = exec.CommandContext(ctx, "sudo", sudoArgs...)
 		if debugMode {
 			pterm.Info.Printf("Running with sudo: sudo %s\n", strings.Join(sudoArgs, " "))
 		}
 	} else {
-		cmd = exec.Command(tool, args...)
+		cmd = exec.CommandContext(ctx, tool, args...)
 	}
 	
 	// Create pipes for stdout and stderr
@@ -277,6 +289,10 @@ func needsSudo(tool string, args []string, useSudo bool) bool {
 
 // ExecuteCommandFast executes a command optimized for speed without real-time processing overhead
 func ExecuteCommandFast(tool string, args []string, debugMode bool, useSudo bool) (*ScanResults, error) {
+	return ExecuteCommandFastContext(context.Background(), tool, args, debugMode, useSudo)
+}
+
+func ExecuteCommandFastContext(ctx context.Context, tool string, args []string, debugMode bool, useSudo bool) (*ScanResults, error) {
 	// Log the full command being executed for debugging
 	fullCmd := fmt.Sprintf("%s %s", tool, strings.Join(args, " "))
 	if debugMode {
@@ -293,17 +309,17 @@ func ExecuteCommandFast(tool string, args []string, debugMode bool, useSudo bool
 		return nil, fmt.Errorf("command validation failed: %w", err)
 	}
 	
-	// Create command with sudo if needed
+	// Create command with context and sudo if needed
 	var cmd *exec.Cmd
 	if needsSudo(tool, args, useSudo) {
 		// Prepend sudo to the command
 		sudoArgs := append([]string{tool}, args...)
-		cmd = exec.Command("sudo", sudoArgs...)
+		cmd = exec.CommandContext(ctx, "sudo", sudoArgs...)
 		if debugMode {
 			pterm.Info.Printf("Running with sudo: sudo %s\n", strings.Join(sudoArgs, " "))
 		}
 	} else {
-		cmd = exec.Command(tool, args...)
+		cmd = exec.CommandContext(ctx, tool, args...)
 	}
 	
 	// Use CombinedOutput for simplicity and speed - no need for real-time processing for fast scans

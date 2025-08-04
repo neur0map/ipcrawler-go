@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"ipcrawler/core"
@@ -46,6 +49,25 @@ func Execute() error {
 			},
 		},
 		Action: func(c *cli.Context) error {
+			// Set up signal handling for graceful cancellation
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			
+			// Create a channel to listen for interrupt signals
+			sigChan := make(chan os.Signal, 1)
+			signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+			
+			// Start a goroutine to handle signals
+			go func() {
+				sig := <-sigChan
+				pterm.Warning.Printf("\n⚠️  Received signal: %v\n", sig)
+				pterm.Info.Println("🛑 Cancelling scan... (this may take a moment)")
+				pterm.Info.Println("   • Stopping running commands")
+				pterm.Info.Println("   • Cleaning up processes") 
+				pterm.Info.Println("   • Partial results may be available in report directory")
+				cancel() // Cancel the context
+			}()
+			
 			// Handle --health flag
 			if c.Bool("health") {
 				pterm.Success.Println("System Status: OK")
@@ -163,7 +185,7 @@ func Execute() error {
 			}
 
 			// Execute workflows with dependency coordination
-			if err := executeWorkflowsWithCoordination(workflows, vars, debugMode, reportDir, target, config, privilegeOption.UseSudo); err != nil {
+			if err := executeWorkflowsWithCoordination(ctx, workflows, vars, debugMode, reportDir, target, config, privilegeOption.UseSudo); err != nil {
 				return fmt.Errorf("workflow execution failed: %w", err)
 			}
 
@@ -229,7 +251,7 @@ func checkReportingEnabled(workflows map[string]*core.Workflow) bool {
 }
 
 // executeWorkflowsWithCoordination executes workflows with dependency coordination
-func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars map[string]string, debugMode bool, reportDir, target string, config *core.Config, useSudo bool) error {
+func executeWorkflowsWithCoordination(ctx context.Context, workflows map[string]*core.Workflow, vars map[string]string, debugMode bool, reportDir, target string, config *core.Config, useSudo bool) error {
 	// Build dependency graph and execution order
 	executionOrder, err := buildExecutionOrder(workflows)
 	if err != nil {
@@ -245,6 +267,14 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 	
 	// Execute workflows in dependency order  
 	for _, workflowKey := range executionOrder {
+		// Check if context has been cancelled
+		select {
+		case <-ctx.Done():
+			pterm.Warning.Println("🛑 Scan cancelled by user")
+			return ctx.Err()
+		default:
+		}
+		
 		workflow, exists := workflows[workflowKey]
 		if !exists {
 			continue // Skip if workflow doesn't exist in template
@@ -306,8 +336,12 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 				
 				// For naabu, use optimized fast execution
 				if step.Tool == "naabu" {
-					results, err := core.ExecuteCommandFast(step.Tool, args, debugMode, useSudo)
+					results, err := core.ExecuteCommandFastContext(ctx, step.Tool, args, debugMode, useSudo)
 					if err != nil {
+						if ctx.Err() != nil {
+							pterm.Warning.Printf("  🛑 Cancelled\n")
+							return ctx.Err()
+						}
 						pterm.Error.Printf("  ❌ Error: %v\n", err)
 						log.Printf("Command execution failed: %v", err)
 						workflowFailed = true
@@ -319,8 +353,12 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 					}
 				} else if step.Tool == "nmap" || step.Tool == "nuclei" {
 					// For nmap and nuclei, use enhanced execution with real-time results
-					results, err := core.ExecuteCommandWithRealTimeResults(step.Tool, args, debugMode, useSudo)
+					results, err := core.ExecuteCommandWithRealTimeResultsContext(ctx, step.Tool, args, debugMode, useSudo)
 					if err != nil {
+						if ctx.Err() != nil {
+							pterm.Warning.Printf("  🛑 Cancelled\n")
+							return ctx.Err()
+						}
 						pterm.Error.Printf("  ❌ Error: %v\n", err)
 						log.Printf("Command execution failed: %v", err)
 						workflowFailed = true
@@ -332,7 +370,11 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 					}
 				} else {
 					// Execute the command
-					if err := core.ExecuteCommand(step.Tool, args, debugMode); err != nil {
+					if err := core.ExecuteCommandWithContext(ctx, step.Tool, args, debugMode); err != nil {
+						if ctx.Err() != nil {
+							pterm.Warning.Printf("  🛑 Cancelled\n")
+							return ctx.Err()
+						}
 						pterm.Error.Printf("  ❌ Error: %v\n", err)
 						log.Printf("Command execution failed: %v", err)
 						workflowFailed = true
@@ -371,8 +413,13 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 				
 				// For naabu, use optimized fast execution
 				if step.Tool == "naabu" {
-					results, err := core.ExecuteCommandFast(step.Tool, args, debugMode, useSudo)
+					results, err := core.ExecuteCommandFastContext(ctx, step.Tool, args, debugMode, useSudo)
 					if err != nil {
+						if ctx.Err() != nil {
+							spinner.Stop()
+							pterm.Warning.Printf("🛑 Scan cancelled\n")
+							return ctx.Err()
+						}
 						spinner.Fail("❌ Failed")
 						log.Printf("Command execution failed: %v", err)
 						workflowFailed = true
@@ -381,8 +428,13 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 					workflowResults = results
 				} else if step.Tool == "nmap" || step.Tool == "nuclei" {
 					// For nmap and nuclei, use enhanced execution with real-time results
-					results, err := core.ExecuteCommandWithRealTimeResults(step.Tool, args, debugMode, useSudo)
+					results, err := core.ExecuteCommandWithRealTimeResultsContext(ctx, step.Tool, args, debugMode, useSudo)
 					if err != nil {
+						if ctx.Err() != nil {
+							spinner.Stop()
+							pterm.Warning.Printf("🛑 Scan cancelled\n")
+							return ctx.Err()
+						}
 						spinner.Fail("❌ Failed")
 						log.Printf("Command execution failed: %v", err)
 						workflowFailed = true
@@ -391,7 +443,12 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 					workflowResults = results
 				} else {
 					// For non-nmap commands, use regular execution
-					if err := core.ExecuteCommand(step.Tool, args, debugMode); err != nil {
+					if err := core.ExecuteCommandWithContext(ctx, step.Tool, args, debugMode); err != nil {
+						if ctx.Err() != nil {
+							spinner.Stop()
+							pterm.Warning.Printf("🛑 Scan cancelled\n")
+							return ctx.Err()
+						}
 						spinner.Fail("❌ Failed")
 						log.Printf("Command execution failed: %v", err)
 						workflowFailed = true
