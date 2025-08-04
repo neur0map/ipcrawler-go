@@ -6,7 +6,7 @@ report:
   enabled: true
   agents:
     - receiver
-    - nmap_processor
+    - universal_processor
     - validator
     - reporter
 steps:

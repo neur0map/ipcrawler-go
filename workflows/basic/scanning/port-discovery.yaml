@@ -6,7 +6,7 @@ report:
   enabled: true
   agents:
     - receiver
-    - naabu_processor
+    - universal_processor
     - validator
     - reporter
   coordination: true

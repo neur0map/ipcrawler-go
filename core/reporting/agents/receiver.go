@@ -18,7 +18,6 @@ type ReceiverAgent struct {
 type ReceiverConfig struct {
 	ValidateSchema   bool     `yaml:"validate_schema"`
 	ErrorHandling    string   `yaml:"error_handling"` // "continue", "fail", "skip"
-	SupportedTools   []string `yaml:"supported_tools"`
 	OutputFormats    []string `yaml:"output_formats"`
 }
 
@@ -27,7 +26,6 @@ func DefaultReceiverConfig() *ReceiverConfig {
 	return &ReceiverConfig{
 		ValidateSchema: true,
 		ErrorHandling:  "continue",
-		SupportedTools: []string{"nmap"},
 		OutputFormats:  []string{"json", "xml"},
 	}
 }
@@ -162,16 +160,10 @@ func (r *ReceiverAgent) collectToolOutputs(rawDir string) (map[string]*ToolOutpu
 		fileName := entry.Name()
 		filePath := filepath.Join(rawDir, fileName)
 		
-		// Determine tool name from filename
+		// Determine tool name from filename using simple pattern matching
 		toolName := r.extractToolNameFromFile(fileName)
 		if toolName == "" {
 			r.LogWarning("Could not determine tool name from file: %s", fileName)
-			continue
-		}
-		
-		// Check if tool is supported
-		if !r.isToolSupported(toolName) {
-			r.LogWarning("Unsupported tool: %s", toolName)
 			continue
 		}
 		
@@ -209,33 +201,6 @@ func (r *ReceiverAgent) collectToolOutputs(rawDir string) (map[string]*ToolOutpu
 	return toolOutputs, nil
 }
 
-// extractToolNameFromFile extracts tool name from filename
-func (r *ReceiverAgent) extractToolNameFromFile(fileName string) string {
-	// Remove extension
-	baseName := fileName
-	if idx := strings.LastIndex(fileName, "."); idx != -1 {
-		baseName = fileName[:idx]
-	}
-	
-	// Look for known tool names
-	for _, tool := range r.config.SupportedTools {
-		if strings.Contains(strings.ToLower(baseName), tool) {
-			return tool
-		}
-	}
-	
-	return ""
-}
-
-// isToolSupported checks if a tool is supported
-func (r *ReceiverAgent) isToolSupported(toolName string) bool {
-	for _, supported := range r.config.SupportedTools {
-		if supported == toolName {
-			return true
-		}
-	}
-	return false
-}
 
 // isJSONFile checks if a file is a JSON file
 func (r *ReceiverAgent) isJSONFile(fileName string) bool {
@@ -247,13 +212,35 @@ func (r *ReceiverAgent) isXMLFile(fileName string) bool {
 	return strings.HasSuffix(strings.ToLower(fileName), ".xml")
 }
 
-// determineCleanerType determines which cleaner should process the tool output
+// extractToolNameFromFile extracts tool name from filename using simple patterns
+func (r *ReceiverAgent) extractToolNameFromFile(fileName string) string {
+	// Remove extension
+	baseName := fileName
+	if idx := strings.LastIndex(fileName, "."); idx != -1 {
+		baseName = fileName[:idx]
+	}
+	
+	// Common tool patterns
+	baseNameLower := strings.ToLower(baseName)
+	toolNames := []string{"nmap", "naabu", "nuclei", "masscan", "gobuster", "ffuf", "nikto"}
+	
+	for _, tool := range toolNames {
+		if strings.Contains(baseNameLower, tool) {
+			return tool
+		}
+	}
+	
+	return ""
+}
+
+// determineCleanerType determines which processor should process the tool output
 func (r *ReceiverAgent) determineCleanerType(toolName string) string {
+	// Use tool-specific processor if available, otherwise universal
 	switch toolName {
 	case "nmap":
 		return "nmap_processor"
 	default:
-		return "generic_processor"
+		return "universal_processor"
 	}
 }
 

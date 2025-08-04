@@ -108,6 +108,9 @@ func RunReportingPipeline(reportDir, target string, workflows map[string]*Workfl
 			nmapConfig := agents.DefaultNmapProcessorConfig()
 			pipeline.AddAgent(agents.NewNmapProcessor(nmapConfig))
 			
+		case "universal_processor":
+			pipeline.AddAgent(agents.NewUniversalProcessor())
+			
 		case "data_accumulator":
 			accumulatorAgent := &dataAccumulatorAgent{
 				BaseAgent: agents.NewBaseAgent("data_accumulator", logger),
@@ -312,6 +315,9 @@ func RunWorkflowReporting(reportDir, target, workflowKey string, workflow *Workf
 		case "nmap_processor":
 			nmapConfig := agents.DefaultNmapProcessorConfig()
 			pipeline.AddAgent(agents.NewNmapProcessor(nmapConfig))
+			
+		case "universal_processor":
+			pipeline.AddAgent(agents.NewUniversalProcessor())
 			
 		case "data_accumulator":
 			accumulatorAgent := &dataAccumulatorAgent{
