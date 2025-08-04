@@ -1,6 +1,8 @@
 module ipcrawler
 
-go 1.24.3
+go 1.23.0
+
+toolchain go1.24.3
 
 require (
 	github.com/pterm/pterm v0.12.81
@@ -24,5 +26,4 @@ require (
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
