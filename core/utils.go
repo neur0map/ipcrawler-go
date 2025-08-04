@@ -103,9 +103,35 @@ func ExecuteCommand(tool string, args []string, debugMode bool) error {
 }
 
 // ExecuteCommandWithRealTimeResults executes a command and returns parsed results
-func ExecuteCommandWithRealTimeResults(tool string, args []string, debugMode bool) (*ScanResults, error) {
-	// Create command
-	cmd := exec.Command(tool, args...)
+func ExecuteCommandWithRealTimeResults(tool string, args []string, debugMode bool, useSudo bool) (*ScanResults, error) {
+	// Log the full command being executed for debugging
+	fullCmd := fmt.Sprintf("%s %s", tool, strings.Join(args, " "))
+	if debugMode {
+		pterm.Info.Printf("Executing command: %s\n", fullCmd)
+	}
+	
+	// Ensure output directories exist for any output files specified in args
+	if err := ensureOutputDirectories(args, debugMode); err != nil {
+		return nil, fmt.Errorf("failed to create output directories: %w", err)
+	}
+	
+	// Validate that required placeholders have been replaced
+	if err := validateArgsSubstitution(args); err != nil {
+		return nil, fmt.Errorf("command validation failed: %w", err)
+	}
+	
+	// Create command with sudo if needed
+	var cmd *exec.Cmd
+	if needsSudo(tool, args, useSudo) {
+		// Prepend sudo to the command
+		sudoArgs := append([]string{tool}, args...)
+		cmd = exec.Command("sudo", sudoArgs...)
+		if debugMode {
+			pterm.Info.Printf("Running with sudo: sudo %s\n", strings.Join(sudoArgs, " "))
+		}
+	} else {
+		cmd = exec.Command(tool, args...)
+	}
 	
 	// Create pipes for stdout and stderr
 	stdout, err := cmd.StdoutPipe()
@@ -125,30 +151,79 @@ func ExecuteCommandWithRealTimeResults(tool string, args []string, debugMode boo
 	
 	// Read output in real-time
 	var outputLines []string
-	scanner := bufio.NewScanner(stdout)
+	var errorLines []string
 	
-	// Parse output as it comes
-	for scanner.Scan() {
-		line := scanner.Text()
-		outputLines = append(outputLines, line)
-		
-		if debugMode {
-			fmt.Println(line)
+	// Use channels to read both stdout and stderr concurrently
+	outputChan := make(chan string)
+	errorChan := make(chan string)
+	
+	// Goroutine to read stdout
+	go func() {
+		defer close(outputChan)
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			line := scanner.Text()
+			outputChan <- line
 		}
-	}
+	}()
 	
-	// Also capture stderr
-	stderrScanner := bufio.NewScanner(stderr)
-	for stderrScanner.Scan() {
-		line := stderrScanner.Text()
-		if debugMode {
-			fmt.Fprintf(os.Stderr, "%s\n", line)
+	// Goroutine to read stderr
+	go func() {
+		defer close(errorChan)
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			line := scanner.Text()
+			errorChan <- line
+		}
+	}()
+	
+	// Collect output from both channels
+	for outputChan != nil || errorChan != nil {
+		select {
+		case line, ok := <-outputChan:
+			if !ok {
+				outputChan = nil
+			} else {
+				outputLines = append(outputLines, line)
+				if debugMode {
+					fmt.Println(line)
+				}
+			}
+		case line, ok := <-errorChan:
+			if !ok {
+				errorChan = nil
+			} else {
+				errorLines = append(errorLines, line)
+				if debugMode {
+					fmt.Fprintf(os.Stderr, "STDERR: %s\n", line)
+				}
+			}
 		}
 	}
 	
 	// Wait for command to complete
 	if err := cmd.Wait(); err != nil {
-		return nil, fmt.Errorf("failed to execute %s: %w", tool, err)
+		// Enhanced error reporting with stderr output
+		var errorMessage strings.Builder
+		errorMessage.WriteString(fmt.Sprintf("failed to execute %s", tool))
+		
+		if len(errorLines) > 0 {
+			errorMessage.WriteString(fmt.Sprintf("\nStderr output:\n%s", strings.Join(errorLines, "\n")))
+		}
+		
+		// Show command that failed
+		errorMessage.WriteString(fmt.Sprintf("\nCommand: %s", fullCmd))
+		
+		return nil, fmt.Errorf("%s: %w", errorMessage.String(), err)
+	}
+	
+	// If no stdout output but we have stderr, this might indicate the tool is writing to stderr instead
+	if len(outputLines) == 0 && len(errorLines) > 0 {
+		if debugMode {
+			pterm.Warning.Printf("No stdout output detected, checking if tool wrote to stderr instead\n")
+		}
+		// For tools that might write JSON to stderr, try parsing that
+		outputLines = errorLines
 	}
 	
 	// Parse the output based on tool
@@ -174,6 +249,90 @@ func ExecuteCommandWithOutput(tool string, args []string) ([]byte, error) {
 	}
 	
 	return output, nil
+}
+
+// needsSudo determines if a tool requires sudo privileges based on its arguments
+func needsSudo(tool string, args []string, useSudo bool) bool {
+	if !useSudo {
+		return false // User didn't choose sudo mode
+	}
+	
+	switch tool {
+	case "nmap":
+		// Check for nmap flags that require root privileges
+		for _, arg := range args {
+			switch arg {
+			case "-sS", "-sF", "-sN", "-sX", "-sA", "-sW", "-sM", "-O":
+				return true // These scans require root
+			}
+		}
+		return false
+	case "masscan":
+		return true // masscan generally requires root
+	default:
+		// Most other tools (naabu, nuclei, etc.) don't need sudo
+		return false
+	}
+}
+
+// ExecuteCommandFast executes a command optimized for speed without real-time processing overhead
+func ExecuteCommandFast(tool string, args []string, debugMode bool, useSudo bool) (*ScanResults, error) {
+	// Log the full command being executed for debugging
+	fullCmd := fmt.Sprintf("%s %s", tool, strings.Join(args, " "))
+	if debugMode {
+		pterm.Info.Printf("Executing command (fast mode): %s\n", fullCmd)
+	}
+	
+	// Ensure output directories exist for any output files specified in args
+	if err := ensureOutputDirectories(args, debugMode); err != nil {
+		return nil, fmt.Errorf("failed to create output directories: %w", err)
+	}
+	
+	// Validate that required placeholders have been replaced
+	if err := validateArgsSubstitution(args); err != nil {
+		return nil, fmt.Errorf("command validation failed: %w", err)
+	}
+	
+	// Create command with sudo if needed
+	var cmd *exec.Cmd
+	if needsSudo(tool, args, useSudo) {
+		// Prepend sudo to the command
+		sudoArgs := append([]string{tool}, args...)
+		cmd = exec.Command("sudo", sudoArgs...)
+		if debugMode {
+			pterm.Info.Printf("Running with sudo: sudo %s\n", strings.Join(sudoArgs, " "))
+		}
+	} else {
+		cmd = exec.Command(tool, args...)
+	}
+	
+	// Use CombinedOutput for simplicity and speed - no need for real-time processing for fast scans
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Enhanced error reporting
+		var errorMessage strings.Builder
+		errorMessage.WriteString(fmt.Sprintf("failed to execute %s", tool))
+		
+		if len(output) > 0 {
+			errorMessage.WriteString(fmt.Sprintf("\nOutput:\n%s", string(output)))
+		}
+		
+		// Show command that failed
+		errorMessage.WriteString(fmt.Sprintf("\nCommand: %s", fullCmd))
+		
+		return nil, fmt.Errorf("%s: %w", errorMessage.String(), err)
+	}
+	
+	// Convert output to lines for parsing
+	outputLines := strings.Split(string(output), "\n")
+	
+	// Parse the output based on tool
+	if tool == "naabu" {
+		return parseNaabuOutput(outputLines, args)
+	}
+	// Can extend for other fast tools if needed
+	
+	return &ScanResults{}, nil
 }
 
 // parseNmapOutput parses nmap output and extracts port information
@@ -549,5 +708,63 @@ func ConvertPortsToURLs(target string, discoveredPorts string) string {
 	}
 	
 	return strings.Join(urls, ",")
+}
+
+// CheckSudoAvailability checks if sudo is available and configured properly
+// Deprecated: Use utils.RequestPrivilegeEscalation() for better privilege management
+func CheckSudoAvailability() error {
+	// Check if already running as root
+	if utils.IsRunningAsRoot() {
+		return nil
+	}
+	
+	// Check if sudo is available
+	if !utils.IsSudoAvailable() {
+		return fmt.Errorf("sudo is not installed or not in PATH")
+	}
+	
+	// For backward compatibility, we'll just check if sudo exists
+	// The new approach handles privilege escalation through process restart
+	return nil
+}
+
+// ensureOutputDirectories creates any output directories referenced in command arguments
+func ensureOutputDirectories(args []string, debugMode bool) error {
+	for i, arg := range args {
+		// Look for output flags (-o, -oX, etc.) followed by file paths
+		if (arg == "-o" || arg == "-oX" || arg == "-oN" || arg == "-oG") && i+1 < len(args) {
+			outputPath := args[i+1]
+			
+			// Extract directory from the output path
+			dir := filepath.Dir(outputPath)
+			if dir != "." && dir != "" {
+				if debugMode {
+					pterm.Info.Printf("Creating output directory: %s\n", dir)
+				}
+				
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					return fmt.Errorf("failed to create directory %s: %w", dir, err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// validateArgsSubstitution checks that all placeholder variables have been properly substituted
+func validateArgsSubstitution(args []string) error {
+	for i, arg := range args {
+		// Check for unsubstituted placeholders ({{variable}})
+		if strings.Contains(arg, "{{") && strings.Contains(arg, "}}") {
+			// Extract the placeholder name
+			start := strings.Index(arg, "{{")
+			end := strings.Index(arg, "}}")
+			if start != -1 && end != -1 && end > start {
+				placeholder := arg[start:end+2]
+				return fmt.Errorf("unsubstituted placeholder found in argument %d: %s", i+1, placeholder)
+			}
+		}
+	}
+	return nil
 }
 

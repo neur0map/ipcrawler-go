@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"ipcrawler/core"
+	"ipcrawler/internal/utils"
 
 	"github.com/pterm/pterm"
 	"github.com/urfave/cli/v2"
@@ -51,6 +52,12 @@ func Execute() error {
 				pterm.Info.Printf("Version: %s\n", appVersion)
 				pterm.Success.Println("All systems operational")
 				return nil
+			}
+			
+			// Check if this is a sudo restart and clean up the flag
+			isSudoRestart := utils.IsSudoRestart()
+			if isSudoRestart {
+				utils.RemoveSudoRestartFlag()
 			}
 			
 			// Check if target argument is provided
@@ -104,18 +111,48 @@ func Execute() error {
 				workflowSlice = append(workflowSlice, workflow)
 			}
 
-			// Show interactive scan preview and get sudo choice
-			preview := &core.ScanPreview{
-				Target:        target,
-				Template:      templateName,
-				Workflows:     workflowSlice,
-				ReportDir:     reportDir,
-				EstimatedTime: core.EstimateScanTime(workflowSlice),
-			}
+			var privilegeOption *core.PrivilegeOption
+			
+			// Handle privilege escalation logic
+			if isSudoRestart {
+				// This is a restart from sudo - skip the prompt and proceed with sudo enabled
+				privilegeOption = &core.PrivilegeOption{UseSudo: true, UserChoice: "restart"}
+				pterm.Success.Println("✓ Running with elevated privileges after restart")
+			} else {
+				// Show interactive scan preview and get sudo choice
+				preview := &core.ScanPreview{
+					Target:        target,
+					Template:      templateName,
+					Workflows:     workflowSlice,
+					ReportDir:     reportDir,
+					EstimatedTime: core.EstimateScanTime(workflowSlice),
+				}
 
-			privilegeOption, err := core.ShowScanPreview(preview)
-			if err != nil {
-				return fmt.Errorf("failed to get user input: %w", err)
+				var err error
+				privilegeOption, err = core.ShowScanPreview(preview)
+				if err != nil {
+					return fmt.Errorf("failed to get user input: %w", err)
+				}
+				
+				// Handle privilege escalation if user chose sudo
+				if privilegeOption.UseSudo {
+					// Check if we're already running with elevated privileges
+					if utils.IsRunningAsRoot() {
+						pterm.Success.Println("✓ Already running with elevated privileges")
+					} else {
+						// Need to restart with sudo privileges
+						pterm.Info.Println("🔄 Restarting with elevated privileges...")
+						if err := utils.RequestPrivilegeEscalation(); err != nil {
+							pterm.Error.Printf("Failed to restart with elevated privileges: %v\n", err)
+							pterm.Info.Println("Please ensure:")
+							pterm.Info.Println("  • sudo is installed and available in PATH")
+							pterm.Info.Println("  • You have permission to use sudo")
+							return fmt.Errorf("privilege escalation failed: %w", err)
+						}
+						// If we reach here, the restart failed (should not happen normally)
+						return fmt.Errorf("unexpected error during privilege escalation")
+					}
+				}
 			}
 
 			// Create variables for placeholder replacement
@@ -219,11 +256,29 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 		}
 		
 		// Special handling for nuclei workflows - convert discovered_ports to target_urls
-		if strings.Contains(workflowKey, "nuclei") {
-			if discoveredPorts, exists := providedData["discovered_ports"]; exists {
+		if strings.Contains(workflowKey, "nuclei") || strings.Contains(workflowKey, "vulnerability-scan") {
+			if discoveredPorts, exists := providedData["discovered_ports"]; exists && discoveredPorts != "" {
 				vars["target_urls"] = core.ConvertPortsToURLs(target, discoveredPorts)
+				if debugMode {
+					pterm.Info.Printf("  🔗 Using discovered ports for nuclei: %s -> %s\n", discoveredPorts, vars["target_urls"])
+				}
 			} else {
+				// Fallback to basic target if no ports were discovered
 				vars["target_urls"] = target
+				if debugMode {
+					pterm.Warning.Printf("  ⚠️ No discovered ports found, using target directly: %s\n", target)
+				}
+			}
+		}
+		
+		// Special handling for nmap deep scan - provide fallback ports if none discovered
+		if strings.Contains(workflowKey, "nmap") && strings.Contains(workflowKey, "deep") {
+			if discoveredPorts, exists := providedData["discovered_ports"]; !exists || discoveredPorts == "" {
+				// Use common ports as fallback for deep scan
+				vars["discovered_ports"] = "22,53,80,135,139,443,445,993,995,3306,3389,5432,5900,8080,8443"
+				if debugMode {
+					pterm.Warning.Printf("  ⚠️ No discovered ports found, using common ports for deep scan\n")
+				}
 			}
 		}
 		
@@ -231,6 +286,7 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 		workflow.ReplaceVars(vars)
 		
 		var workflowResults *core.ScanResults
+		var workflowFailed bool
 		
 		if debugMode {
 			pterm.DefaultSection.Printf("[%s] %s", workflowKey, workflow.Name)
@@ -248,12 +304,28 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 				cmd := workflow.GetCommandWithArgs(step.Tool, args)
 				pterm.Info.Printf("  Executing Step %d: %s\n", i+1, cmd)
 				
-				// For nmap, nuclei, and naabu commands, use enhanced execution to get results
-				if step.Tool == "nmap" || step.Tool == "nuclei" || step.Tool == "naabu" {
-					results, err := core.ExecuteCommandWithRealTimeResults(step.Tool, args, debugMode)
+				// For naabu, use optimized fast execution
+				if step.Tool == "naabu" {
+					results, err := core.ExecuteCommandFast(step.Tool, args, debugMode, useSudo)
 					if err != nil {
 						pterm.Error.Printf("  ❌ Error: %v\n", err)
 						log.Printf("Command execution failed: %v", err)
+						workflowFailed = true
+						// Continue with next step instead of failing completely
+						continue
+					} else {
+						pterm.Success.Printf("  ✅ Completed\n")
+						workflowResults = results
+					}
+				} else if step.Tool == "nmap" || step.Tool == "nuclei" {
+					// For nmap and nuclei, use enhanced execution with real-time results
+					results, err := core.ExecuteCommandWithRealTimeResults(step.Tool, args, debugMode, useSudo)
+					if err != nil {
+						pterm.Error.Printf("  ❌ Error: %v\n", err)
+						log.Printf("Command execution failed: %v", err)
+						workflowFailed = true
+						// Continue with next step instead of failing completely
+						continue
 					} else {
 						pterm.Success.Printf("  ✅ Completed\n")
 						workflowResults = results
@@ -263,6 +335,9 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 					if err := core.ExecuteCommand(step.Tool, args, debugMode); err != nil {
 						pterm.Error.Printf("  ❌ Error: %v\n", err)
 						log.Printf("Command execution failed: %v", err)
+						workflowFailed = true
+						// Continue with next step instead of failing completely
+						continue
 					} else {
 						pterm.Success.Printf("  ✅ Completed\n")
 					}
@@ -289,17 +364,29 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 			spinner, _ := whiteSpinner.Start(workflow.Name)
 			
 			// Execute each step
+			workflowFailed := false
 			for _, step := range workflow.Steps {
 				// Get appropriate args based on sudo preference
 				args := step.GetArgs(useSudo)
 				
-				// For nmap, nuclei, and naabu commands, use enhanced execution to get results
-				if step.Tool == "nmap" || step.Tool == "nuclei" || step.Tool == "naabu" {
-					results, err := core.ExecuteCommandWithRealTimeResults(step.Tool, args, debugMode)
+				// For naabu, use optimized fast execution
+				if step.Tool == "naabu" {
+					results, err := core.ExecuteCommandFast(step.Tool, args, debugMode, useSudo)
 					if err != nil {
 						spinner.Fail("❌ Failed")
 						log.Printf("Command execution failed: %v", err)
-						goto nextWorkflow
+						workflowFailed = true
+						break
+					}
+					workflowResults = results
+				} else if step.Tool == "nmap" || step.Tool == "nuclei" {
+					// For nmap and nuclei, use enhanced execution with real-time results
+					results, err := core.ExecuteCommandWithRealTimeResults(step.Tool, args, debugMode, useSudo)
+					if err != nil {
+						spinner.Fail("❌ Failed")
+						log.Printf("Command execution failed: %v", err)
+						workflowFailed = true
+						break
 					}
 					workflowResults = results
 				} else {
@@ -307,15 +394,19 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 					if err := core.ExecuteCommand(step.Tool, args, debugMode); err != nil {
 						spinner.Fail("❌ Failed")
 						log.Printf("Command execution failed: %v", err)
-						goto nextWorkflow
+						workflowFailed = true
+						break
 					}
 				}
 			}
 			
-			spinner.Success("✅ Complete")
+			// Only show success if workflow didn't fail
+			if !workflowFailed {
+				spinner.Success("✅ Complete")
+			}
 			
-			// Show intermediate results based on workflow type
-			if workflowResults != nil {
+			// Show intermediate results based on workflow type (only if workflow succeeded)
+			if !workflowFailed && workflowResults != nil {
 				if workflowResults.ScanType == "port-discovery" {
 					core.ShowPortDiscoveryResults(workflowResults)
 				} else if workflowResults.ScanType == "deep-scan" {
@@ -327,10 +418,8 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 			}
 		}
 		
-		nextWorkflow:
-		
-		// Immediate data provision from scan results (before reporting pipeline)
-		if workflowResults != nil && workflowResults.ScanType == "port-discovery" && len(workflowResults.Ports) > 0 {
+		// Immediate data provision from scan results (before reporting pipeline) - only if workflow succeeded
+		if !workflowFailed && workflowResults != nil && workflowResults.ScanType == "port-discovery" && len(workflowResults.Ports) > 0 {
 			var openPorts []string
 			for _, port := range workflowResults.Ports {
 				if port.State == "open" {
@@ -338,96 +427,142 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 				}
 			}
 			if len(openPorts) > 0 {
-				providedData["discovered_ports"] = strings.Join(openPorts, ",")
+				discoveredPortsStr := strings.Join(openPorts, ",")
+				providedData["discovered_ports"] = discoveredPortsStr
+				// Update the vars map immediately so subsequent workflows get the real data
+				vars["discovered_ports"] = discoveredPortsStr
 				// Always show this info to help with debugging
-				pterm.Success.Printf("  📤 Discovered ports: %s\n", providedData["discovered_ports"])
+				pterm.Success.Printf("  📤 Discovered ports: %s\n", discoveredPortsStr)
 			}
 		}
 		
-		// Handle data provision after workflow completion
-		if len(workflow.Provides) > 0 && workflow.HasReporting() {
-			if debugMode {
-				pterm.Info.Printf("  🔧 Running reporting to extract provided data...\n")
-			}
-			// Run reporting pipeline immediately to extract provided data
-			if err := core.RunWorkflowReporting(reportDir, target, workflowKey, workflow, config, debugMode); err != nil {
-				if debugMode {
-					pterm.Error.Printf("  ❌ Reporting Error: %v\n", err)
-					log.Printf("Workflow reporting failed: %v", err)
-				}
-				// Fallback to direct extraction from raw files
-				if debugMode {
-					pterm.Info.Printf("  🔧 Attempting direct extraction from raw files...\n")
-				}
-				extractedData, err := core.ExtractProvidedData(reportDir, workflow.Provides)
-				if err != nil {
+		// Handle data provision after workflow completion - only if immediate extraction didn't succeed
+		if len(workflow.Provides) > 0 {
+			// Check if we already have valid data from immediate extraction
+			hasValidData := false
+			for _, provided := range workflow.Provides {
+				if value, exists := providedData[provided]; exists && value != "" && value != "extracted_by_reporting_pipeline" {
+					hasValidData = true
 					if debugMode {
-						pterm.Warning.Printf("  ⚠️ Warning: Could not extract provided data - using placeholder\n")
-						for _, provided := range workflow.Provides {
-							pterm.Info.Printf("  📤 Provides: %s\n", provided)
-						}
+						pterm.Success.Printf("  ✓ Using immediate extraction data for %s: %s\n", provided, value)
 					}
-					for _, provided := range workflow.Provides {
-						providedData[provided] = "extracted_by_reporting_pipeline"
+				}
+			}
+			
+			// Only run reporting extraction if we don't have valid immediate data
+			if !hasValidData {
+				if workflow.HasReporting() {
+					if debugMode {
+						pterm.Info.Printf("  🔧 Running reporting to extract provided data...\n")
+					}
+					// Run reporting pipeline immediately to extract provided data
+					if err := core.RunWorkflowReporting(reportDir, target, workflowKey, workflow, config, debugMode); err != nil {
+						if debugMode {
+							pterm.Error.Printf("  ❌ Reporting Error: %v\n", err)
+							log.Printf("Workflow reporting failed: %v", err)
+						}
+						// Fallback to direct extraction from raw files
+						if debugMode {
+							pterm.Info.Printf("  🔧 Attempting direct extraction from raw files...\n")
+						}
+						extractedData, err := core.ExtractProvidedData(reportDir, workflow.Provides)
+						if err != nil {
+							if debugMode {
+								pterm.Warning.Printf("  ⚠️ Warning: Could not extract provided data - using fallback\n")
+								for _, provided := range workflow.Provides {
+									pterm.Info.Printf("  📤 Provides: %s\n", provided)
+								}
+							}
+							// Use fallback ports for deep scan instead of placeholder
+							for _, provided := range workflow.Provides {
+								if provided == "discovered_ports" {
+									// Use common ports as fallback
+									providedData[provided] = "22,53,80,135,139,443,445,993,995,3306,3389,5432,5900,8080,8443"
+									if debugMode {
+										pterm.Info.Printf("  🔧 Using fallback common ports for deep scan\n")
+									}
+								} else {
+									providedData[provided] = "extracted_by_reporting_pipeline"
+								}
+							}
+						} else {
+							if debugMode {
+								for provided, value := range extractedData {
+									pterm.Success.Printf("  📤 Provides: %s = %s\n", provided, value)
+								}
+							}
+							for provided, value := range extractedData {
+								providedData[provided] = value
+							}
+						}
+					} else {
+						// Extract provided data from reporting results
+						extractedData, err := core.ExtractProvidedData(reportDir, workflow.Provides)
+						if err != nil {
+							if debugMode {
+								pterm.Warning.Printf("  ⚠️ Warning: Could not extract provided data - using fallback\n")
+								for _, provided := range workflow.Provides {
+									pterm.Info.Printf("  📤 Provides: %s\n", provided)
+								}
+							}
+							// Use fallback ports for deep scan instead of placeholder
+							for _, provided := range workflow.Provides {
+								if provided == "discovered_ports" {
+									// Use common ports as fallback
+									providedData[provided] = "22,53,80,135,139,443,445,993,995,3306,3389,5432,5900,8080,8443"
+									if debugMode {
+										pterm.Info.Printf("  🔧 Using fallback common ports for deep scan\n")
+									}
+								} else {
+									providedData[provided] = "extracted_by_reporting_pipeline"
+								}
+							}
+						} else {
+							if debugMode {
+								for provided, value := range extractedData {
+									pterm.Success.Printf("  📤 Provides: %s = %s\n", provided, value)
+								}
+							}
+							for provided, value := range extractedData {
+								providedData[provided] = value
+							}
+						}
 					}
 				} else {
+					// No reporting enabled, try direct extraction
 					if debugMode {
-						for provided, value := range extractedData {
-							pterm.Success.Printf("  📤 Provides: %s = %s\n", provided, value)
+						pterm.Info.Printf("  🔧 No reporting enabled, attempting direct extraction...\n")
+					}
+					extractedData, err := core.ExtractProvidedData(reportDir, workflow.Provides)
+					if err != nil {
+						if debugMode {
+							pterm.Warning.Printf("  ⚠️ Warning: Could not extract provided data - using fallback\n")
+							for _, provided := range workflow.Provides {
+								pterm.Info.Printf("  📤 Provides: %s\n", provided)
+							}
 						}
-					}
-					for provided, value := range extractedData {
-						providedData[provided] = value
-					}
-				}
-			} else {
-				// Extract provided data from reporting results
-				extractedData, err := core.ExtractProvidedData(reportDir, workflow.Provides)
-				if err != nil {
-					if debugMode {
-						pterm.Warning.Printf("  ⚠️ Warning: Could not extract provided data - using placeholder\n")
+						// Use fallback ports for deep scan instead of placeholder
 						for _, provided := range workflow.Provides {
-							pterm.Info.Printf("  📤 Provides: %s\n", provided)
+							if provided == "discovered_ports" {
+								// Use common ports as fallback
+								providedData[provided] = "22,53,80,135,139,443,445,993,995,3306,3389,5432,5900,8080,8443"
+								if debugMode {
+									pterm.Info.Printf("  🔧 Using fallback common ports for deep scan\n")
+								}
+							} else {
+								providedData[provided] = "extracted_by_reporting_pipeline"
+							}
 						}
-					}
-					for _, provided := range workflow.Provides {
-						providedData[provided] = "extracted_by_reporting_pipeline"
-					}
-				} else {
-					if debugMode {
+					} else {
+						if debugMode {
+							for provided, value := range extractedData {
+								pterm.Success.Printf("  📤 Provides: %s = %s\n", provided, value)
+							}
+						}
 						for provided, value := range extractedData {
-							pterm.Success.Printf("  📤 Provides: %s = %s\n", provided, value)
+							providedData[provided] = value
 						}
 					}
-					for provided, value := range extractedData {
-						providedData[provided] = value
-					}
-				}
-			}
-		} else if len(workflow.Provides) > 0 {
-			// No reporting enabled, try direct extraction
-			if debugMode {
-				pterm.Info.Printf("  🔧 No reporting enabled, attempting direct extraction...\n")
-			}
-			extractedData, err := core.ExtractProvidedData(reportDir, workflow.Provides)
-			if err != nil {
-				if debugMode {
-					pterm.Warning.Printf("  ⚠️ Warning: Could not extract provided data - using placeholder\n")
-					for _, provided := range workflow.Provides {
-						pterm.Info.Printf("  📤 Provides: %s\n", provided)
-					}
-				}
-				for _, provided := range workflow.Provides {
-					providedData[provided] = "extracted_by_reporting_pipeline"
-				}
-			} else {
-				if debugMode {
-					for provided, value := range extractedData {
-						pterm.Success.Printf("  📤 Provides: %s = %s\n", provided, value)
-					}
-				}
-				for provided, value := range extractedData {
-					providedData[provided] = value
 				}
 			}
 		}

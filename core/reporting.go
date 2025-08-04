@@ -379,17 +379,28 @@ func ExtractProvidedData(reportDir string, provides []string) (map[string]string
 	return extractedData, nil
 }
 
-// extractDiscoveredPortsFromReports extracts open ports from nmap reports
+// extractDiscoveredPortsFromReports extracts open ports from scan reports (naabu, nmap, etc.)
 func extractDiscoveredPortsFromReports(reportDir string) (string, error) {
-	// Try to read from JSON report first (most reliable)
+	// First try to extract from naabu JSON files (most common for port discovery)
+	rawDir := fmt.Sprintf("%s/raw", reportDir)
+	if ports, err := extractPortsFromNaabuJSON(rawDir); err == nil && ports != "" {
+		return ports, nil
+	}
+	
+	// Try to read from processed JSON report 
 	jsonPath := fmt.Sprintf("%s/processed/nmap_scan_results.json", reportDir)
 	if _, err := os.Stat(jsonPath); err == nil {
-		return extractPortsFromJSON(jsonPath)
+		if ports, err := extractPortsFromJSON(jsonPath); err == nil && ports != "" {
+			return ports, nil
+		}
 	}
 	
 	// Fallback to reading raw nmap output
-	rawPath := fmt.Sprintf("%s/raw", reportDir)
-	return extractPortsFromRawNmap(rawPath)
+	if ports, err := extractPortsFromRawNmap(rawDir); err == nil && ports != "" {
+		return ports, nil
+	}
+	
+	return "", fmt.Errorf("no port data found in any report format")
 }
 
 // extractPortsFromJSON extracts ports from processed JSON report
@@ -458,6 +469,57 @@ func extractPortsFromRawNmap(rawDir string) (string, error) {
 	
 	if len(openPorts) == 0 {
 		return "", fmt.Errorf("no open ports found in nmap output")
+	}
+	
+	return strings.Join(openPorts, ","), nil
+}
+
+// extractPortsFromNaabuJSON extracts ports from naabu JSON output files  
+func extractPortsFromNaabuJSON(rawDir string) (string, error) {
+	// Look for naabu JSON files in the raw directory
+	files, err := filepath.Glob(filepath.Join(rawDir, "naabu_*.json"))
+	if err != nil {
+		return "", fmt.Errorf("failed to search for naabu files: %w", err)
+	}
+	
+	if len(files) == 0 {
+		return "", fmt.Errorf("no naabu JSON files found")
+	}
+	
+	// Read the first naabu file found
+	data, err := ioutil.ReadFile(files[0])
+	if err != nil {
+		return "", fmt.Errorf("failed to read naabu file: %w", err)
+	}
+	
+	// Parse naabu JSON output - each line is a separate JSON object
+	content := string(data)
+	lines := strings.Split(content, "\n")
+	var openPorts []string
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.HasPrefix(line, "{") {
+			continue
+		}
+		
+		var naabuResult struct {
+			Host     string `json:"host"`
+			IP       string `json:"ip"`
+			Port     int    `json:"port"`
+			Protocol string `json:"protocol"`
+		}
+		
+		if err := json.Unmarshal([]byte(line), &naabuResult); err != nil {
+			continue // Skip malformed JSON lines
+		}
+		
+		// Add port to list (naabu only reports open ports)
+		openPorts = append(openPorts, strconv.Itoa(naabuResult.Port))
+	}
+	
+	if len(openPorts) == 0 {
+		return "", fmt.Errorf("no open ports found in naabu JSON output")
 	}
 	
 	return strings.Join(openPorts, ","), nil

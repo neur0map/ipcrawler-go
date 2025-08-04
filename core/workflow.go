@@ -145,8 +145,19 @@ func LoadTemplateWorkflows(workflowsDir, templateName string) (map[string]*Workf
 
 func (w *Workflow) ReplaceVars(vars map[string]string) {
 	for i, step := range w.Steps {
+		// Replace placeholders in legacy Args field
 		for j, arg := range step.Args {
 			w.Steps[i].Args[j] = replacePlaceholders(arg, vars)
+		}
+		
+		// Replace placeholders in ArgsSudo field
+		for j, arg := range step.ArgsSudo {
+			w.Steps[i].ArgsSudo[j] = replacePlaceholders(arg, vars)
+		}
+		
+		// Replace placeholders in ArgsNormal field
+		for j, arg := range step.ArgsNormal {
+			w.Steps[i].ArgsNormal[j] = replacePlaceholders(arg, vars)
 		}
 	}
 }

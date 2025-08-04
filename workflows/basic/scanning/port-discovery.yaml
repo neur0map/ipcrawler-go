@@ -15,14 +15,14 @@ steps:
     args_sudo:
       - "-host"            # Target host
       - "{{target}}"       # Target to scan
-      - "-p"               # All ports (requires elevated privileges for optimal speed)
-      - "-"                # Scan all 65535 ports
+      - "-top-ports"       # Use top ports for speed (much faster than -p -)
+      - "1000"             # Scan top 1000 most common ports
       - "-rate"            # Packets per second
-      - "5000"             # Higher rate with sudo
+      - "10000"            # Higher rate with sudo for faster scanning
       - "-c"               # Worker threads
       - "100"              # Higher concurrency with sudo
       - "-timeout"         # Timeout per probe
-      - "800"              # Shorter timeout with elevated privileges
+      - "300"              # Faster timeout for quicker dead port detection
       - "-retries"         # Number of retries
       - "1"                # Minimal retries for speed
       - "-silent"          # Clean output
@@ -33,13 +33,13 @@ steps:
       - "-host"            # Target host
       - "{{target}}"       # Target to scan
       - "-top-ports"       # Use top ports mode for speed
-      - "full"             # Scan all known top ports (faster than -p -)
+      - "1000"             # Scan top 1000 most common ports (same as sudo for consistency)
       - "-rate"            # Packets per second
-      - "3000"             # Higher rate for faster scanning
+      - "5000"             # Increased rate for faster scanning
       - "-c"               # Worker threads
-      - "50"               # Higher concurrency
+      - "50"               # Balanced concurrency
       - "-timeout"         # Timeout per probe
-      - "1000"             # 1 second timeout
+      - "500"              # Faster timeout than before but not as aggressive as sudo
       - "-retries"         # Number of retries
       - "1"                # Minimal retries for speed
       - "-silent"          # Clean output

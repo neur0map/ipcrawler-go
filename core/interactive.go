@@ -87,11 +87,24 @@ func promptForSudoChoice(preview *ScanPreview) (*PrivilegeOption, error) {
 	// Show specific benefits for this scan
 	showScanSpecificBenefits(preview)
 	
+	// Important notice about process restart
+	pterm.DefaultSection.Println("Important Notice")
+	pterm.Info.Println("If you choose sudo mode:")
+	pterm.Printf("  • %s\n", 
+		pterm.Yellow("The application will restart with elevated privileges"))
+	pterm.Printf("  • %s\n", 
+		pterm.Yellow("You will be prompted for your password"))
+	pterm.Printf("  • %s\n", 
+		pterm.Yellow("All current settings and arguments will be preserved"))
+	pterm.Printf("  • %s\n", 
+		pterm.Cyan("This ensures proper privilege separation and security"))
+	pterm.Println()
+	
 	// Prompt for user choice
 	pterm.Info.Println("Choose your scanning mode:")
-	pterm.Printf("  • %s: Maximum accuracy and advanced features\n", 
+	pterm.Printf("  • %s: Maximum accuracy and advanced features (requires restart)\n", 
 		pterm.Green("sudo mode"))
-	pterm.Printf("  • %s: Safe scanning with basic features\n", 
+	pterm.Printf("  • %s: Safe scanning with basic features (continue immediately)\n", 
 		pterm.Yellow("normal mode"))
 	pterm.Println()
 
@@ -108,7 +121,7 @@ func promptForSudoChoice(preview *ScanPreview) (*PrivilegeOption, error) {
 		
 		switch choice {
 		case "y", "yes":
-			pterm.Success.Println("✓ Sudo mode selected - Advanced scanning enabled")
+			pterm.Success.Println("✓ Sudo mode selected - Application will restart with elevated privileges")
 			return &PrivilegeOption{UseSudo: true, UserChoice: "yes"}, nil
 		case "n", "no", "":
 			pterm.Info.Println("✓ Normal mode selected - Safe scanning enabled")
