@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	
 	"ipcrawler/internal/utils"
@@ -189,32 +190,58 @@ func ExecuteCommandWithRealTimeResultsContext(ctx context.Context, tool string, 
 		}
 	}()
 	
-	// Collect output from both channels
-	for outputChan != nil || errorChan != nil {
-		select {
-		case line, ok := <-outputChan:
-			if !ok {
-				outputChan = nil
-			} else {
-				outputLines = append(outputLines, line)
-				if debugMode {
-					fmt.Println(line)
+	// Collect output from both channels with context cancellation support
+	done := make(chan bool)
+	go func() {
+		defer close(done)
+		for outputChan != nil || errorChan != nil {
+			select {
+			case line, ok := <-outputChan:
+				if !ok {
+					outputChan = nil
+				} else {
+					outputLines = append(outputLines, line)
+					if debugMode {
+						fmt.Println(line)
+					}
 				}
-			}
-		case line, ok := <-errorChan:
-			if !ok {
-				errorChan = nil
-			} else {
-				errorLines = append(errorLines, line)
-				if debugMode {
-					fmt.Fprintf(os.Stderr, "STDERR: %s\n", line)
+			case line, ok := <-errorChan:
+				if !ok {
+					errorChan = nil
+				} else {
+					errorLines = append(errorLines, line)
+					if debugMode {
+						fmt.Fprintf(os.Stderr, "STDERR: %s\n", line)
+					}
 				}
 			}
 		}
+		
+		// Wait for command to complete in this goroutine
+		cmd.Wait()
+	}()
+	
+	// Wait for either completion or context cancellation
+	select {
+	case <-ctx.Done():
+		// Context was cancelled, kill the process aggressively
+		if cmd.Process != nil {
+			// First try to kill the process
+			cmd.Process.Kill()
+			// Give it a moment to die
+			time.Sleep(100 * time.Millisecond)
+			// If still running, try to kill the process group (for sudo processes)
+			if cmd.Process != nil {
+				syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
+		}
+		return nil, fmt.Errorf("command cancelled: %w", ctx.Err())
+	case <-done:
+		// Command completed normally, check if there was an error
 	}
 	
-	// Wait for command to complete
-	if err := cmd.Wait(); err != nil {
+	// Check if the process had an error (after normal completion)
+	if cmd.ProcessState != nil && !cmd.ProcessState.Success() {
 		// Enhanced error reporting with stderr output
 		var errorMessage strings.Builder
 		errorMessage.WriteString(fmt.Sprintf("failed to execute %s", tool))
@@ -342,9 +369,16 @@ func ExecuteCommandFastContext(ctx context.Context, tool string, args []string, 
 	// Wait for either command completion or context cancellation
 	select {
 	case <-ctx.Done():
-		// Context was cancelled, kill the process
+		// Context was cancelled, kill the process aggressively
 		if cmd.Process != nil {
+			// First try to kill the process
 			cmd.Process.Kill()
+			// Give it a moment to die
+			time.Sleep(100 * time.Millisecond)
+			// If still running, try to kill the process group (for sudo processes)
+			if cmd.Process != nil {
+				syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
 		}
 		return nil, fmt.Errorf("command cancelled: %w", ctx.Err())
 	case err := <-done:

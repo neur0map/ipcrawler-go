@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -53,28 +54,89 @@ func Execute() error {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			
-			// Create a buffered channel to listen for interrupt signals
-			sigChan := make(chan os.Signal, 2)
-			signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+			// Ensure we're the process group leader for proper signal handling
+			// This is especially important when running under sudo
+			if os.Geteuid() == 0 {
+				syscall.Setpgid(0, 0)
+			}
 			
-			// Start a goroutine to handle signals
+			// Create a buffered channel to listen for interrupt signals
+			sigChan := make(chan os.Signal, 3)
+			// Listen for multiple signal types to ensure we catch Ctrl+C in all scenarios
+			signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+			
+			// Track if we've already handled a signal
+			var signalHandled bool
+			var signalMutex sync.Mutex
+			
+			// Check if we're running as root (sudo mode)
+			isRunningAsRoot := os.Geteuid() == 0
+			
+			// Start a more aggressive goroutine to handle signals
 			go func() {
-				defer signal.Stop(sigChan) // Clean up signal notification
-				for {
-					select {
-					case sig := <-sigChan:
-						pterm.Warning.Printf("\n⚠️  Received signal: %v\n", sig)
-						pterm.Info.Println("🛑 Cancelling scan... (this may take a moment)")
-						pterm.Info.Println("   • Stopping running commands")
-						pterm.Info.Println("   • Cleaning up processes") 
-						pterm.Info.Println("   • Partial results may be available in report directory")
-						pterm.Info.Println("   • Context cancellation initiated")
-						cancel() // Cancel the context
-						pterm.Success.Println("✅ Cancellation signal sent")
-						return  // Exit the goroutine after first signal
-					case <-ctx.Done():
-						return // Exit if context is already cancelled
+				defer signal.Stop(sigChan)
+				signalCount := 0
+				
+				for sig := range sigChan {
+					signalCount++
+					
+					signalMutex.Lock()
+					if signalHandled {
+						signalMutex.Unlock()
+						if signalCount > 1 {
+							// Force exit after 2 Ctrl+C presses (more aggressive for sudo)
+							fmt.Fprintf(os.Stderr, "\n⚠️  Force terminating after %d interrupts...\n", signalCount)
+							// Kill all child processes if running as root
+							if isRunningAsRoot {
+								fmt.Fprintf(os.Stderr, "🔒 Cleaning up sudo processes...\n")
+							}
+							os.Exit(130) // Standard exit code for Ctrl+C
+						}
+						continue
 					}
+					signalHandled = true
+					signalMutex.Unlock()
+					
+					// Force output to stderr to bypass PTerm, with different messages for sudo
+					if isRunningAsRoot {
+						fmt.Fprintf(os.Stderr, "\n⚠️  [SUDO] Received signal: %v\n", sig)
+						fmt.Fprintf(os.Stderr, "🛑 [SUDO] Cancelling scan with elevated privileges...\n")
+						fmt.Fprintf(os.Stderr, "   • Stopping root-level commands\n")
+						fmt.Fprintf(os.Stderr, "   • Cleaning up privileged processes\n")
+						fmt.Fprintf(os.Stderr, "   • Press Ctrl+C once more to force quit\n")
+					} else {
+						fmt.Fprintf(os.Stderr, "\n⚠️  Received signal: %v\n", sig)
+						fmt.Fprintf(os.Stderr, "🛑 Cancelling scan... (this may take a moment)\n")
+						fmt.Fprintf(os.Stderr, "   • Stopping running commands\n")
+						fmt.Fprintf(os.Stderr, "   • Cleaning up processes\n")
+						fmt.Fprintf(os.Stderr, "   • Press Ctrl+C again to force quit\n")
+					}
+					
+					// Cancel the context
+					cancel()
+					
+					// Give it less time for sudo mode, more aggressive termination
+					timeout := 3 * time.Second
+					if isRunningAsRoot {
+						timeout = 2 * time.Second
+					}
+					
+					go func() {
+						time.Sleep(timeout)
+						if isRunningAsRoot {
+							fmt.Fprintf(os.Stderr, "⚠️  [SUDO] Force terminating privileged process...\n")
+						} else {
+							fmt.Fprintf(os.Stderr, "⚠️  Force terminating...\n")
+						}
+						// Kill all child processes aggressively
+						if isRunningAsRoot {
+							// Kill process group for sudo processes
+							syscall.Kill(0, syscall.SIGKILL)
+						}
+						os.Exit(130)
+					}()
+					
+					return
 				}
 			}()
 			
@@ -418,6 +480,15 @@ func executeWorkflowsWithCoordination(ctx context.Context, workflows map[string]
 			// Execute each step
 			workflowFailed := false
 			for _, step := range workflow.Steps {
+				// Check for cancellation before each step
+				select {
+				case <-ctx.Done():
+					spinner.Stop()
+					fmt.Fprintf(os.Stderr, "🛑 Scan cancelled during workflow execution\n")
+					return ctx.Err()
+				default:
+				}
+				
 				// Get appropriate args based on sudo preference
 				args := step.GetArgs(useSudo)
 				

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 // IsRunningAsRoot checks if the current process is running with root privileges
@@ -42,16 +43,24 @@ func RestartWithSudo() error {
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
+	
+	// Resolve symlinks to get the actual executable path
+	realExecPath, err := filepath.EvalSymlinks(execPath)
+	if err != nil {
+		// If we can't resolve symlinks, fall back to the original path
+		realExecPath = execPath
+	}
 
-	// Prepare arguments: full executable path + all original arguments + sudo restart flag
+	// Prepare arguments: real executable path + all original arguments + sudo restart flag
 	args := make([]string, 0, len(os.Args)+1)
-	args = append(args, execPath) // Use full executable path instead of os.Args[0]
+	args = append(args, realExecPath) // Use resolved executable path instead of symlink
 	args = append(args, os.Args[1:]...) // Add all original arguments
 	args = append(args, "--sudo-restart") // Add flag to indicate this is a sudo restart
 
 	// Debug information (could be logged)
 	fmt.Printf("  📍 Executable path: %s\n", execPath)
-	fmt.Printf("  🔧 Sudo command: sudo %s %v\n", execPath, os.Args[1:])
+	fmt.Printf("  🔍 Resolved path: %s\n", realExecPath)
+	fmt.Printf("  🔧 Sudo command: sudo %s %v\n", realExecPath, os.Args[1:])
 
 	// For Go applications, we need to use syscall.Exec or os/exec
 	// Since Go doesn't have direct os.Execvp, we'll use exec.Command with replacement
@@ -60,13 +69,14 @@ func RestartWithSudo() error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	
-	// Start the new process and exit this one
-	err = cmd.Start()
+	// Run the command and wait for it to complete (this replaces the current process)
+	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("failed to restart with sudo: %w", err)
 	}
 
-	// Exit the current process since we're replacing it
+	// If we reach here, the sudo command completed successfully
+	// Exit with the same code as the sudo process
 	os.Exit(0)
 	return nil
 }

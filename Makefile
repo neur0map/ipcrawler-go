@@ -342,16 +342,17 @@ update:
 		echo "   git remote add origin https://github.com/YOUR_USERNAME/ipcrawler.git"; \
 		exit 1; \
 	}
-	@echo "🔨 Rebuilding..."
-	@$(MAKE) build
+	@echo "🔨 Rebuilding and installing globally..."
+	@$(MAKE) install
 	@echo "✅ Update complete! IPCrawler is now up to date."
+	@echo "🎉 Global command updated - try: ipcrawler --version"
 
 # Show help
 help:
 	@echo "IPCrawler Build Commands:"
 	@echo "  make             - Build the binary (auto-installs/upgrades Go if needed)"
 	@echo "  make install     - Build and install globally"
-	@echo "  make update      - Pull latest changes and rebuild"
+	@echo "  make update      - Pull latest changes, rebuild, and update global command"
 	@echo "  make dev         - Watch files and auto-rebuild"
 	@echo "  make run         - Run without building (use ARGS='...' for arguments)"
 	@echo "  make clean       - Remove build artifacts"

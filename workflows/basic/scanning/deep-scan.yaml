@@ -14,7 +14,7 @@ steps:
     args_sudo:
       - "-sS"              # Stealth SYN scan (requires root)
       - "-sV"              # Version detection
-      - "-sC"              # Default scripts
+      - "--script=safe"    # Safe scripts only (avoid Lua crashes)
       - "-O"               # OS detection (requires root)
       - "-Pn"              # Treat all hosts as online
       - "-T4"              # Aggressive timing (faster with sudo)
@@ -22,15 +22,19 @@ steps:
       - "{{discovered_ports}}"  # Ports from port-discovery workflow
       - "-oX"              # XML output for parsing
       - "{{report_dir}}/raw/nmap_deep_scan_{{target}}.xml"
+      - "--max-retries=2"  # Limit retries to prevent hangs
+      - "--host-timeout=300s"  # 5 minute timeout per host
       - "{{target}}"       # Target to scan
     args_normal:
       - "-sT"              # TCP connect scan (no root required)
       - "-sV"              # Version detection
-      - "-sC"              # Default scripts
+      - "--script=safe"    # Safe scripts only (avoid Lua crashes)
       - "-Pn"              # Treat all hosts as online
       - "-T3"              # Normal timing (more reliable for deep scan)
       - "-p"               # Port specification
       - "{{discovered_ports}}"  # Ports from port-discovery workflow
       - "-oX"              # XML output for parsing
       - "{{report_dir}}/raw/nmap_deep_scan_{{target}}.xml"
+      - "--max-retries=2"  # Limit retries to prevent hangs
+      - "--host-timeout=300s"  # 5 minute timeout per host
       - "{{target}}"       # Target to scan
