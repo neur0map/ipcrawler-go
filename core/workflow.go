@@ -1,0 +1,225 @@
+package core
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+type Workflow struct {
+	Name        string       `yaml:"name"`
+	Description string       `yaml:"description"`
+	Report      interface{}  `yaml:"report,omitempty"` // Can be bool or ReportConfig
+	Requires    []string     `yaml:"requires,omitempty"` // Dependencies on other workflows
+	Provides    []string     `yaml:"provides,omitempty"` // Data this workflow provides
+	Steps       []Step       `yaml:"steps"`
+}
+
+type Step struct {
+	Tool string   `yaml:"tool"`
+	Args []string `yaml:"args"`
+}
+
+type ReportConfig struct {
+	Enabled      bool     `yaml:"enabled"`
+	OutputFormat []string `yaml:"output_format"`
+	Agents       []string `yaml:"agents"`
+	Coordination bool     `yaml:"coordination,omitempty"` // Whether this workflow needs coordination
+}
+
+type AgentConfig struct {
+	Receiver *ReceiverAgentConfig `yaml:"receiver,omitempty"`
+	Cleaner  *CleanerAgentConfig  `yaml:"cleaner,omitempty"`
+	Reviewer *ReviewerAgentConfig `yaml:"reviewer,omitempty"`
+	Reporter *ReporterAgentConfig `yaml:"reporter,omitempty"`
+}
+
+type ReceiverAgentConfig struct {
+	ValidateSchema bool   `yaml:"validate_schema"`
+	ErrorHandling  string `yaml:"error_handling"`
+}
+
+type CleanerAgentConfig struct {
+	Type                string   `yaml:"type"`
+	ExtractFields       []string `yaml:"extract_fields"`
+	SeverityFilter      []string `yaml:"severity_filter,omitempty"`
+	GroupByTemplate     bool     `yaml:"group_by_template,omitempty"`
+	IncludeClosedPorts  bool     `yaml:"include_closed_ports,omitempty"`
+	MinimumPorts        int      `yaml:"minimum_ports,omitempty"`
+	FilterStatusCodes   []string `yaml:"filter_status_codes,omitempty"`
+	MinResponseSize     int      `yaml:"min_response_size,omitempty"`
+}
+
+type ReviewerAgentConfig struct {
+	ValidationRules []string `yaml:"validation_rules"`
+}
+
+type ReporterAgentConfig struct {
+	Templates      []string `yaml:"templates"`
+	IncludeRawData bool     `yaml:"include_raw_data"`
+}
+
+func LoadWorkflow(path string) (*Workflow, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read workflow file: %w", err)
+	}
+
+	var workflow Workflow
+	if err := yaml.Unmarshal(data, &workflow); err != nil {
+		return nil, fmt.Errorf("failed to parse workflow file: %w", err)
+	}
+
+	return &workflow, nil
+}
+
+func LoadTemplateWorkflows(workflowsDir, templateName string) (map[string]*Workflow, error) {
+	templateDir := filepath.Join(workflowsDir, templateName)
+	
+	// Check if template directory exists
+	if _, err := os.Stat(templateDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("template directory not found: %s", templateDir)
+	}
+
+	workflows := make(map[string]*Workflow)
+
+	// Walk through all tool directories in the template
+	entries, err := os.ReadDir(templateDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read template directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		toolName := entry.Name()
+		toolDir := filepath.Join(templateDir, toolName)
+
+		// Read all YAML files in the tool directory
+		toolEntries, err := os.ReadDir(toolDir)
+		if err != nil {
+			continue // Skip if we can't read the tool directory
+		}
+
+		for _, toolEntry := range toolEntries {
+			if toolEntry.IsDir() || !strings.HasSuffix(toolEntry.Name(), ".yaml") {
+				continue
+			}
+
+			workflowFile := filepath.Join(toolDir, toolEntry.Name())
+			workflow, err := LoadWorkflow(workflowFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load workflow %s for %s: %w", toolEntry.Name(), toolName, err)
+			}
+
+			// Create a unique key for each workflow (tool_workflowname)
+			workflowBaseName := strings.TrimSuffix(toolEntry.Name(), ".yaml")
+			workflowKey := fmt.Sprintf("%s_%s", toolName, workflowBaseName)
+			workflows[workflowKey] = workflow
+		}
+	}
+
+	return workflows, nil
+}
+
+func (w *Workflow) ReplaceVars(vars map[string]string) {
+	for i, step := range w.Steps {
+		for j, arg := range step.Args {
+			w.Steps[i].Args[j] = replacePlaceholders(arg, vars)
+		}
+	}
+}
+
+// HasReporting returns true if the workflow has reporting enabled
+func (w *Workflow) HasReporting() bool {
+	if w.Report == nil {
+		return false
+	}
+	
+	// Handle simple boolean format
+	if enabled, ok := w.Report.(bool); ok {
+		return enabled
+	}
+	
+	// Handle map format (YAML parsed as map[string]interface{})
+	if reportMap, ok := w.Report.(map[string]interface{}); ok {
+		if enabled, ok := reportMap["enabled"].(bool); ok {
+			return enabled
+		}
+	}
+	
+	// Handle full config format
+	if config, ok := w.Report.(*ReportConfig); ok {
+		return config.Enabled
+	}
+	
+	return false
+}
+
+// GetReportConfig returns the report configuration or default if using simple format
+func (w *Workflow) GetReportConfig() *ReportConfig {
+	if w.Report == nil {
+		return nil
+	}
+	
+	// If it's a simple boolean, return default config
+	if enabled, ok := w.Report.(bool); ok && enabled {
+		return &ReportConfig{
+			Enabled:      true,
+			OutputFormat: []string{"json", "txt"},
+			Agents:       []string{"receiver", "validator", "reporter"}, // Default agents
+		}
+	}
+	
+	// If it's a map (YAML parsed as map[string]interface{}), convert it
+	if reportMap, ok := w.Report.(map[string]interface{}); ok {
+		config := &ReportConfig{}
+		if enabled, ok := reportMap["enabled"].(bool); ok {
+			config.Enabled = enabled
+		}
+		if agents, ok := reportMap["agents"].([]interface{}); ok {
+			config.Agents = make([]string, 0, len(agents))
+			for _, agent := range agents {
+				if agentStr, ok := agent.(string); ok {
+					config.Agents = append(config.Agents, agentStr)
+				}
+			}
+		}
+		if outputFormat, ok := reportMap["output_format"].([]interface{}); ok {
+			config.OutputFormat = make([]string, 0, len(outputFormat))
+			for _, format := range outputFormat {
+				if formatStr, ok := format.(string); ok {
+					config.OutputFormat = append(config.OutputFormat, formatStr)
+				}
+			}
+		} else {
+			config.OutputFormat = []string{"json", "txt"}
+		}
+		return config
+	}
+	
+	// If it's already a config, return it
+	if config, ok := w.Report.(*ReportConfig); ok {
+		return config
+	}
+	
+	return nil
+}
+
+func replacePlaceholders(s string, vars map[string]string) string {
+	result := s
+	for key, value := range vars {
+		placeholder := fmt.Sprintf("{{%s}}", key)
+		result = strings.ReplaceAll(result, placeholder, value)
+	}
+	return result
+}
+
+func (w *Workflow) GetCommand(step Step) string {
+	return fmt.Sprintf("%s %s", step.Tool, strings.Join(step.Args, " "))
+}

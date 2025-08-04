@@ -1,0 +1,30 @@
+name: "Deep Service Analysis"
+description: "Detailed service and version detection on discovered open ports"
+requires:
+  - "port-discovery"
+report:
+  enabled: true
+  agents:
+    - receiver
+    - nmap_processor
+    - validator
+    - reporter
+steps:
+  - tool: "nmap"
+    args:
+      - "-sV"              # Version detection
+      - "-sC"              # Default scripts
+      - "-A"               # Enable OS detection, version detection, script scanning
+      - "-Pn"              # Treat all hosts as online
+      - "-T3"              # Normal timing (more reliable for deep scan)
+      - "--version-intensity"  # Version detection intensity
+      - "9"                # Maximum intensity (0-9)
+      - "-p"               # Port specification
+      - "{{discovered_ports}}"  # Ports from port-discovery workflow
+      - "-oN"              # Normal output format
+      - "{{report_dir}}/raw/nmap_deep_scan_{{target}}.txt"
+      - "-oX"              # XML output for parsing
+      - "{{report_dir}}/raw/nmap_deep_scan_{{target}}.xml"
+      - "-oG"              # Grepable output
+      - "{{report_dir}}/raw/nmap_deep_scan_{{target}}.gnmap"  
+      - "{{target}}"       # Target to scan

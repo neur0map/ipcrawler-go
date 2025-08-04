@@ -1,0 +1,31 @@
+# IPCrawler - Simple Configuration
+
+# Which scan template to use by default (basic, comprehensive, stealth)
+default_template: basic
+
+# Available scan templates  
+templates:
+  - basic
+  - comprehensive
+  - stealth
+
+# Advanced Settings (optional - defaults work for most users)
+# Uncomment and modify only if you need to customize behavior
+
+# reporting:
+#   pipeline:
+#     max_retries: 3          # How many times to retry failed operations
+#     fail_fast: false       # Stop on first error (true) or continue (false)
+#     log_level: "info"       # Logging detail level (debug, info, warn, error)
+#   
+#   agents:
+#     receiver:
+#       error_handling: "continue"  # How to handle errors (continue, stop)
+#     
+#     reviewer:
+#       validation_level: "medium"  # Report validation level (low, medium, high)
+#       strict_mode: false          # Enable strict validation checks
+#     
+#     reporter:
+#       include_raw_data: true      # Include original scan outputs in reports
+#       max_report_size: "10MB"     # Maximum size for generated reports
