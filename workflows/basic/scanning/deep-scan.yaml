@@ -11,7 +11,19 @@ report:
     - reporter
 steps:
   - tool: "nmap"
-    args:
+    args_sudo:
+      - "-sS"              # Stealth SYN scan (requires root)
+      - "-sV"              # Version detection
+      - "-sC"              # Default scripts
+      - "-O"               # OS detection (requires root)
+      - "-Pn"              # Treat all hosts as online
+      - "-T4"              # Aggressive timing (faster with sudo)
+      - "-p"               # Port specification
+      - "{{discovered_ports}}"  # Ports from port-discovery workflow
+      - "-oX"              # XML output for parsing
+      - "{{report_dir}}/raw/nmap_deep_scan_{{target}}.xml"
+      - "{{target}}"       # Target to scan
+    args_normal:
       - "-sT"              # TCP connect scan (no root required)
       - "-sV"              # Version detection
       - "-sC"              # Default scripts

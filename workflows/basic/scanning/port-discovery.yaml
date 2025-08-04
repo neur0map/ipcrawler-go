@@ -12,7 +12,24 @@ report:
   coordination: true
 steps:
   - tool: "naabu"
-    args:
+    args_sudo:
+      - "-host"            # Target host
+      - "{{target}}"       # Target to scan
+      - "-p"               # All ports (requires elevated privileges for optimal speed)
+      - "-"                # Scan all 65535 ports
+      - "-rate"            # Packets per second
+      - "5000"             # Higher rate with sudo
+      - "-c"               # Worker threads
+      - "100"              # Higher concurrency with sudo
+      - "-timeout"         # Timeout per probe
+      - "800"              # Shorter timeout with elevated privileges
+      - "-retries"         # Number of retries
+      - "1"                # Minimal retries for speed
+      - "-silent"          # Clean output
+      - "-json"            # JSON output format
+      - "-o"               # Output file
+      - "{{report_dir}}/raw/naabu_port_discovery_{{target}}.json"
+    args_normal:
       - "-host"            # Target host
       - "{{target}}"       # Target to scan
       - "-top-ports"       # Use top ports mode for speed

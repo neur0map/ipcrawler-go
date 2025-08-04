@@ -98,6 +98,26 @@ func Execute() error {
 				return fmt.Errorf("failed to create report directory: %w", err)
 			}
 
+			// Convert workflows map to slice for preview
+			workflowSlice := make([]*core.Workflow, 0, len(workflows))
+			for _, workflow := range workflows {
+				workflowSlice = append(workflowSlice, workflow)
+			}
+
+			// Show interactive scan preview and get sudo choice
+			preview := &core.ScanPreview{
+				Target:        target,
+				Template:      templateName,
+				Workflows:     workflowSlice,
+				ReportDir:     reportDir,
+				EstimatedTime: core.EstimateScanTime(workflowSlice),
+			}
+
+			privilegeOption, err := core.ShowScanPreview(preview)
+			if err != nil {
+				return fmt.Errorf("failed to get user input: %w", err)
+			}
+
 			// Create variables for placeholder replacement
 			vars := map[string]string{
 				"target":      target,
@@ -105,18 +125,8 @@ func Execute() error {
 				"report_dir":  reportDir,
 			}
 
-			// Simple header without background color
-			pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle()).
-				WithMargin(1).
-				Println("IPCrawler Security Scanner")
-			
-			pterm.Info.Printf("Template: %s\n", templateName)
-			pterm.Info.Printf("Target: %s\n", target)
-			pterm.Info.Printf("Report Directory: %s\n", reportDir)
-			pterm.Println()
-
 			// Execute workflows with dependency coordination
-			if err := executeWorkflowsWithCoordination(workflows, vars, debugMode, reportDir, target, config); err != nil {
+			if err := executeWorkflowsWithCoordination(workflows, vars, debugMode, reportDir, target, config, privilegeOption.UseSudo); err != nil {
 				return fmt.Errorf("workflow execution failed: %w", err)
 			}
 
@@ -182,7 +192,7 @@ func checkReportingEnabled(workflows map[string]*core.Workflow) bool {
 }
 
 // executeWorkflowsWithCoordination executes workflows with dependency coordination
-func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars map[string]string, debugMode bool, reportDir, target string, config *core.Config) error {
+func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars map[string]string, debugMode bool, reportDir, target string, config *core.Config, useSudo bool) error {
 	// Build dependency graph and execution order
 	executionOrder, err := buildExecutionOrder(workflows)
 	if err != nil {
@@ -233,12 +243,14 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 			
 			// Debug mode: Execute each step with detailed output
 			for i, step := range workflow.Steps {
-				cmd := workflow.GetCommand(step)
+				// Get appropriate args based on sudo preference
+				args := step.GetArgs(useSudo)
+				cmd := workflow.GetCommandWithArgs(step.Tool, args)
 				pterm.Info.Printf("  Executing Step %d: %s\n", i+1, cmd)
 				
 				// For nmap, nuclei, and naabu commands, use enhanced execution to get results
 				if step.Tool == "nmap" || step.Tool == "nuclei" || step.Tool == "naabu" {
-					results, err := core.ExecuteCommandWithRealTimeResults(step.Tool, step.Args, debugMode)
+					results, err := core.ExecuteCommandWithRealTimeResults(step.Tool, args, debugMode)
 					if err != nil {
 						pterm.Error.Printf("  ❌ Error: %v\n", err)
 						log.Printf("Command execution failed: %v", err)
@@ -248,7 +260,7 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 					}
 				} else {
 					// Execute the command
-					if err := core.ExecuteCommand(step.Tool, step.Args, debugMode); err != nil {
+					if err := core.ExecuteCommand(step.Tool, args, debugMode); err != nil {
 						pterm.Error.Printf("  ❌ Error: %v\n", err)
 						log.Printf("Command execution failed: %v", err)
 					} else {
@@ -278,9 +290,12 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 			
 			// Execute each step
 			for _, step := range workflow.Steps {
+				// Get appropriate args based on sudo preference
+				args := step.GetArgs(useSudo)
+				
 				// For nmap, nuclei, and naabu commands, use enhanced execution to get results
 				if step.Tool == "nmap" || step.Tool == "nuclei" || step.Tool == "naabu" {
-					results, err := core.ExecuteCommandWithRealTimeResults(step.Tool, step.Args, debugMode)
+					results, err := core.ExecuteCommandWithRealTimeResults(step.Tool, args, debugMode)
 					if err != nil {
 						spinner.Fail("❌ Failed")
 						log.Printf("Command execution failed: %v", err)
@@ -289,7 +304,7 @@ func executeWorkflowsWithCoordination(workflows map[string]*core.Workflow, vars 
 					workflowResults = results
 				} else {
 					// For non-nmap commands, use regular execution
-					if err := core.ExecuteCommand(step.Tool, step.Args, debugMode); err != nil {
+					if err := core.ExecuteCommand(step.Tool, args, debugMode); err != nil {
 						spinner.Fail("❌ Failed")
 						log.Printf("Command execution failed: %v", err)
 						goto nextWorkflow

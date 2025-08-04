@@ -19,8 +19,24 @@ type Workflow struct {
 }
 
 type Step struct {
-	Tool string   `yaml:"tool"`
-	Args []string `yaml:"args"`
+	Tool       string   `yaml:"tool"`
+	Args       []string `yaml:"args,omitempty"`       // Legacy single args (for backward compatibility)
+	ArgsSudo   []string `yaml:"args_sudo,omitempty"`   // Arguments requiring sudo
+	ArgsNormal []string `yaml:"args_normal,omitempty"` // Arguments for normal mode
+}
+
+// GetArgs returns the appropriate arguments based on sudo preference
+func (s *Step) GetArgs(useSudo bool) []string {
+	// If dual args are defined, use appropriate set
+	if len(s.ArgsSudo) > 0 && len(s.ArgsNormal) > 0 {
+		if useSudo {
+			return s.ArgsSudo
+		}
+		return s.ArgsNormal
+	}
+	
+	// Fall back to legacy args field for backward compatibility
+	return s.Args
 }
 
 type ReportConfig struct {
@@ -222,4 +238,9 @@ func replacePlaceholders(s string, vars map[string]string) string {
 
 func (w *Workflow) GetCommand(step Step) string {
 	return fmt.Sprintf("%s %s", step.Tool, strings.Join(step.Args, " "))
+}
+
+// GetCommandWithArgs creates a command string with specific args
+func (w *Workflow) GetCommandWithArgs(tool string, args []string) string {
+	return fmt.Sprintf("%s %s", tool, strings.Join(args, " "))
 }
