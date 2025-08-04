@@ -293,6 +293,13 @@ func ExecuteCommandFast(tool string, args []string, debugMode bool, useSudo bool
 }
 
 func ExecuteCommandFastContext(ctx context.Context, tool string, args []string, debugMode bool, useSudo bool) (*ScanResults, error) {
+	// Check if context is already cancelled
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("command cancelled before execution: %w", ctx.Err())
+	default:
+	}
+	
 	// Log the full command being executed for debugging
 	fullCmd := fmt.Sprintf("%s %s", tool, strings.Join(args, " "))
 	if debugMode {
@@ -322,21 +329,40 @@ func ExecuteCommandFastContext(ctx context.Context, tool string, args []string, 
 		cmd = exec.CommandContext(ctx, tool, args...)
 	}
 	
-	// Use CombinedOutput for simplicity and speed - no need for real-time processing for fast scans
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		// Enhanced error reporting
-		var errorMessage strings.Builder
-		errorMessage.WriteString(fmt.Sprintf("failed to execute %s", tool))
-		
-		if len(output) > 0 {
-			errorMessage.WriteString(fmt.Sprintf("\nOutput:\n%s", string(output)))
+	// Use CombinedOutput but with context checking
+	done := make(chan error, 1)
+	var output []byte
+	
+	go func() {
+		var execErr error
+		output, execErr = cmd.CombinedOutput()
+		done <- execErr
+	}()
+	
+	// Wait for either command completion or context cancellation
+	select {
+	case <-ctx.Done():
+		// Context was cancelled, kill the process
+		if cmd.Process != nil {
+			cmd.Process.Kill()
 		}
-		
-		// Show command that failed
-		errorMessage.WriteString(fmt.Sprintf("\nCommand: %s", fullCmd))
-		
-		return nil, fmt.Errorf("%s: %w", errorMessage.String(), err)
+		return nil, fmt.Errorf("command cancelled: %w", ctx.Err())
+	case err := <-done:
+		// Command completed normally
+		if err != nil {
+			// Enhanced error reporting
+			var errorMessage strings.Builder
+			errorMessage.WriteString(fmt.Sprintf("failed to execute %s", tool))
+			
+			if len(output) > 0 {
+				errorMessage.WriteString(fmt.Sprintf("\nOutput:\n%s", string(output)))
+			}
+			
+			// Show command that failed
+			errorMessage.WriteString(fmt.Sprintf("\nCommand: %s", fullCmd))
+			
+			return nil, fmt.Errorf("%s: %w", errorMessage.String(), err)
+		}
 	}
 	
 	// Convert output to lines for parsing

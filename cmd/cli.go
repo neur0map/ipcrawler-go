@@ -53,19 +53,29 @@ func Execute() error {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			
-			// Create a channel to listen for interrupt signals
-			sigChan := make(chan os.Signal, 1)
+			// Create a buffered channel to listen for interrupt signals
+			sigChan := make(chan os.Signal, 2)
 			signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 			
 			// Start a goroutine to handle signals
 			go func() {
-				sig := <-sigChan
-				pterm.Warning.Printf("\n⚠️  Received signal: %v\n", sig)
-				pterm.Info.Println("🛑 Cancelling scan... (this may take a moment)")
-				pterm.Info.Println("   • Stopping running commands")
-				pterm.Info.Println("   • Cleaning up processes") 
-				pterm.Info.Println("   • Partial results may be available in report directory")
-				cancel() // Cancel the context
+				defer signal.Stop(sigChan) // Clean up signal notification
+				for {
+					select {
+					case sig := <-sigChan:
+						pterm.Warning.Printf("\n⚠️  Received signal: %v\n", sig)
+						pterm.Info.Println("🛑 Cancelling scan... (this may take a moment)")
+						pterm.Info.Println("   • Stopping running commands")
+						pterm.Info.Println("   • Cleaning up processes") 
+						pterm.Info.Println("   • Partial results may be available in report directory")
+						pterm.Info.Println("   • Context cancellation initiated")
+						cancel() // Cancel the context
+						pterm.Success.Println("✅ Cancellation signal sent")
+						return  // Exit the goroutine after first signal
+					case <-ctx.Done():
+						return // Exit if context is already cancelled
+					}
+				}
 			}()
 			
 			// Handle --health flag
