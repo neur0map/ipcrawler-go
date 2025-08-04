@@ -6,7 +6,7 @@ default: build
 # OS and Architecture detection
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
-GO_VERSION := 1.21.5
+GO_VERSION := 1.23.5
 
 # Determine OS and architecture for Go installation
 ifeq ($(UNAME_S),Linux)
@@ -42,12 +42,12 @@ check-go:
 		GO_CURRENT=$$(go version | cut -d' ' -f3 | cut -d'o' -f2); \
 		GO_MAJOR=$$(echo $$GO_CURRENT | cut -d'.' -f1); \
 		GO_MINOR=$$(echo $$GO_CURRENT | cut -d'.' -f2); \
-		if [ "$$GO_MAJOR" -gt 1 ] || ([ "$$GO_MAJOR" -eq 1 ] && [ "$$GO_MINOR" -ge 21 ]); then \
-			echo "✅ Go version is compatible ($$GO_CURRENT >= 1.21)"; \
+		if [ "$$GO_MAJOR" -gt 1 ] || ([ "$$GO_MAJOR" -eq 1 ] && [ "$$GO_MINOR" -ge 23 ]); then \
+			echo "✅ Go version is compatible ($$GO_CURRENT >= 1.23)"; \
 		else \
-			echo "❌ Go version $$GO_CURRENT is too old (requires >= 1.21)"; \
+			echo "❌ Go version $$GO_CURRENT is too old (requires >= 1.23)"; \
 			echo ""; \
-			echo "📦 IPCrawler requires Go 1.21 or later to build properly."; \
+			echo "📦 IPCrawler requires Go 1.23 or later to build properly."; \
 			echo "🔧 Would you like to upgrade Go to version $(GO_VERSION)? [y/N]"; \
 			read -r UPGRADE_GO; \
 			if [ "$$UPGRADE_GO" = "y" ] || [ "$$UPGRADE_GO" = "Y" ] || [ "$$UPGRADE_GO" = "yes" ]; then \
@@ -189,10 +189,14 @@ build: setup-go
 	@export PATH=/usr/local/go/bin:$$PATH; \
 	if [ -x "/usr/local/go/bin/go" ]; then \
 		echo "  Using Go: $$(/usr/local/go/bin/go version)"; \
+		echo "  📝 Updating go.mod..."; \
+		/usr/local/go/bin/go mod tidy; \
 		/usr/local/go/bin/go build -o ipcrawler; \
 		echo "✅ Build complete!"; \
 	elif command -v go >/dev/null 2>&1; then \
 		echo "  Using system Go: $$(go version)"; \
+		echo "  📝 Updating go.mod..."; \
+		go mod tidy; \
 		go build -o ipcrawler; \
 		echo "✅ Build complete!"; \
 	else \
@@ -211,9 +215,13 @@ force-build:
 	@export PATH=/usr/local/go/bin:$$PATH; \
 	if [ -x "/usr/local/go/bin/go" ]; then \
 		echo "  Using: $$(/usr/local/go/bin/go version)"; \
+		echo "  📝 Updating go.mod..."; \
+		/usr/local/go/bin/go mod tidy; \
 		/usr/local/go/bin/go build -o ipcrawler; \
 	else \
 		echo "  Fallback to system Go"; \
+		echo "  📝 Updating go.mod..."; \
+		go mod tidy; \
 		go build -o ipcrawler; \
 	fi
 	@echo "✅ Build complete!"
@@ -257,7 +265,17 @@ clean-go:
 
 # Install globally (creates symlink if needed)
 install: build
-	@./scripts/setup.sh
+	@echo "🧹 Cleaning Go module cache to prevent version conflicts..."
+	@export PATH=/usr/local/go/bin:$$PATH GOROOT=/usr/local/go; \
+	if [ -x "/usr/local/go/bin/go" ]; then \
+		/usr/local/go/bin/go clean -modcache 2>/dev/null || true; \
+		echo "  Using Go: $$(/usr/local/go/bin/go version)"; \
+	elif command -v go >/dev/null 2>&1; then \
+		go clean -modcache 2>/dev/null || true; \
+		echo "  Using system Go: $$(go version)"; \
+	fi
+	@echo "🔧 Running setup script with correct Go environment..."
+	@export PATH=/usr/local/go/bin:$$PATH GOROOT=/usr/local/go GOPATH=$$HOME/go; ./scripts/setup.sh
 
 # Development mode - auto-rebuild on file changes (requires watchexec)
 dev:
@@ -302,7 +320,7 @@ help:
 	@echo "  make dev         - Watch files and auto-rebuild"
 	@echo "  make run         - Run without building (use ARGS='...' for arguments)"
 	@echo "  make clean       - Remove build artifacts"
-	@echo "  make check-go    - Check Go installation and version (forces upgrade if < 1.21)"
+	@echo "  make check-go    - Check Go installation and version (forces upgrade if < 1.23)"
 	@echo "  make install-go  - Install/upgrade Go automatically (Linux/macOS)"
 	@echo "  make setup-go    - Setup Go environment"
 	@echo "  make force-build - Build using Go in /usr/local/go/bin (after PATH issues)"
@@ -322,7 +340,7 @@ help:
 	@echo "Go Installation:"
 	@echo "  - Automatically detects OS (Linux/macOS/Windows)"
 	@echo "  - Downloads and installs Go $(GO_VERSION)"
-	@echo "  - Forces upgrade if current version < 1.21"
+	@echo "  - Forces upgrade if current version < 1.23"
 	@echo "  - Sets up PATH and environment variables"
 	@echo "  - On Linux: installs to /usr/local/go"
 	@echo "  - On macOS: uses Homebrew if available, otherwise .pkg installer"
