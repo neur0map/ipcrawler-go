@@ -37,8 +37,32 @@ endif
 # Check if Go is installed and working
 check-go:
 	@echo "🔍 Checking Go installation..."
-	@if command -v go >/dev/null 2>&1; then \
-		echo "✅ Go is installed: $$(go version)"; \
+	@export PATH=/usr/local/go/bin:$$PATH; \
+	if [ -x "/usr/local/go/bin/go" ]; then \
+		echo "✅ Go is installed: $$(/usr/local/go/bin/go version)"; \
+		echo "  📍 Using Go from: /usr/local/go/bin/go"; \
+		GO_CURRENT=$$(/usr/local/go/bin/go version | cut -d' ' -f3 | cut -d'o' -f2); \
+		GO_MAJOR=$$(echo $$GO_CURRENT | cut -d'.' -f1); \
+		GO_MINOR=$$(echo $$GO_CURRENT | cut -d'.' -f2); \
+		if [ "$$GO_MAJOR" -gt 1 ] || ([ "$$GO_MAJOR" -eq 1 ] && [ "$$GO_MINOR" -ge 23 ]); then \
+			echo "✅ Go version is compatible ($$GO_CURRENT >= 1.23)"; \
+		else \
+			echo "❌ Go version $$GO_CURRENT is too old (requires >= 1.23)"; \
+			echo ""; \
+			echo "📦 IPCrawler requires Go 1.23 or later to build properly."; \
+			echo "🔧 Would you like to upgrade Go to version $(GO_VERSION)? [y/N]"; \
+			read -r UPGRADE_GO; \
+			if [ "$$UPGRADE_GO" = "y" ] || [ "$$UPGRADE_GO" = "Y" ] || [ "$$UPGRADE_GO" = "yes" ]; then \
+				echo "🚀 Starting Go upgrade..."; \
+				$(MAKE) install-go; \
+			else \
+				echo "⚠️  Build may fail with Go $$GO_CURRENT"; \
+				echo "💡 You can upgrade later with: make install-go"; \
+			fi; \
+		fi; \
+	elif command -v go >/dev/null 2>&1; then \
+		echo "⚠️  Found system Go: $$(go version)"; \
+		echo "  📍 Using Go from: $$(which go)"; \
 		GO_CURRENT=$$(go version | cut -d' ' -f3 | cut -d'o' -f2); \
 		GO_MAJOR=$$(echo $$GO_CURRENT | cut -d'.' -f1); \
 		GO_MINOR=$$(echo $$GO_CURRENT | cut -d'.' -f2); \
@@ -48,6 +72,7 @@ check-go:
 			echo "❌ Go version $$GO_CURRENT is too old (requires >= 1.23)"; \
 			echo ""; \
 			echo "📦 IPCrawler requires Go 1.23 or later to build properly."; \
+			echo "💡 Recommend installing Go $(GO_VERSION) to /usr/local/go for better management"; \
 			echo "🔧 Would you like to upgrade Go to version $(GO_VERSION)? [y/N]"; \
 			read -r UPGRADE_GO; \
 			if [ "$$UPGRADE_GO" = "y" ] || [ "$$UPGRADE_GO" = "Y" ] || [ "$$UPGRADE_GO" = "yes" ]; then \
@@ -103,21 +128,24 @@ install-go:
 		sudo tar -C /usr/local -xzf /tmp/go.tar.gz; \
 		rm /tmp/go.tar.gz; \
 		echo "🔧 Updating PATH configuration..."; \
-		if ! grep -q "/usr/local/go/bin" ~/.bashrc 2>/dev/null; then \
+		echo "  🧹 Cleaning old Go paths from shell configs..."; \
+		if [ -f ~/.bashrc ]; then \
+			sed -i '/.*go.*bin/d' ~/.bashrc 2>/dev/null || true; \
+			sed -i '/.*\/usr\/lib\/go/d' ~/.bashrc 2>/dev/null || true; \
 			echo 'export PATH=/usr/local/go/bin:$$PATH' >> ~/.bashrc; \
-			echo "  Added /usr/local/go/bin to ~/.bashrc"; \
-		else \
-			sed -i 's|export PATH=.*:/usr/local/go/bin|export PATH=/usr/local/go/bin:$$PATH|g' ~/.bashrc 2>/dev/null || true; \
-			echo "  Updated PATH priority in ~/.bashrc"; \
+			echo "  ✅ Updated ~/.bashrc with clean Go PATH"; \
 		fi; \
 		if [ -f ~/.zshrc ]; then \
-			if ! grep -q "/usr/local/go/bin" ~/.zshrc; then \
-				echo 'export PATH=/usr/local/go/bin:$$PATH' >> ~/.zshrc; \
-				echo "  Added /usr/local/go/bin to ~/.zshrc"; \
-			else \
-				sed -i 's|export PATH=.*:/usr/local/go/bin|export PATH=/usr/local/go/bin:$$PATH|g' ~/.zshrc 2>/dev/null || true; \
-				echo "  Updated PATH priority in ~/.zshrc"; \
-			fi; \
+			sed -i '/.*go.*bin/d' ~/.zshrc 2>/dev/null || true; \
+			sed -i '/.*\/usr\/lib\/go/d' ~/.zshrc 2>/dev/null || true; \
+			echo 'export PATH=/usr/local/go/bin:$$PATH' >> ~/.zshrc; \
+			echo "  ✅ Updated ~/.zshrc with clean Go PATH"; \
+		fi; \
+		if [ -f ~/.profile ]; then \
+			sed -i '/.*go.*bin/d' ~/.profile 2>/dev/null || true; \
+			sed -i '/.*\/usr\/lib\/go/d' ~/.profile 2>/dev/null || true; \
+			echo 'export PATH=/usr/local/go/bin:$$PATH' >> ~/.profile; \
+			echo "  ✅ Updated ~/.profile with clean Go PATH"; \
 		fi; \
 		echo ""; \
 		echo "✅ Go $(GO_VERSION) installed successfully to /usr/local/go!"; \
@@ -161,17 +189,24 @@ install-go:
 setup-go: check-go
 	@echo "🔧 Setting up Go environment..."
 	@export PATH=/usr/local/go/bin:$$PATH; \
+	echo "  🔍 PATH verification:"; \
+	echo "    Current PATH priority: $$(echo $$PATH | tr ':' '\n' | grep -E '(go|bin)' | head -3 | tr '\n' ':' | sed 's/:$$//')"; \
 	if [ -x "/usr/local/go/bin/go" ]; then \
-		echo "  Using Go from: /usr/local/go/bin/go"; \
-		echo "  GOPATH: $$(/usr/local/go/bin/go env GOPATH 2>/dev/null || echo '$$HOME/go')"; \
-		echo "  GOROOT: $$(/usr/local/go/bin/go env GOROOT 2>/dev/null || echo '/usr/local/go')"; \
-		echo "  Version: $$(/usr/local/go/bin/go version)"; \
+		echo "  📍 Using Go from: /usr/local/go/bin/go"; \
+		echo "  📦 GOPATH: $$(/usr/local/go/bin/go env GOPATH 2>/dev/null || echo '$$HOME/go')"; \
+		echo "  🏠 GOROOT: $$(/usr/local/go/bin/go env GOROOT 2>/dev/null || echo '/usr/local/go')"; \
+		echo "  🏷️  Version: $$(/usr/local/go/bin/go version)"; \
+		if command -v go >/dev/null 2>&1 && [ "$$(which go)" != "/usr/local/go/bin/go" ]; then \
+			echo "  ⚠️  Warning: System Go found at $$(which go)"; \
+			echo "      This may cause conflicts. Consider running 'make clean-go'"; \
+		fi; \
 		echo "✅ Go environment ready!"; \
 	elif command -v go >/dev/null 2>&1; then \
-		echo "  Using system Go: $$(which go)"; \
-		echo "  GOPATH: $$(go env GOPATH 2>/dev/null || echo '$$HOME/go')"; \
-		echo "  GOROOT: $$(go env GOROOT 2>/dev/null || echo 'default')"; \
-		echo "  Version: $$(go version)"; \
+		echo "  📍 Using system Go: $$(which go)"; \
+		echo "  📦 GOPATH: $$(go env GOPATH 2>/dev/null || echo '$$HOME/go')"; \
+		echo "  🏠 GOROOT: $$(go env GOROOT 2>/dev/null || echo 'default')"; \
+		echo "  🏷️  Version: $$(go version)"; \
+		echo "  💡 Consider installing Go to /usr/local/go for better management"; \
 		echo "✅ Go environment ready!"; \
 	else \
 		echo "❌ Go still not available after installation"; \

@@ -24,9 +24,13 @@ fi
 
 # Create convenience aliases
 echo "3️⃣ Creating convenience commands..."
-cat > ~/.local/bin/ipcrawler-rebuild << 'EOF'
+PROJECT_DIR="$(pwd)"
+cat > ~/.local/bin/ipcrawler-rebuild << EOF
 #!/bin/bash
-cd "$(dirname "$(readlink "$0")")/../.." && make build
+echo "🔄 Rebuilding ipcrawler from $PROJECT_DIR..."
+cd "$PROJECT_DIR" || { echo "❌ Project directory not found: $PROJECT_DIR"; exit 1; }
+export PATH=/usr/local/go/bin:\$PATH
+make build
 EOF
 chmod +x ~/.local/bin/ipcrawler-rebuild
 
