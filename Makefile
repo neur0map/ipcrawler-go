@@ -1,4 +1,4 @@
-.PHONY: build install dev run clean update help check-go install-go setup-go force-build
+.PHONY: build install dev run clean update help check-go install-go setup-go force-build clean-go
 
 # Default target
 default: build
@@ -79,6 +79,16 @@ install-go:
 	@echo "📦 Installing Go $(GO_VERSION) for $(OS)/$(ARCH)..."
 	@if [ "$(OS)" = "linux" ]; then \
 		echo "🐧 Installing Go on Linux..."; \
+		echo "🔍 Checking for existing Go installations..."; \
+		if command -v go >/dev/null 2>&1; then \
+			CURRENT_GOROOT=$$(go env GOROOT 2>/dev/null || echo "unknown"); \
+			echo "  Current Go location: $$CURRENT_GOROOT"; \
+			if [ "$$CURRENT_GOROOT" != "/usr/local/go" ] && [ -d "$$CURRENT_GOROOT" ]; then \
+				echo "⚠️  Found existing Go installation at $$CURRENT_GOROOT"; \
+				echo "🗑️  This will be replaced with Go $(GO_VERSION) at /usr/local/go"; \
+			fi; \
+		fi; \
+		echo "📥 Downloading Go $(GO_VERSION)..."; \
 		if command -v wget >/dev/null 2>&1; then \
 			wget -q "https://golang.org/dl/go$(GO_VERSION).$(OS)-$(ARCH).tar.gz" -O /tmp/go.tar.gz; \
 		elif command -v curl >/dev/null 2>&1; then \
@@ -87,22 +97,43 @@ install-go:
 			echo "❌ Neither wget nor curl found. Please install one of them first."; \
 			exit 1; \
 		fi; \
+		echo "🗑️  Removing old Go installation from /usr/local/go..."; \
 		if [ -d "/usr/local/go" ]; then sudo rm -rf /usr/local/go; fi; \
+		echo "📦 Installing Go $(GO_VERSION) to /usr/local/go..."; \
 		sudo tar -C /usr/local -xzf /tmp/go.tar.gz; \
 		rm /tmp/go.tar.gz; \
+		echo "🔧 Updating PATH configuration..."; \
 		if ! grep -q "/usr/local/go/bin" ~/.bashrc 2>/dev/null; then \
-			echo 'export PATH=$$PATH:/usr/local/go/bin' >> ~/.bashrc; \
+			echo 'export PATH=/usr/local/go/bin:$$PATH' >> ~/.bashrc; \
+			echo "  Added /usr/local/go/bin to ~/.bashrc"; \
+		else \
+			sed -i 's|export PATH=.*:/usr/local/go/bin|export PATH=/usr/local/go/bin:$$PATH|g' ~/.bashrc 2>/dev/null || true; \
+			echo "  Updated PATH priority in ~/.bashrc"; \
 		fi; \
-		if [ -f ~/.zshrc ] && ! grep -q "/usr/local/go/bin" ~/.zshrc; then \
-			echo 'export PATH=$$PATH:/usr/local/go/bin' >> ~/.zshrc; \
+		if [ -f ~/.zshrc ]; then \
+			if ! grep -q "/usr/local/go/bin" ~/.zshrc; then \
+				echo 'export PATH=/usr/local/go/bin:$$PATH' >> ~/.zshrc; \
+				echo "  Added /usr/local/go/bin to ~/.zshrc"; \
+			else \
+				sed -i 's|export PATH=.*:/usr/local/go/bin|export PATH=/usr/local/go/bin:$$PATH|g' ~/.zshrc 2>/dev/null || true; \
+				echo "  Updated PATH priority in ~/.zshrc"; \
+			fi; \
 		fi; \
-		echo "✅ Go installed successfully!"; \
-		echo "🔄 Please run one of the following to update your PATH:"; \
+		echo ""; \
+		echo "✅ Go $(GO_VERSION) installed successfully to /usr/local/go!"; \
+		echo "⚡ Temporarily updating PATH for this session..."; \
+		export PATH=/usr/local/go/bin:$$PATH; \
+		echo "🔄 For permanent PATH update, run:"; \
 		echo "   source ~/.bashrc    (for bash users)"; \
 		echo "   source ~/.zshrc     (for zsh users)"; \
 		echo "   OR restart your terminal session"; \
 		echo ""; \
-		echo "🧪 Then test with: go version"; \
+		echo "🧪 Testing new Go installation..."; \
+		if /usr/local/go/bin/go version >/dev/null 2>&1; then \
+			echo "✅ Go $(GO_VERSION) is working: $$(/usr/local/go/bin/go version)"; \
+		else \
+			echo "❌ Go installation verification failed"; \
+		fi; \
 	elif [ "$(OS)" = "darwin" ]; then \
 		echo "🍎 Installing Go on macOS..."; \
 		if command -v brew >/dev/null 2>&1; then \
@@ -124,28 +155,44 @@ install-go:
 		exit 1; \
 	fi; \
 	echo ""; \
-	echo "🎉 Installation complete! Run 'make check-go' to verify."
+	echo "🎉 Installation complete!"
 
 # Setup Go environment (run after installing Go)
 setup-go: check-go
 	@echo "🔧 Setting up Go environment..."
-	@if command -v go >/dev/null 2>&1; then \
+	@export PATH=/usr/local/go/bin:$$PATH; \
+	if [ -x "/usr/local/go/bin/go" ]; then \
+		echo "  Using Go from: /usr/local/go/bin/go"; \
+		echo "  GOPATH: $$(/usr/local/go/bin/go env GOPATH 2>/dev/null || echo '$$HOME/go')"; \
+		echo "  GOROOT: $$(/usr/local/go/bin/go env GOROOT 2>/dev/null || echo '/usr/local/go')"; \
+		echo "  Version: $$(/usr/local/go/bin/go version)"; \
+		echo "✅ Go environment ready!"; \
+	elif command -v go >/dev/null 2>&1; then \
+		echo "  Using system Go: $$(which go)"; \
 		echo "  GOPATH: $$(go env GOPATH 2>/dev/null || echo '$$HOME/go')"; \
 		echo "  GOROOT: $$(go env GOROOT 2>/dev/null || echo 'default')"; \
+		echo "  Version: $$(go version)"; \
 		echo "✅ Go environment ready!"; \
 	else \
 		echo "❌ Go still not available after installation"; \
 		echo "🔄 Please try one of the following:"; \
-		echo "   export PATH=$$PATH:/usr/local/go/bin"; \
+		echo "   export PATH=/usr/local/go/bin:$$PATH"; \
 		echo "   source ~/.bashrc"; \
 		echo "   source ~/.zshrc"; \
+		echo "   OR restart your terminal"; \
 		exit 1; \
 	fi
 
 # Build the binary (with Go check)
 build: setup-go
 	@echo "🔨 Building ipcrawler..."
-	@if command -v go >/dev/null 2>&1; then \
+	@export PATH=/usr/local/go/bin:$$PATH; \
+	if [ -x "/usr/local/go/bin/go" ]; then \
+		echo "  Using Go: $$(/usr/local/go/bin/go version)"; \
+		/usr/local/go/bin/go build -o ipcrawler; \
+		echo "✅ Build complete!"; \
+	elif command -v go >/dev/null 2>&1; then \
+		echo "  Using system Go: $$(go version)"; \
 		go build -o ipcrawler; \
 		echo "✅ Build complete!"; \
 	else \
@@ -153,16 +200,60 @@ build: setup-go
 		echo "🔄 Please run one of the following and try again:"; \
 		echo "   source ~/.bashrc && make build"; \
 		echo "   source ~/.zshrc && make build"; \
-		echo "   export PATH=$$PATH:/usr/local/go/bin && make build"; \
+		echo "   export PATH=/usr/local/go/bin:$$PATH && make build"; \
 		echo "   OR restart your terminal and run 'make build'"; \
 		exit 1; \
 	fi
 
 # Force build after reloading environment (for when PATH needs refresh)
 force-build:
-	@echo "🔨 Force building ipcrawler (assuming Go is in PATH)..."
-	@export PATH=$$PATH:/usr/local/go/bin && go build -o ipcrawler
+	@echo "🔨 Force building ipcrawler with latest Go..."
+	@export PATH=/usr/local/go/bin:$$PATH; \
+	if [ -x "/usr/local/go/bin/go" ]; then \
+		echo "  Using: $$(/usr/local/go/bin/go version)"; \
+		/usr/local/go/bin/go build -o ipcrawler; \
+	else \
+		echo "  Fallback to system Go"; \
+		go build -o ipcrawler; \
+	fi
 	@echo "✅ Build complete!"
+
+# Clean up old Go installations (use with caution)
+clean-go:
+	@echo "🗑️  Cleaning up old Go installations..."
+	@echo "⚠️  This will remove system-installed Go packages and old installations"
+	@echo "🔧 Would you like to proceed? This will:"
+	@echo "   1. Remove system Go packages (apt/yum installed)"
+	@echo "   2. Keep only /usr/local/go (our managed installation)"
+	@echo "   3. Update PATH to prioritize /usr/local/go/bin"
+	@echo ""
+	@echo "Proceed with Go cleanup? [y/N]"
+	@read -r CLEAN_GO; \
+	if [ "$$CLEAN_GO" = "y" ] || [ "$$CLEAN_GO" = "Y" ] || [ "$$CLEAN_GO" = "yes" ]; then \
+		echo "🧹 Starting Go cleanup..."; \
+		if command -v apt >/dev/null 2>&1; then \
+			echo "  Removing Go via apt..."; \
+			sudo apt remove -y golang-go golang || true; \
+		fi; \
+		if command -v yum >/dev/null 2>&1; then \
+			echo "  Removing Go via yum..."; \
+			sudo yum remove -y golang || true; \
+		fi; \
+		if command -v dnf >/dev/null 2>&1; then \
+			echo "  Removing Go via dnf..."; \
+			sudo dnf remove -y golang || true; \
+		fi; \
+		echo "  Updating PATH priority in shell configs..."; \
+		sed -i 's|export PATH=.*go.*|export PATH=/usr/local/go/bin:$$PATH|g' ~/.bashrc 2>/dev/null || true; \
+		if [ -f ~/.zshrc ]; then \
+			sed -i 's|export PATH=.*go.*|export PATH=/usr/local/go/bin:$$PATH|g' ~/.zshrc 2>/dev/null || true; \
+		fi; \
+		echo "✅ Go cleanup complete!"; \
+		echo "🔄 Please run: source ~/.bashrc (or restart terminal)"; \
+		echo "🧪 Then test with: make check-go"; \
+	else \
+		echo "❌ Go cleanup cancelled"; \
+	fi
 
 # Install globally (creates symlink if needed)
 install: build
@@ -215,6 +306,7 @@ help:
 	@echo "  make install-go  - Install/upgrade Go automatically (Linux/macOS)"
 	@echo "  make setup-go    - Setup Go environment"
 	@echo "  make force-build - Build using Go in /usr/local/go/bin (after PATH issues)"
+	@echo "  make clean-go    - Remove old Go installations (keeps only /usr/local/go)"
 	@echo "  make help        - Show this help"
 	@echo ""
 	@echo "Examples:"
@@ -223,6 +315,7 @@ help:
 	@echo "  make check-go                     # Check Go installation"
 	@echo "  source ~/.bashrc && make build    # After Go installation on Linux"
 	@echo "  make force-build                  # If PATH issues after Go install"
+	@echo "  make clean-go                     # Remove old Go versions"
 	@echo "  make run ARGS='--version'"
 	@echo "  make run ARGS='192.168.1.1 --debug'"
 	@echo ""
@@ -237,6 +330,7 @@ help:
 	@echo "Troubleshooting:"
 	@echo "  If 'go command not found' after installation:"
 	@echo "  1. source ~/.bashrc   (or ~/.zshrc)"
-	@echo "  2. export PATH=\$$PATH:/usr/local/go/bin"
-	@echo "  3. Restart terminal"
-	@echo "  4. Try 'make force-build'"
+	@echo "  2. export PATH=/usr/local/go/bin:\$$PATH"
+	@echo "  3. make force-build   (uses /usr/local/go/bin directly)"
+	@echo "  4. make clean-go      (removes conflicting Go installations)"
+	@echo "  5. Restart terminal"
