@@ -279,10 +279,31 @@ install-user-go:
 		echo "❌ User Go installation verification failed"; \
 		exit 1; \
 	fi; \
-	echo "🔄 For permanent PATH update, run:"; \
-	echo "   source ~/.bashrc    (for bash users)"; \
-	echo "   source ~/.zshrc     (for zsh users)"; \
-	echo "   OR restart your terminal session"; \
+	echo "🔄 Attempting to reload shell configuration..."; \
+	if [ -n "$$BASH_VERSION" ] && [ -f ~/.bashrc ]; then \
+		echo "  Detected bash - sourcing ~/.bashrc"; \
+		. ~/.bashrc 2>/dev/null || true; \
+	elif [ -n "$$ZSH_VERSION" ] && [ -f ~/.zshrc ]; then \
+		echo "  Detected zsh - sourcing ~/.zshrc"; \
+		. ~/.zshrc 2>/dev/null || true; \
+	elif [ -f ~/.profile ]; then \
+		echo "  Sourcing ~/.profile"; \
+		. ~/.profile 2>/dev/null || true; \
+	fi; \
+	echo ""; \
+	echo "🧪 Testing Go availability in current session..."; \
+	if command -v go >/dev/null 2>&1; then \
+		GO_CURRENT=$$(go version 2>/dev/null || echo "unknown"); \
+		if echo "$$GO_CURRENT" | grep -q "go1.24.5"; then \
+			echo "✅ Success! Go 1.24.5 is now active: $$GO_CURRENT"; \
+		else \
+			echo "⚠️  Shell reload partially successful. Current go: $$GO_CURRENT"; \
+			echo "💡 For Go 1.24.5, run: source ~/.bashrc (or restart terminal)"; \
+		fi; \
+	else \
+		echo "⚠️  Go not found in current session PATH"; \
+		echo "💡 Run: source ~/.bashrc (or restart terminal)"; \
+	fi; \
 	echo ""; \
 	echo "💡 Note: User installation ($$GO_DEST) takes precedence over system Go"; \
 	echo "🎉 Installation complete!"
