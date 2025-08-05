@@ -233,7 +233,7 @@ install-go:
 		echo "   • Symlinks: $$BIN_PATH/go → $$INSTALL_PATH/bin/go"; \
 	fi
 
-# Build ipcrawler - simplified with symlink assumption
+# Build ipcrawler - clean outdated builds first
 .PHONY: build
 build:
 	@echo ""
@@ -247,9 +247,13 @@ build:
 	fi
 	
 	@echo "   • Go version: $$(go version)"
-	@echo "   • Building $(PROJECT_NAME)..."
+	@echo "   • Cleaning old builds..."
 	
+	@# Clean any existing binaries (both in build dir and root)
+	@rm -f $(BUILD_DIR)/$(PROJECT_NAME) $(PROJECT_NAME)
 	@mkdir -p $(BUILD_DIR)
+	
+	@echo "   • Building $(PROJECT_NAME)..."
 	@if go build -o $(BUILD_DIR)/$(PROJECT_NAME) .; then \
 		echo "$(GREEN)   ✓ Build successful$(NC)"; \
 		echo "   • Binary: $(BUILD_DIR)/$(PROJECT_NAME)"; \
@@ -392,14 +396,32 @@ install-tools:
 	@echo "$(GREEN)   ✓ Tool installation complete$(NC)"
 
 
-# Clean build artifacts and cache
+# Clean build artifacts and cache - remove all binaries
 .PHONY: clean
 clean:
 	@echo "$(BLUE)🧹 Cleaning build artifacts and cache$(NC)"
+	@echo "   • Removing build directory..."
 	@rm -rf $(BUILD_DIR)
+	@echo "   • Removing any root-level binaries..."
+	@rm -f $(PROJECT_NAME)
+	@echo "   • Cleaning Go cache..."
 	@rm -rf $(CACHE_DIR)
 	@go clean -cache 2>/dev/null || true
-	@echo "$(GREEN)   ✓ Clean complete$(NC)"
+	@echo "$(GREEN)   ✓ Clean complete - all outdated builds removed$(NC)"
+
+# Quick build for development - builds to root directory for immediate use
+.PHONY: dev
+dev:
+	@echo "$(BLUE)⚡ Quick Development Build$(NC)"
+	@rm -f $(PROJECT_NAME)
+	@if go build -o $(PROJECT_NAME) .; then \
+		echo "$(GREEN)   ✓ Development build complete: ./$(PROJECT_NAME)$(NC)"; \
+		echo "   • Size: $$(du -h $(PROJECT_NAME) | cut -f1)"; \
+		echo "   • Ready for testing with: ./$(PROJECT_NAME) --help"; \
+	else \
+		echo "$(RED)   ✗ Build failed$(NC)"; \
+		exit 1; \
+	fi
 
 # Help target
 .PHONY: help
@@ -410,9 +432,10 @@ help:
 	@echo "$(YELLOW)Available targets:$(NC)"
 	@echo "  $(GREEN)make install$(NC)      - Complete installation (Go + IPCrawler + tools)"
 	@echo "  $(GREEN)make update$(NC)       - Update to latest code and rebuild"
+	@echo "  $(GREEN)make build$(NC)        - Build IPCrawler binary to build/ (cleans old builds)"
+	@echo "  $(GREEN)make dev$(NC)          - Quick development build to ./ (for testing)"
 	@echo "  $(GREEN)make install-tools$(NC) - Install/update naabu, nuclei, nmap"
-	@echo "  $(GREEN)make build$(NC)        - Build IPCrawler binary only"
-	@echo "  $(GREEN)make clean$(NC)        - Clean build artifacts and cache"
+	@echo "  $(GREEN)make clean$(NC)        - Clean all build artifacts and outdated binaries"
 	@echo "  $(GREEN)make help$(NC)         - Show this help message"
 	@echo ""
 	@echo "$(YELLOW)Configuration:$(NC)"

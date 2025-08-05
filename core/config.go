@@ -36,6 +36,13 @@ func LoadConfig(path string) (*Config, error) {
 	return &config, nil
 }
 
+// SetReportDir overrides the report directory (used by CLI flag)
+func (c *Config) SetReportDir(dir string) {
+	if dir != "" {
+		c.ReportDir = dir
+	}
+}
+
 // ReportingConfig holds the reporting configuration
 type ReportingConfig struct {
 	Enabled   bool              `yaml:"enabled"`

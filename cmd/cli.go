@@ -44,6 +44,11 @@ func Execute() error {
 				Aliases: []string{"w"},
 				Usage:   "Specify template to use (e.g., 'comprehensive', 'stealth')",
 			},
+			&cli.StringFlag{
+				Name:    "output",
+				Aliases: []string{"o"},
+				Usage:   "Specify output directory for reports (default: 'reports')",
+			},
 			&cli.BoolFlag{
 				Name:    "debug",
 				Aliases: []string{"d"},
@@ -186,9 +191,15 @@ func Execute() error {
 				templateName = workflowOverride
 			}
 
+			// Override report directory if output flag provided
+			if outputDir := c.String("output"); outputDir != "" {
+				config.SetReportDir(outputDir)
+			}
+
 			if debugMode {
 				log.Printf("Target: %s", target)
 				log.Printf("Template: %s", templateName)
+				log.Printf("Output directory: %s", config.ReportDir)
 				log.Printf("Debug mode: %v", debugMode)
 			}
 
