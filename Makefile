@@ -409,20 +409,6 @@ clean:
 	@go clean -cache 2>/dev/null || true
 	@echo "$(GREEN)   ✓ Clean complete - all outdated builds removed$(NC)"
 
-# Quick build for development - builds to root directory for immediate use
-.PHONY: dev
-dev:
-	@echo "$(BLUE)⚡ Quick Development Build$(NC)"
-	@rm -f $(PROJECT_NAME)
-	@if go build -o $(PROJECT_NAME) .; then \
-		echo "$(GREEN)   ✓ Development build complete: ./$(PROJECT_NAME)$(NC)"; \
-		echo "   • Size: $$(du -h $(PROJECT_NAME) | cut -f1)"; \
-		echo "   • Ready for testing with: ./$(PROJECT_NAME) --help"; \
-	else \
-		echo "$(RED)   ✗ Build failed$(NC)"; \
-		exit 1; \
-	fi
-
 # Help target
 .PHONY: help
 help:
@@ -433,7 +419,6 @@ help:
 	@echo "  $(GREEN)make install$(NC)      - Complete installation (Go + IPCrawler + tools)"
 	@echo "  $(GREEN)make update$(NC)       - Update to latest code and rebuild"
 	@echo "  $(GREEN)make build$(NC)        - Build IPCrawler binary to build/ (cleans old builds)"
-	@echo "  $(GREEN)make dev$(NC)          - Quick development build to ./ (for testing)"
 	@echo "  $(GREEN)make install-tools$(NC) - Install/update naabu, nuclei, nmap"
 	@echo "  $(GREEN)make clean$(NC)        - Clean all build artifacts and outdated binaries"
 	@echo "  $(GREEN)make help$(NC)         - Show this help message"

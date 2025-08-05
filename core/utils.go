@@ -47,15 +47,20 @@ type VulnerabilityInfo struct {
 	Tags         []string
 }
 
-// CreateReportDirectory creates the report directory structure for a target
-func CreateReportDirectory(baseDir, target string) (string, error) {
+// GenerateReportDirectoryPath generates the report directory path without creating directories
+func GenerateReportDirectoryPath(baseDir, target string) string {
 	// Sanitize target name for directory
 	sanitizedTarget := strings.ReplaceAll(target, ".", "_")
 	sanitizedTarget = strings.ReplaceAll(sanitizedTarget, ":", "_")
 	sanitizedTarget = strings.ReplaceAll(sanitizedTarget, "/", "_")
 	
 	timestamp := time.Now().Format("20060102_150405")
-	reportPath := filepath.Join(baseDir, sanitizedTarget, fmt.Sprintf("timestamp_%s", timestamp))
+	return filepath.Join(baseDir, sanitizedTarget, fmt.Sprintf("timestamp_%s", timestamp))
+}
+
+// CreateReportDirectory creates the report directory structure for a target
+func CreateReportDirectory(baseDir, target string) (string, error) {
+	reportPath := GenerateReportDirectoryPath(baseDir, target)
 	
 	// Create directory structure
 	dirs := []string{
@@ -147,6 +152,12 @@ func ExecuteCommandWithRealTimeResultsContext(ctx context.Context, tool string, 
 		cmd = exec.CommandContext(ctx, tool, args...)
 	}
 	
+	// Set process group ID to make it easier to kill child processes
+	// This creates a new process group with the child as the leader
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,  // Create new process group
+	}
+	
 	// Create pipes for stdout and stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -225,17 +236,30 @@ func ExecuteCommandWithRealTimeResultsContext(ctx context.Context, tool string, 
 	// Wait for either completion or context cancellation
 	select {
 	case <-ctx.Done():
-		// Context was cancelled, kill the process aggressively
+		// Context was cancelled, kill the process immediately and aggressively
 		if cmd.Process != nil {
-			// First try to kill the process
+			pid := cmd.Process.Pid
+			
+			// Kill the main process
 			cmd.Process.Kill()
-			// Give it a moment to die
-			time.Sleep(100 * time.Millisecond)
-			// If still running, try to kill the process group (for sudo processes)
+			
+			// Also try to kill the entire process group (especially important for sudo)
+			// Use negative PID to target the process group
+			syscall.Kill(-pid, syscall.SIGTERM)
+			
+			// Give a very short grace period
+			time.Sleep(50 * time.Millisecond)
+			
+			// Force kill the process group
+			syscall.Kill(-pid, syscall.SIGKILL)
+			
+			// Force kill the main process if it's still alive
 			if cmd.Process != nil {
-				syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+				syscall.Kill(pid, syscall.SIGKILL)
 			}
 		}
+		
+		// Don't wait for the done channel - return immediately
 		return nil, fmt.Errorf("command cancelled: %w", ctx.Err())
 	case <-done:
 		// Command completed normally, check if there was an error

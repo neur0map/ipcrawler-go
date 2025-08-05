@@ -94,11 +94,17 @@ func Execute() error {
 					if signalHandled {
 						signalMutex.Unlock()
 						if signalCount > 1 {
-							// Force exit after 2 Ctrl+C presses (more aggressive for sudo)
+							// Force exit after 2 Ctrl+C presses - immediate termination
 							fmt.Fprintf(os.Stderr, "\n⚠️  Force terminating after %d interrupts...\n", signalCount)
-							// Kill all child processes if running as root
+							
+							// Kill process group aggressively
 							if isRunningAsRoot {
-								fmt.Fprintf(os.Stderr, "🔒 Cleaning up sudo processes...\n")
+								fmt.Fprintf(os.Stderr, "🔒 Force killing sudo process group...\n")
+								syscall.Kill(0, syscall.SIGKILL)
+							} else {
+								// Kill current process group
+								pid := os.Getpid()
+								syscall.Kill(-pid, syscall.SIGKILL)
 							}
 							os.Exit(130) // Standard exit code for Ctrl+C
 						}
@@ -107,42 +113,29 @@ func Execute() error {
 					signalHandled = true
 					signalMutex.Unlock()
 					
-					// Force output to stderr to bypass PTerm, with different messages for sudo
-					if isRunningAsRoot {
-						fmt.Fprintf(os.Stderr, "\n⚠️  [SUDO] Received signal: %v\n", sig)
-						fmt.Fprintf(os.Stderr, "🛑 [SUDO] Cancelling scan with elevated privileges...\n")
-						fmt.Fprintf(os.Stderr, "   • Stopping root-level commands\n")
-						fmt.Fprintf(os.Stderr, "   • Cleaning up privileged processes\n")
-						fmt.Fprintf(os.Stderr, "   • Press Ctrl+C once more to force quit\n")
-					} else {
-						fmt.Fprintf(os.Stderr, "\n⚠️  Received signal: %v\n", sig)
-						fmt.Fprintf(os.Stderr, "🛑 Cancelling scan... (this may take a moment)\n")
-						fmt.Fprintf(os.Stderr, "   • Stopping running commands\n")
-						fmt.Fprintf(os.Stderr, "   • Cleaning up processes\n")
-						fmt.Fprintf(os.Stderr, "   • Press Ctrl+C again to force quit\n")
-					}
+					// Immediately clean up terminal and stop all UI output
+					fmt.Fprintf(os.Stderr, "\033[?25h") // Show cursor
+					fmt.Fprintf(os.Stderr, "\033[2K\r") // Clear current line
+					fmt.Fprintf(os.Stderr, "\033[0m")   // Reset all formatting
 					
-					// Cancel the context
+					// Disable pterm output globally to prevent any further UI updates
+					pterm.DisableOutput()
+					
+					// Cancel the context immediately to stop all operations
 					cancel()
 					
-					// Give it less time for sudo mode, more aggressive termination
-					timeout := 3 * time.Second
-					if isRunningAsRoot {
-						timeout = 2 * time.Second
-					}
+					// Simple, clean cancellation message (no sudo-specific logic here)
+					fmt.Fprintf(os.Stderr, "\n⚠️  Received signal: %v\n", sig)
+					fmt.Fprintf(os.Stderr, "🛑 Cancelling scan...\n")
 					
+					// Set up a simple fallback timeout in case normal exit doesn't work
 					go func() {
-						time.Sleep(timeout)
-						if isRunningAsRoot {
-							fmt.Fprintf(os.Stderr, "⚠️  [SUDO] Force terminating privileged process...\n")
-						} else {
-							fmt.Fprintf(os.Stderr, "⚠️  Force terminating...\n")
-						}
-						// Kill all child processes aggressively
-						if isRunningAsRoot {
-							// Kill process group for sudo processes
-							syscall.Kill(0, syscall.SIGKILL)
-						}
+						time.Sleep(2 * time.Second) // Give normal exit a chance first
+						fmt.Fprintf(os.Stderr, "⚠️  Force terminating (timeout reached)...\n")
+						
+						// Kill process group
+						pid := os.Getpid()
+						syscall.Kill(-pid, syscall.SIGKILL)
 						os.Exit(130)
 					}()
 					
@@ -209,12 +202,6 @@ func Execute() error {
 				return fmt.Errorf("failed to load workflows: %w", err)
 			}
 
-			// Create report directory
-			reportDir, err := core.CreateReportDirectory(config.ReportDir, target)
-			if err != nil {
-				return fmt.Errorf("failed to create report directory: %w", err)
-			}
-
 			// Convert workflows map to slice for preview
 			workflowSlice := make([]*core.Workflow, 0, len(workflows))
 			for _, workflow := range workflows {
@@ -222,6 +209,7 @@ func Execute() error {
 			}
 
 			var privilegeOption *core.PrivilegeOption
+			var reportDir string
 			
 			// Handle privilege escalation logic
 			if isSudoRestart {
@@ -229,12 +217,15 @@ func Execute() error {
 				privilegeOption = &core.PrivilegeOption{UseSudo: true, UserChoice: "restart"}
 				pterm.Success.Println("✓ Running with elevated privileges after restart")
 			} else {
+				// Generate preview report directory path (without creating directories)
+				previewReportDir := core.GenerateReportDirectoryPath(config.ReportDir, target)
+				
 				// Show interactive scan preview and get sudo choice
 				preview := &core.ScanPreview{
 					Target:        target,
 					Template:      templateName,
 					Workflows:     workflowSlice,
-					ReportDir:     reportDir,
+					ReportDir:     previewReportDir,
 					EstimatedTime: core.EstimateScanTime(workflowSlice),
 				}
 
@@ -263,6 +254,12 @@ func Execute() error {
 						return fmt.Errorf("unexpected error during privilege escalation")
 					}
 				}
+			}
+
+			// Now that privilege escalation is decided, create the actual report directory
+			reportDir, err = core.CreateReportDirectory(config.ReportDir, target)
+			if err != nil {
+				return fmt.Errorf("failed to create report directory: %w", err)
 			}
 
 			// Create variables for placeholder replacement
@@ -585,6 +582,16 @@ func executeWorkflow(ctx context.Context, workflowKey string, workflows map[stri
 			WithStyle(pterm.NewStyle(pterm.FgWhite))
 		spinner, _ := whiteSpinner.Start(workflow.Name)
 		
+		// Set up a goroutine to stop the spinner if context is cancelled
+		go func() {
+			<-ctx.Done()
+			if spinner != nil {
+				spinner.Stop()
+				// Clear the line to remove any spinner artifacts
+				fmt.Fprintf(os.Stderr, "\033[2K\r")
+			}
+		}()
+		
 		// Execute each step
 		workflowFailed := false
 		for _, step := range workflow.Steps {
@@ -870,6 +877,16 @@ func executeWorkflowsInParallel(ctx context.Context, workflowKeys []string, work
 		parallelDisplay = NewParallelDisplay(workflowKeys, workflows)
 		parallelDisplay.Start()
 		defer parallelDisplay.Stop()
+		
+		// Set up context cancellation handler to stop display immediately
+		go func() {
+			<-ctx.Done()
+			if parallelDisplay != nil {
+				parallelDisplay.Stop()
+				// Clear any remaining UI artifacts
+				fmt.Fprintf(os.Stderr, "\033[2K\r")
+			}
+		}()
 	}
 	
 	// Execute workflows in parallel
