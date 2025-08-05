@@ -423,19 +423,8 @@ clean-go:
 
 # Install with automatic environment activation
 install:
-	@echo "🚀 IPCrawler Installation - Single Command Solution"
-	@echo "==================================================="
-	@echo ""
-	@echo "✨ SOLUTION: Run this single command for complete installation:"
-	@echo ""
-	@echo "    make install && export PATH=\"\$$HOME/.go/bin:\$$PATH\" && go version"
-	@echo ""
-	@echo "This will:"
-	@echo "  1️⃣ Install Go 1.24.5 and build IPCrawler" 
-	@echo "  2️⃣ Activate Go 1.24.5 in your current session"
-	@echo "  3️⃣ Verify it worked by showing the Go version"
-	@echo ""
-	@echo "🔄 Running installation components..."
+	@echo "🚀 IPCrawler Installation"
+	@echo "========================"
 	@$(MAKE) ensure-go
 	@$(MAKE) build  
 	@echo "🧹 Cleaning Go module cache..."
@@ -457,17 +446,12 @@ install:
 	@export PATH=$(HOME)/.go/bin:/usr/local/go/bin:$$PATH GOPATH=$$HOME/go; ./scripts/setup.sh
 	@echo ""
 	@echo "✅ Installation complete!"
-	@echo "" 
-	@echo "🎯 COMPLETE INSTALLATION (Option A - Recommended):"
 	@echo ""
-	@echo "    make install && export PATH=\"\$$HOME/.go/bin:\$$PATH\" && go version"
+	@echo "🎯 To activate Go 1.24.5 in your current session, run:"
 	@echo ""
-	@echo "🔄 Alternative - Use post-install helper:"
+	@echo "    export PATH=\"\$$HOME/.go/bin:\$$PATH\""
 	@echo ""
-	@echo "    make post-install"
-	@echo ""
-	@echo "💡 Option A is the single-command solution for immediate Go 1.24.5 activation"
-	@echo "🏃 Future terminal sessions will automatically use Go 1.24.5"
+	@echo "🧪 Verify with: go version"
 
 # Legacy install target (Makefile-based)
 install-legacy: ensure-go build
@@ -569,7 +553,7 @@ help:
 	@echo "Examples:"
 	@echo "  make                              # Build (auto-installs Go if needed)"
 	@echo "  make install                      # Install IPCrawler globally (auto-installs Go)"
-	@echo "  make install && export PATH=\"\$$HOME/.go/bin:\$$PATH\" && go version  # Complete installation (Option A)"
+	@echo "  make install && export PATH=\"\$$HOME/.go/bin:\$$PATH\" && go version  # Complete installation"
 	@echo "  make post-install                 # Activate Go after make install"
 	@echo "  make check-go                     # Check Go installation"
 	@echo "  source ~/.bashrc && make build    # After Go installation on Linux"

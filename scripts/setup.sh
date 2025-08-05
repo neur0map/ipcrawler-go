@@ -36,12 +36,3 @@ chmod +x ~/.local/bin/ipcrawler-rebuild
 
 echo ""
 echo "✅ Setup complete!"
-echo ""
-echo "Available commands:"
-echo "  ipcrawler          - Run the tool"
-echo "  ipcrawler-rebuild  - Rebuild from anywhere"
-echo "  make              - Build (when in project directory)"
-echo "  make install      - Build and update global command"
-echo "  make dev          - Auto-rebuild on file changes"
-echo ""
-echo "Try it: ipcrawler --version"
