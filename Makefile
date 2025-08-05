@@ -1,4 +1,4 @@
-.PHONY: build install install-legacy dev run clean update help check-go install-go setup-go force-build clean-go install-user-go ensure-go fix-shell-config activate-go
+.PHONY: build install install-legacy dev run clean update help check-go install-go setup-go force-build clean-go install-user-go ensure-go fix-shell-config activate-go post-install
 
 # Default target
 default: build
@@ -421,10 +421,53 @@ clean-go:
 		echo "❌ Go cleanup cancelled"; \
 	fi
 
-# Install using the dedicated installation script
+# Install with automatic environment activation
 install:
-	@echo "🚀 Running installation script..."
-	@./scripts/install.sh
+	@echo "🚀 IPCrawler Installation - Single Command Solution"
+	@echo "==================================================="
+	@echo ""
+	@echo "✨ SOLUTION: Run this single command for complete installation:"
+	@echo ""
+	@echo "    make install && export PATH=\"\$$HOME/.go/bin:\$$PATH\" && go version"
+	@echo ""
+	@echo "This will:"
+	@echo "  1️⃣ Install Go 1.24.5 and build IPCrawler" 
+	@echo "  2️⃣ Activate Go 1.24.5 in your current session"
+	@echo "  3️⃣ Verify it worked by showing the Go version"
+	@echo ""
+	@echo "🔄 Running installation components..."
+	@$(MAKE) ensure-go
+	@$(MAKE) build  
+	@echo "🧹 Cleaning Go module cache..."
+	@export PATH=$(HOME)/.go/bin:/usr/local/go/bin:$$PATH; \
+	if [ -x "$(HOME)/.go/bin/go" ]; then \
+		$(HOME)/.go/bin/go clean -modcache 2>/dev/null || true; \
+		echo "  Using user Go: $$($(HOME)/.go/bin/go version)"; \
+		export GOROOT=$(HOME)/.go; \
+	elif [ -x "/usr/local/go/bin/go" ]; then \
+		/usr/local/go/bin/go clean -modcache 2>/dev/null || true; \
+		echo "  Using system Go: $$(/usr/local/go/bin/go version)"; \
+		export GOROOT=/usr/local/go; \
+	elif command -v go >/dev/null 2>&1; then \
+		go clean -modcache 2>/dev/null || true; \
+		echo "  Using PATH Go: $$(go version)"; \
+		export GOROOT=$$(go env GOROOT); \
+	fi
+	@echo "🔧 Running setup script..."
+	@export PATH=$(HOME)/.go/bin:/usr/local/go/bin:$$PATH GOPATH=$$HOME/go; ./scripts/setup.sh
+	@echo ""
+	@echo "✅ Installation complete!"
+	@echo "" 
+	@echo "🎯 COMPLETE INSTALLATION (Option A - Recommended):"
+	@echo ""
+	@echo "    make install && export PATH=\"\$$HOME/.go/bin:\$$PATH\" && go version"
+	@echo ""
+	@echo "🔄 Alternative - Use post-install helper:"
+	@echo ""
+	@echo "    make post-install"
+	@echo ""
+	@echo "💡 Option A is the single-command solution for immediate Go 1.24.5 activation"
+	@echo "🏃 Future terminal sessions will automatically use Go 1.24.5"
 
 # Legacy install target (Makefile-based)
 install-legacy: ensure-go build
@@ -453,6 +496,20 @@ install-legacy: ensure-go build
 # Helper target to generate the export command
 activate-go:
 	@echo "export PATH=\"$$HOME/.go/bin:$$PATH\""
+
+# Post-install setup - activates Go and verifies installation
+post-install:
+	@echo "🔄 Activating Go 1.24.5 in current session..."
+	@export PATH="$$HOME/.go/bin:$$PATH"; \
+	echo "🧪 Testing Go version:"; \
+	go version; \
+	if go version | grep -q "go1.24.5"; then \
+		echo "✅ SUCCESS! Go 1.24.5 is active!"; \
+		echo "🏃 Testing IPCrawler:"; \
+		ipcrawler --version 2>/dev/null && echo "✅ IPCrawler is working!" || echo "⚠️  IPCrawler command not found - restart terminal or run: source ~/.bashrc"; \
+	else \
+		echo "❌ Go activation failed. Run: export PATH=\"$$HOME/.go/bin:$$PATH\""; \
+	fi
 
 # Development mode - auto-rebuild on file changes (requires watchexec)
 dev:
@@ -493,7 +550,7 @@ update:
 help:
 	@echo "IPCrawler Build Commands:"
 	@echo "  make             - Build the binary (auto-installs Go if needed)"
-	@echo "  make install     - Run installation script (recommended - handles PATH automatically)"
+	@echo "  make install     - Install (use ./quick-install.sh for single-command solution)"
 	@echo "  make update      - Pull latest changes, rebuild, and update global command"
 	@echo "  make dev         - Watch files and auto-rebuild"
 	@echo "  make run         - Run without building (use ARGS='...' for arguments)"
@@ -506,11 +563,14 @@ help:
 	@echo "  make force-build - Build using Go in /usr/local/go/bin (after PATH issues)"
 	@echo "  make clean-go    - Remove old Go installations (keeps only /usr/local/go)"
 	@echo "  make activate-go - Print PATH export command for Go 1.24.5"
+	@echo "  make post-install - Activate Go and verify installation after make install"
 	@echo "  make help        - Show this help"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make                              # Build (auto-installs Go if needed)"
 	@echo "  make install                      # Install IPCrawler globally (auto-installs Go)"
+	@echo "  make install && export PATH=\"\$$HOME/.go/bin:\$$PATH\" && go version  # Complete installation (Option A)"
+	@echo "  make post-install                 # Activate Go after make install"
 	@echo "  make check-go                     # Check Go installation"
 	@echo "  source ~/.bashrc && make build    # After Go installation on Linux"
 	@echo "  make force-build                  # If PATH issues after Go install"

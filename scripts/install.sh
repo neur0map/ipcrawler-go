@@ -39,31 +39,21 @@ fi
 ./scripts/setup.sh
 
 echo ""
-echo "🎯 Activating Go 1.24.5 in current session..."
+echo "🎯 Creating PATH activation script..."
 
-# Update PATH for current session
+# Create an activation script that the user can source
+cat > "$HOME/.go_activate" << 'EOF'
 export PATH="$HOME/.go/bin:$PATH"
-
-echo ""
-echo "🧪 Testing Go version:"
-if command -v go >/dev/null 2>&1; then
-    go version
-    if go version | grep -q "go1.24.5"; then
-        echo "✅ SUCCESS! Go 1.24.5 is now active!"
-    else
-        echo "⚠️  Warning: Expected Go 1.24.5, but got: $(go version)"
-        echo "💡 You may need to restart your terminal or run:"
-        echo "    export PATH=\"\$HOME/.go/bin:\$PATH\""
-    fi
-else
-    echo "❌ Go not found. Please restart your terminal or run:"
-    echo "    export PATH=\"\$HOME/.go/bin:\$PATH\""
-fi
+EOF
 
 echo ""
 echo "🎉 Installation complete!"
 echo ""
-echo "📝 To use Go 1.24.5 in future terminal sessions, it's been added to your shell config."
-echo "📝 For immediate use in THIS session, the PATH has been updated."
+echo "🚨 IMPORTANT: To activate Go 1.24.5 in your current terminal, run:"
 echo ""
+echo "    source ~/.go_activate"
+echo ""
+echo "🧪 Then verify with: go version"
+echo ""
+echo "📝 Future terminal sessions will automatically use Go 1.24.5"
 echo "🏃 Try: ipcrawler --version"
