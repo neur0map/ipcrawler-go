@@ -1,4 +1,4 @@
-.PHONY: build install dev run clean update help check-go install-go setup-go force-build clean-go install-user-go ensure-go fix-shell-config
+.PHONY: build install dev run clean update help check-go install-go setup-go force-build clean-go install-user-go ensure-go
 
 # Default target
 default: build
@@ -11,15 +11,7 @@ GO_VERSION := 1.24.5
 # Determine OS and architecture for Go installation
 ifeq ($(UNAME_S),Linux)
     OS = linux
-    ifeq ($(UNAME_M),x86_64)
-        ARCH = amd64
-    else ifeq ($(UNAME_M),aarch64)
-        ARCH = arm64
-    else ifeq ($(UNAME_M),armv7l)
-        ARCH = armv6l
-    else
-        ARCH = amd64
-    endif
+    ARCH = amd64
 endif
 ifeq ($(UNAME_S),Darwin)
     OS = darwin
@@ -33,6 +25,12 @@ ifeq ($(OS),Windows_NT)
     OS = windows
     ARCH = amd64
 endif
+
+# User-level Go install path
+GO_URL := https://go.dev/dl/go$(GO_VERSION).$(OS)-$(ARCH).tar.gz
+GO_TAR := /tmp/go$(GO_VERSION).tar.gz
+GO_DEST := $(HOME)/.go
+GO_BIN := $(GO_DEST)/bin/go
 
 # Check if Go is installed and working
 check-go:
@@ -256,17 +254,17 @@ install-user-go:
 	echo "🔧 Updating PATH configuration for user installation..."; \
 	if [ -f ~/.bashrc ]; then \
 		sed -i '/.*\.go\/bin/d' ~/.bashrc 2>/dev/null || true; \
-		echo "export PATH=\"\$$HOME/.go/bin:\$$PATH\"" >> ~/.bashrc; \
+		echo 'export PATH="$$HOME/.go/bin:$$PATH"' >> ~/.bashrc; \
 		echo "  ✅ Updated ~/.bashrc with user Go PATH"; \
 	fi; \
 	if [ -f ~/.zshrc ]; then \
 		sed -i '/.*\.go\/bin/d' ~/.zshrc 2>/dev/null || true; \
-		echo "export PATH=\"\$$HOME/.go/bin:\$$PATH\"" >> ~/.zshrc; \
+		echo 'export PATH="$$HOME/.go/bin:$$PATH"' >> ~/.zshrc; \
 		echo "  ✅ Updated ~/.zshrc with user Go PATH"; \
 	fi; \
 	if [ -f ~/.profile ]; then \
 		sed -i '/.*\.go\/bin/d' ~/.profile 2>/dev/null || true; \
-		echo "export PATH=\"\$$HOME/.go/bin:\$$PATH\"" >> ~/.profile; \
+		echo 'export PATH="$$HOME/.go/bin:$$PATH"' >> ~/.profile; \
 		echo "  ✅ Updated ~/.profile with user Go PATH"; \
 	fi; \
 	echo ""; \
@@ -471,41 +469,6 @@ update:
 	@echo "✅ Update complete! IPCrawler is now up to date."
 	@echo "🎉 Global command updated - try: ipcrawler --version"
 
-# Fix broken shell configuration (pyenv + PATH concatenation)
-fix-shell-config:
-	@echo "🔧 Fixing broken shell configuration lines..."
-	@echo "🔍 Searching for broken pyenv + PATH concatenation..."
-	@FIXED_COUNT=0; \
-	for file in ~/.bashrc ~/.zshrc ~/.profile; do \
-		if [ -f "$$file" ]; then \
-			echo "  📝 Checking $$file..."; \
-			if grep -q 'eval.*pyenv.*init.*export.*PATH.*HOME.*go.*bin' "$$file"; then \
-				echo "  ❌ Found broken line in $$file"; \
-				echo "  🔨 Fixing concatenated pyenv + PATH line..."; \
-				sed -i.bak 's/eval "\$$(pyenv init -)"\s*export PATH=\$$HOME\/.go\/bin:\$$PATH/eval "$$(pyenv init -)"\nexport PATH="$$HOME\/.go\/bin:$$PATH"/' "$$file"; \
-				if [ $$? -eq 0 ]; then \
-					echo "  ✅ Fixed $$file (backup saved as $$file.bak)"; \
-					FIXED_COUNT=$$((FIXED_COUNT + 1)); \
-				else \
-					echo "  ❌ Failed to fix $$file"; \
-				fi; \
-			else \
-				echo "  ✅ No broken lines found in $$file"; \
-			fi; \
-		fi; \
-	done; \
-	if [ $$FIXED_COUNT -gt 0 ]; then \
-		echo ""; \
-		echo "🎉 Fixed $$FIXED_COUNT file(s)!"; \
-		echo "🔄 Changes will take effect after:"; \
-		echo "   source ~/.bashrc    (for bash users)"; \
-		echo "   source ~/.zshrc     (for zsh users)"; \
-		echo "   OR restart your terminal session"; \
-	else \
-		echo ""; \
-		echo "✅ No broken pyenv + PATH lines found!"; \
-	fi
-
 # Show help
 help:
 	@echo "IPCrawler Build Commands:"
@@ -521,7 +484,6 @@ help:
 	@echo "  make setup-go      - Setup Go environment"
 	@echo "  make force-build - Build using Go in /usr/local/go/bin (after PATH issues)"
 	@echo "  make clean-go    - Remove old Go installations (keeps only /usr/local/go)"
-	@echo "  make fix-shell-config - Fix broken pyenv + PATH concatenation in shell configs"
 	@echo "  make help        - Show this help"
 	@echo ""
 	@echo "Examples:"
@@ -531,7 +493,6 @@ help:
 	@echo "  source ~/.bashrc && make build    # After Go installation on Linux"
 	@echo "  make force-build                  # If PATH issues after Go install"
 	@echo "  make clean-go                     # Remove old Go versions"
-	@echo "  make fix-shell-config             # Fix broken pyenv + PATH lines"
 	@echo "  make run ARGS='--version'"
 	@echo "  make run ARGS='192.168.1.1 --debug'"
 	@echo ""
