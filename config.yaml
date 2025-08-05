@@ -1,7 +1,8 @@
+version: "0.1.1"
+
+# Which scan template to use by default and will not require flag
 default_template: basic
 
 # Available scan templates  
 templates:
   - basic
-  - comprehensive
-  - stealth

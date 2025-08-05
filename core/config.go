@@ -8,6 +8,7 @@ import (
 )
 
 type Config struct {
+	Version         string          `yaml:"version"`
 	DefaultTemplate string          `yaml:"default_template"`
 	Templates       []string        `yaml:"templates"`
 	Reporting       *ReportingConfig `yaml:"reporting,omitempty"`
@@ -55,6 +56,10 @@ type PipelineConfig struct {
 }
 
 func (c *Config) Validate() error {
+	if c.Version == "" {
+		return fmt.Errorf("version is required in config")
+	}
+	
 	if c.DefaultTemplate == "" {
 		return fmt.Errorf("default_template is required in config")
 	}

@@ -1,589 +1,312 @@
-.PHONY: build install install-legacy dev run clean update help check-go install-go setup-go force-build clean-go install-user-go ensure-go fix-shell-config activate-go post-install
+# IPCrawler Makefile - Automated Go upgrade and tool installation
+# Supports: Ubuntu/Debian, Fedora/RedHat, Arch, macOS, and generic Linux
+# No PATH modifications - uses symlinks for immediate availability
+
+# Configuration
+GO_VERSION ?= 1.24.5
+PROJECT_NAME = ipcrawler
+BUILD_DIR = build
+CACHE_DIR = $(HOME)/.cache/$(PROJECT_NAME)
+
+# OS and Architecture Detection
+OS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
+ARCH := $(shell uname -m)
+
+# Convert architecture names to Go conventions
+ifeq ($(ARCH),x86_64)
+    GOARCH := amd64
+else ifeq ($(ARCH),aarch64)
+    GOARCH := arm64
+else ifeq ($(ARCH),armv7l)
+    GOARCH := armv7
+else
+    GOARCH := $(ARCH)
+endif
+
+# Platform string for Go downloads
+PLATFORM := $(OS)-$(GOARCH)
+
+# Go download URL
+GO_DOWNLOAD_URL := https://go.dev/dl/go$(GO_VERSION).$(PLATFORM).tar.gz
+
+# Fixed installation paths - no PATH edits needed
+SYSTEM_GO_PATH := /usr/local/go
+USER_GO_PATH := $(HOME)/.go
+SYSTEM_BIN_PATH := /usr/local/bin
+
+# Mac-specific: use /usr/local/bin even for user installs since ~/bin isn't in PATH
+ifeq ($(OS),darwin)
+    USER_BIN_PATH := /usr/local/bin
+else
+    USER_BIN_PATH := $(HOME)/bin
+endif
+
+# Colors for output
+RED := \033[0;31m
+GREEN := \033[0;32m
+YELLOW := \033[1;33m
+BLUE := \033[0;34m
+NC := \033[0m # No Color
 
 # Default target
-default: build
+.PHONY: all
+all: install
 
-# OS and Architecture detection
-UNAME_S := $(shell uname -s)
-UNAME_M := $(shell uname -m)
-GO_VERSION := 1.24.5
-
-# Determine OS and architecture for Go installation
-ifeq ($(UNAME_S),Linux)
-    OS = linux
-    ARCH = amd64
-endif
-ifeq ($(UNAME_S),Darwin)
-    OS = darwin
-    ifeq ($(UNAME_M),arm64)
-        ARCH = arm64
-    else
-        ARCH = amd64
-    endif
-endif
-ifeq ($(OS),Windows_NT)
-    OS = windows
-    ARCH = amd64
-endif
-
-# User-level Go install path
-GO_URL := https://go.dev/dl/go$(GO_VERSION).$(OS)-$(ARCH).tar.gz
-GO_TAR := /tmp/go$(GO_VERSION).tar.gz
-GO_DEST := $(HOME)/.go
-GO_BIN := $(GO_DEST)/bin/go
-
-# Check if Go is installed and working
-check-go:
-	@echo "🔍 Checking Go installation..."
-	@export PATH=/usr/local/go/bin:$$PATH; \
-	if [ -x "/usr/local/go/bin/go" ]; then \
-		echo "✅ Go is installed: $$(/usr/local/go/bin/go version)"; \
-		echo "  📍 Using Go from: /usr/local/go/bin/go"; \
-		GO_CURRENT=$$(/usr/local/go/bin/go version | cut -d' ' -f3 | cut -d'o' -f2); \
-		GO_MAJOR=$$(echo $$GO_CURRENT | cut -d'.' -f1); \
-		GO_MINOR=$$(echo $$GO_CURRENT | cut -d'.' -f2); \
-		if [ "$$GO_MAJOR" -gt 1 ] || ([ "$$GO_MAJOR" -eq 1 ] && [ "$$GO_MINOR" -ge 23 ]); then \
-			echo "✅ Go version is compatible ($$GO_CURRENT >= 1.23)"; \
-		else \
-			echo "❌ Go version $$GO_CURRENT is too old (requires >= 1.23)"; \
-			echo ""; \
-			echo "📦 IPCrawler requires Go 1.23 or later to build properly."; \
-			echo "🔧 Would you like to upgrade Go to version $(GO_VERSION)? [y/N]"; \
-			read -r UPGRADE_GO; \
-			if [ "$$UPGRADE_GO" = "y" ] || [ "$$UPGRADE_GO" = "Y" ] || [ "$$UPGRADE_GO" = "yes" ]; then \
-				echo "🚀 Starting Go upgrade..."; \
-				$(MAKE) install-go; \
-			else \
-				echo "⚠️  Build may fail with Go $$GO_CURRENT"; \
-				echo "💡 You can upgrade later with: make install-go"; \
-			fi; \
-		fi; \
-	elif command -v go >/dev/null 2>&1; then \
-		echo "⚠️  Found system Go: $$(go version)"; \
-		echo "  📍 Using Go from: $$(which go)"; \
-		GO_CURRENT=$$(go version | cut -d' ' -f3 | cut -d'o' -f2); \
-		GO_MAJOR=$$(echo $$GO_CURRENT | cut -d'.' -f1); \
-		GO_MINOR=$$(echo $$GO_CURRENT | cut -d'.' -f2); \
-		if [ "$$GO_MAJOR" -gt 1 ] || ([ "$$GO_MAJOR" -eq 1 ] && [ "$$GO_MINOR" -ge 23 ]); then \
-			echo "✅ Go version is compatible ($$GO_CURRENT >= 1.23)"; \
-		else \
-			echo "❌ Go version $$GO_CURRENT is too old (requires >= 1.23)"; \
-			echo ""; \
-			echo "📦 IPCrawler requires Go 1.23 or later to build properly."; \
-			echo "💡 Recommend installing Go $(GO_VERSION) to /usr/local/go for better management"; \
-			echo "🔧 Would you like to upgrade Go to version $(GO_VERSION)? [y/N]"; \
-			read -r UPGRADE_GO; \
-			if [ "$$UPGRADE_GO" = "y" ] || [ "$$UPGRADE_GO" = "Y" ] || [ "$$UPGRADE_GO" = "yes" ]; then \
-				echo "🚀 Starting Go upgrade..."; \
-				$(MAKE) install-go; \
-			else \
-				echo "⚠️  Build may fail with Go $$GO_CURRENT"; \
-				echo "💡 You can upgrade later with: make install-go"; \
-			fi; \
-		fi; \
-	else \
-		echo "❌ Go is not installed or not in PATH"; \
-		echo ""; \
-		echo "📦 IPCrawler requires Go to build."; \
-		echo "🔧 Would you like to install Go $(GO_VERSION)? [y/N]"; \
-		read -r INSTALL_GO; \
-		if [ "$$INSTALL_GO" = "y" ] || [ "$$INSTALL_GO" = "Y" ] || [ "$$INSTALL_GO" = "yes" ]; then \
-			echo "🚀 Starting Go installation..."; \
-			$(MAKE) install-go; \
-		else \
-			echo "❌ Cannot build without Go"; \
-			echo "💡 Install Go manually or run: make install-go"; \
-			exit 1; \
-		fi; \
-	fi
-
-# Install Go automatically based on OS
-install-go:
-	@echo "📦 Installing Go $(GO_VERSION) for $(OS)/$(ARCH)..."
-	@if [ "$(OS)" = "linux" ]; then \
-		echo "🐧 Installing Go on Linux..."; \
-		echo "🔍 Checking for existing Go installations..."; \
-		if command -v go >/dev/null 2>&1; then \
-			CURRENT_GOROOT=$$(go env GOROOT 2>/dev/null || echo "unknown"); \
-			echo "  Current Go location: $$CURRENT_GOROOT"; \
-			if [ "$$CURRENT_GOROOT" != "/usr/local/go" ] && [ -d "$$CURRENT_GOROOT" ]; then \
-				echo "⚠️  Found existing Go installation at $$CURRENT_GOROOT"; \
-				echo "🗑️  This will be replaced with Go $(GO_VERSION) at /usr/local/go"; \
-			fi; \
-		fi; \
-		echo "📥 Downloading Go $(GO_VERSION)..."; \
-		if command -v wget >/dev/null 2>&1; then \
-			wget -q "https://golang.org/dl/go$(GO_VERSION).$(OS)-$(ARCH).tar.gz" -O /tmp/go.tar.gz; \
-		elif command -v curl >/dev/null 2>&1; then \
-			curl -L "https://golang.org/dl/go$(GO_VERSION).$(OS)-$(ARCH).tar.gz" -o /tmp/go.tar.gz; \
-		else \
-			echo "❌ Neither wget nor curl found. Please install one of them first."; \
-			exit 1; \
-		fi; \
-		echo "🗑️  Removing old Go installation from /usr/local/go..."; \
-		if [ -d "/usr/local/go" ]; then sudo rm -rf /usr/local/go; fi; \
-		echo "📦 Installing Go $(GO_VERSION) to /usr/local/go..."; \
-		sudo tar -C /usr/local -xzf /tmp/go.tar.gz; \
-		rm /tmp/go.tar.gz; \
-		echo "🔧 Updating PATH configuration..."; \
-		echo "  🧹 Cleaning old Go paths from shell configs..."; \
-		if [ -f ~/.bashrc ]; then \
-			sed -i '/.*go.*bin/d' ~/.bashrc 2>/dev/null || true; \
-			sed -i '/.*\/usr\/lib\/go/d' ~/.bashrc 2>/dev/null || true; \
-			echo 'export PATH=/usr/local/go/bin:$$PATH' >> ~/.bashrc; \
-			echo "  ✅ Updated ~/.bashrc with clean Go PATH"; \
-		fi; \
-		if [ -f ~/.zshrc ]; then \
-			sed -i '/.*go.*bin/d' ~/.zshrc 2>/dev/null || true; \
-			sed -i '/.*\/usr\/lib\/go/d' ~/.zshrc 2>/dev/null || true; \
-			echo 'export PATH=/usr/local/go/bin:$$PATH' >> ~/.zshrc; \
-			echo "  ✅ Updated ~/.zshrc with clean Go PATH"; \
-		fi; \
-		if [ -f ~/.profile ]; then \
-			sed -i '/.*go.*bin/d' ~/.profile 2>/dev/null || true; \
-			sed -i '/.*\/usr\/lib\/go/d' ~/.profile 2>/dev/null || true; \
-			echo 'export PATH=/usr/local/go/bin:$$PATH' >> ~/.profile; \
-			echo "  ✅ Updated ~/.profile with clean Go PATH"; \
-		fi; \
-		echo ""; \
-		echo "✅ Go $(GO_VERSION) installed successfully to /usr/local/go!"; \
-		echo "⚡ Temporarily updating PATH for this session..."; \
-		export PATH=/usr/local/go/bin:$$PATH; \
-		echo "🔄 For permanent PATH update, run:"; \
-		echo "   source ~/.bashrc    (for bash users)"; \
-		echo "   source ~/.zshrc     (for zsh users)"; \
-		echo "   OR restart your terminal session"; \
-		echo ""; \
-		echo "🧪 Testing new Go installation..."; \
-		if /usr/local/go/bin/go version >/dev/null 2>&1; then \
-			echo "✅ Go $(GO_VERSION) is working: $$(/usr/local/go/bin/go version)"; \
-		else \
-			echo "❌ Go installation verification failed"; \
-		fi; \
-	elif [ "$(OS)" = "darwin" ]; then \
-		echo "🍎 Installing Go on macOS..."; \
-		if command -v brew >/dev/null 2>&1; then \
-			echo "🍺 Using Homebrew to install Go..."; \
-			brew install go; \
-		else \
-			echo "📥 Downloading Go installer package..."; \
-			curl -L "https://golang.org/dl/go$(GO_VERSION).$(OS)-$(ARCH).pkg" -o /tmp/go.pkg; \
-			echo "📦 Installing Go package..."; \
-			sudo installer -pkg /tmp/go.pkg -target /; \
-			rm /tmp/go.pkg; \
-		fi; \
-		echo "✅ Go installed successfully!"; \
-	else \
-		echo "❌ Automatic Go installation not supported for $(OS)"; \
-		echo "💡 Please install Go manually from: https://golang.org/dl/"; \
-		echo "   Recommended version: $(GO_VERSION) or later"; \
-		echo "   Download: go$(GO_VERSION).$(OS)-$(ARCH).tar.gz"; \
-		exit 1; \
-	fi; \
-	echo ""; \
-	echo "🎉 Installation complete!"
-
-# Automatically ensure Go is installed - tries user-level first, then system-wide
-ensure-go:
-	@echo "🔍 Ensuring Go $(GO_VERSION) is available..."
-	@if [ -x "$(HOME)/.go/bin/go" ]; then \
-		GO_CURRENT=$$($(HOME)/.go/bin/go version | cut -d' ' -f3 | cut -d'o' -f2); \
-		GO_MAJOR=$$(echo $$GO_CURRENT | cut -d'.' -f1); \
-		GO_MINOR=$$(echo $$GO_CURRENT | cut -d'.' -f2); \
-		if [ "$$GO_MAJOR" -gt 1 ] || ([ "$$GO_MAJOR" -eq 1 ] && [ "$$GO_MINOR" -ge 23 ]); then \
-			echo "✅ User Go $$GO_CURRENT is compatible (>= 1.23)"; \
-		else \
-			echo "⚠️  User Go $$GO_CURRENT is too old, upgrading to $(GO_VERSION)..."; \
-			$(MAKE) install-user-go; \
-		fi; \
-	elif [ -x "/usr/local/go/bin/go" ]; then \
-		GO_CURRENT=$$(/usr/local/go/bin/go version | cut -d' ' -f3 | cut -d'o' -f2); \
-		GO_MAJOR=$$(echo $$GO_CURRENT | cut -d'.' -f1); \
-		GO_MINOR=$$(echo $$GO_CURRENT | cut -d'.' -f2); \
-		if [ "$$GO_MAJOR" -gt 1 ] || ([ "$$GO_MAJOR" -eq 1 ] && [ "$$GO_MINOR" -ge 23 ]); then \
-			echo "✅ System Go $$GO_CURRENT is compatible (>= 1.23)"; \
-		else \
-			echo "⚠️  System Go $$GO_CURRENT is too old, installing user Go $(GO_VERSION)..."; \
-			$(MAKE) install-user-go; \
-		fi; \
-	elif command -v go >/dev/null 2>&1; then \
-		GO_CURRENT=$$(go version | cut -d' ' -f3 | cut -d'o' -f2); \
-		GO_MAJOR=$$(echo $$GO_CURRENT | cut -d'.' -f1); \
-		GO_MINOR=$$(echo $$GO_CURRENT | cut -d'.' -f2); \
-		if [ "$$GO_MAJOR" -gt 1 ] || ([ "$$GO_MAJOR" -eq 1 ] && [ "$$GO_MINOR" -ge 23 ]); then \
-			echo "✅ PATH Go $$GO_CURRENT is compatible (>= 1.23)"; \
-		else \
-			echo "⚠️  PATH Go $$GO_CURRENT is too old, installing user Go $(GO_VERSION)..."; \
-			$(MAKE) install-user-go; \
-		fi; \
-	else \
-		echo "❌ No Go installation found"; \
-		echo "📦 Installing Go $(GO_VERSION) to user directory (no sudo required)..."; \
-		$(MAKE) install-user-go; \
-	fi
-
-# Install Go to user's home directory (alternative to system-wide installation)
-install-user-go:
-	@echo "📦 Installing Go $(GO_VERSION) to user directory $(HOME)/.go..."
-	@if [ "$(OS)" != "linux" ] && [ "$(OS)" != "darwin" ]; then \
-		echo "❌ User-level Go installation currently only supported on Linux and macOS"; \
-		echo "💡 Use 'make install-go' for system-wide installation instead"; \
-		exit 1; \
-	fi
-	@# User-level Go install paths
-	@GO_URL=https://go.dev/dl/go$(GO_VERSION).$(OS)-$(ARCH).tar.gz; \
-	GO_TAR=/tmp/go$(GO_VERSION).tar.gz; \
-	GO_DEST=$(HOME)/.go; \
-	GO_BIN=$$GO_DEST/bin/go; \
-	echo "📥 Downloading Go $(GO_VERSION)..."; \
-	if command -v curl >/dev/null 2>&1; then \
-		curl -sSL $$GO_URL -o $$GO_TAR; \
-	elif command -v wget >/dev/null 2>&1; then \
-		wget -q $$GO_URL -O $$GO_TAR; \
-	else \
-		echo "❌ Neither curl nor wget found. Please install one of them first."; \
-		exit 1; \
-	fi; \
-	echo "🗑️  Removing old user Go installation..."; \
-	rm -rf $$GO_DEST; \
-	echo "📦 Extracting Go $(GO_VERSION) to $$GO_DEST..."; \
-	mkdir -p $(HOME); \
-	tar -C $(HOME) -xzf $$GO_TAR; \
-	mv $(HOME)/go $$GO_DEST; \
-	rm $$GO_TAR; \
-	echo "🔧 Updating PATH configuration for user installation..."; \
-	if [ -f ~/.bashrc ]; then \
-		sed -i '/.*\.go\/bin/d' ~/.bashrc 2>/dev/null || true; \
-		echo "export PATH=\"\$$HOME/.go/bin:\$$PATH\"" >> ~/.bashrc; \
-		echo "  ✅ Updated ~/.bashrc with user Go PATH"; \
-	fi; \
-	if [ -f ~/.zshrc ]; then \
-		sed -i '/.*\.go\/bin/d' ~/.zshrc 2>/dev/null || true; \
-		echo "export PATH=\"\$$HOME/.go/bin:\$$PATH\"" >> ~/.zshrc; \
-		echo "  ✅ Updated ~/.zshrc with user Go PATH"; \
-	fi; \
-	if [ -f ~/.profile ]; then \
-		sed -i '/.*\.go\/bin/d' ~/.profile 2>/dev/null || true; \
-		echo "export PATH=\"\$$HOME/.go/bin:\$$PATH\"" >> ~/.profile; \
-		echo "  ✅ Updated ~/.profile with user Go PATH"; \
-	fi; \
-	echo ""; \
-	echo "✅ User-level Go $(GO_VERSION) installed successfully to $$GO_DEST!"; \
-	echo "🧪 Testing user Go installation..."; \
-	if [ -x "$$GO_BIN" ]; then \
-		echo "✅ Go installed: $$($$GO_BIN version)"; \
-		echo "📍 Location: $$GO_DEST"; \
-		echo "⚡ Temporarily updating PATH for this session..."; \
-		export PATH="$$GO_DEST/bin:$$PATH"; \
-	else \
-		echo "❌ User Go installation verification failed"; \
-		exit 1; \
-	fi; \
-	echo "🔄 Setting up Go 1.24.5 for immediate use..."; \
-	echo ""; \
-	echo "📝 Creating activation script..."; \
-	echo 'export PATH="$$HOME/.go/bin:$$PATH"' > $(HOME)/.go_activate; \
-	chmod +x $(HOME)/.go_activate; \
-	echo ""; \
-	echo "🎯 CRITICAL: To activate Go 1.24.5 in your current session, run:"; \
-	echo ""; \
-	echo "    source $(HOME)/.go_activate"; \
-	echo ""; \
-	echo "🧪 Then verify: go version"; \
-	echo ""; \
-	echo "💡 Note: Future terminal sessions will automatically use Go 1.24.5"; \
-	echo "🎉 Installation complete!"
-
-# Setup Go environment (run after installing Go)
-setup-go: check-go
-	@echo "🔧 Setting up Go environment..."
-	@export PATH=/usr/local/go/bin:$$PATH; \
-	echo "  🔍 PATH verification:"; \
-	echo "    Current PATH priority: $$(echo $$PATH | tr ':' '\n' | grep -E '(go|bin)' | head -3 | tr '\n' ':' | sed 's/:$$//')"; \
-	if [ -x "/usr/local/go/bin/go" ]; then \
-		echo "  📍 Using Go from: /usr/local/go/bin/go"; \
-		echo "  📦 GOPATH: $$(/usr/local/go/bin/go env GOPATH 2>/dev/null || echo '$$HOME/go')"; \
-		echo "  🏠 GOROOT: $$(/usr/local/go/bin/go env GOROOT 2>/dev/null || echo '/usr/local/go')"; \
-		echo "  🏷️  Version: $$(/usr/local/go/bin/go version)"; \
-		if command -v go >/dev/null 2>&1 && [ "$$(which go)" != "/usr/local/go/bin/go" ]; then \
-			echo "  ⚠️  Warning: System Go found at $$(which go)"; \
-			echo "      This may cause conflicts. Consider running 'make clean-go'"; \
-		fi; \
-		echo "✅ Go environment ready!"; \
-	elif command -v go >/dev/null 2>&1; then \
-		echo "  📍 Using system Go: $$(which go)"; \
-		echo "  📦 GOPATH: $$(go env GOPATH 2>/dev/null || echo '$$HOME/go')"; \
-		echo "  🏠 GOROOT: $$(go env GOROOT 2>/dev/null || echo 'default')"; \
-		echo "  🏷️  Version: $$(go version)"; \
-		echo "  💡 Consider installing Go to /usr/local/go for better management"; \
-		echo "✅ Go environment ready!"; \
-	else \
-		echo "❌ Go still not available after installation"; \
-		echo "🔄 Please try one of the following:"; \
-		echo "   export PATH=/usr/local/go/bin:$$PATH"; \
-		echo "   source ~/.bashrc"; \
-		echo "   source ~/.zshrc"; \
-		echo "   OR restart your terminal"; \
-		exit 1; \
-	fi
-
-# Build the binary (with automatic Go installation)
-build: ensure-go
-	@echo "🔨 Building ipcrawler..."
-	@export PATH=$(HOME)/.go/bin:/usr/local/go/bin:$$PATH; \
-	if [ -x "$(HOME)/.go/bin/go" ]; then \
-		echo "  Using user Go: $$($(HOME)/.go/bin/go version)"; \
-		echo "  📍 Location: $(HOME)/.go/bin/go"; \
-		echo "  📝 Updating go.mod..."; \
-		$(HOME)/.go/bin/go mod tidy; \
-		$(HOME)/.go/bin/go build -o ipcrawler; \
-		echo "✅ Build complete!"; \
-	elif [ -x "/usr/local/go/bin/go" ]; then \
-		echo "  Using system Go: $$(/usr/local/go/bin/go version)"; \
-		echo "  📍 Location: /usr/local/go/bin/go"; \
-		echo "  📝 Updating go.mod..."; \
-		/usr/local/go/bin/go mod tidy; \
-		/usr/local/go/bin/go build -o ipcrawler; \
-		echo "✅ Build complete!"; \
-	elif command -v go >/dev/null 2>&1; then \
-		echo "  Using PATH Go: $$(go version)"; \
-		echo "  📍 Location: $$(which go)"; \
-		echo "  📝 Updating go.mod..."; \
-		go mod tidy; \
-		go build -o ipcrawler; \
-		echo "✅ Build complete!"; \
-	else \
-		echo "❌ Go not found after setup. This usually means PATH needs to be reloaded."; \
-		echo "🔄 Please run one of the following and try again:"; \
-		echo "   source ~/.bashrc && make build"; \
-		echo "   source ~/.zshrc && make build"; \
-		echo "   export PATH=$(HOME)/.go/bin:/usr/local/go/bin:$$PATH && make build"; \
-		echo "   OR restart your terminal and run 'make build'"; \
-		exit 1; \
-	fi
-
-# Force build after reloading environment (for when PATH needs refresh)
-force-build:
-	@echo "🔨 Force building ipcrawler with latest Go..."
-	@export PATH=$(HOME)/.go/bin:/usr/local/go/bin:$$PATH; \
-	if [ -x "$(HOME)/.go/bin/go" ]; then \
-		echo "  Using user Go: $$($(HOME)/.go/bin/go version)"; \
-		echo "  📝 Updating go.mod..."; \
-		$(HOME)/.go/bin/go mod tidy; \
-		$(HOME)/.go/bin/go build -o ipcrawler; \
-	elif [ -x "/usr/local/go/bin/go" ]; then \
-		echo "  Using system Go: $$(/usr/local/go/bin/go version)"; \
-		echo "  📝 Updating go.mod..."; \
-		/usr/local/go/bin/go mod tidy; \
-		/usr/local/go/bin/go build -o ipcrawler; \
-	else \
-		echo "  Fallback to PATH Go"; \
-		echo "  📝 Updating go.mod..."; \
-		go mod tidy; \
-		go build -o ipcrawler; \
-	fi
-	@echo "✅ Build complete!"
-
-# Clean up old Go installations (use with caution)
-clean-go:
-	@echo "🗑️  Cleaning up old Go installations..."
-	@echo "⚠️  This will remove system-installed Go packages and old installations"
-	@echo "🔧 Would you like to proceed? This will:"
-	@echo "   1. Remove system Go packages (apt/yum installed)"
-	@echo "   2. Keep only /usr/local/go (our managed installation)"
-	@echo "   3. Update PATH to prioritize /usr/local/go/bin"
-	@echo ""
-	@echo "Proceed with Go cleanup? [y/N]"
-	@read -r CLEAN_GO; \
-	if [ "$$CLEAN_GO" = "y" ] || [ "$$CLEAN_GO" = "Y" ] || [ "$$CLEAN_GO" = "yes" ]; then \
-		echo "🧹 Starting Go cleanup..."; \
-		if command -v apt >/dev/null 2>&1; then \
-			echo "  Removing Go via apt..."; \
-			sudo apt remove -y golang-go golang || true; \
-		fi; \
-		if command -v yum >/dev/null 2>&1; then \
-			echo "  Removing Go via yum..."; \
-			sudo yum remove -y golang || true; \
-		fi; \
-		if command -v dnf >/dev/null 2>&1; then \
-			echo "  Removing Go via dnf..."; \
-			sudo dnf remove -y golang || true; \
-		fi; \
-		echo "  Updating PATH priority in shell configs..."; \
-		sed -i 's|export PATH=.*go.*|export PATH=/usr/local/go/bin:$$PATH|g' ~/.bashrc 2>/dev/null || true; \
-		if [ -f ~/.zshrc ]; then \
-			sed -i 's|export PATH=.*go.*|export PATH=/usr/local/go/bin:$$PATH|g' ~/.zshrc 2>/dev/null || true; \
-		fi; \
-		echo "✅ Go cleanup complete!"; \
-		echo "🔄 Please run: source ~/.bashrc (or restart terminal)"; \
-		echo "🧪 Then test with: make check-go"; \
-	else \
-		echo "❌ Go cleanup cancelled"; \
-	fi
-
-# Install with automatic environment activation
+# Main installation target - always builds/updates ipcrawler
+.PHONY: install
 install:
-	@echo "🚀 IPCrawler Installation"
-	@echo "========================"
-	@$(MAKE) ensure-go
-	@$(MAKE) build  
-	@echo "🧹 Cleaning Go module cache..."
-	@export PATH=$(HOME)/.go/bin:/usr/local/go/bin:$$PATH; \
-	if [ -x "$(HOME)/.go/bin/go" ]; then \
-		$(HOME)/.go/bin/go clean -modcache 2>/dev/null || true; \
-		echo "  Using user Go: $$($(HOME)/.go/bin/go version)"; \
-		export GOROOT=$(HOME)/.go; \
-	elif [ -x "/usr/local/go/bin/go" ]; then \
-		/usr/local/go/bin/go clean -modcache 2>/dev/null || true; \
-		echo "  Using system Go: $$(/usr/local/go/bin/go version)"; \
-		export GOROOT=/usr/local/go; \
-	elif command -v go >/dev/null 2>&1; then \
-		go clean -modcache 2>/dev/null || true; \
-		echo "  Using PATH Go: $$(go version)"; \
-		export GOROOT=$$(go env GOROOT); \
-	fi
-	@echo "🔧 Running setup script..."
-	@export PATH=$(HOME)/.go/bin:/usr/local/go/bin:$$PATH GOPATH=$$HOME/go; ./scripts/setup.sh
+	@echo "$(BLUE)🚀 IPCrawler Installation$(NC)"
+	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@$(MAKE) check-prerequisites
+	@$(MAKE) check-os
+	@$(MAKE) install-go
+	@$(MAKE) build
+	@$(MAKE) install-binary
 	@echo ""
-	@echo "✅ Installation complete!"
-	@echo ""
-	@echo "🎯 To activate Go 1.24.5 in your current session, run:"
-	@echo ""
-	@echo "    export PATH=\"\$$HOME/.go/bin:\$$PATH\""
-	@echo ""
-	@echo "🧪 Verify with: go version"
+	@echo "$(GREEN)✅ Installation Complete!$(NC)"
+	@echo "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo "You can now run: $(BLUE)go version$(NC) and $(BLUE)ipcrawler --help$(NC)"
 
-# Legacy install target (Makefile-based)
-install-legacy: ensure-go build
-	@echo "🧹 Cleaning Go module cache to prevent version conflicts..."
-	@export PATH=$(HOME)/.go/bin:/usr/local/go/bin:$$PATH; \
-	if [ -x "$(HOME)/.go/bin/go" ]; then \
-		$(HOME)/.go/bin/go clean -modcache 2>/dev/null || true; \
-		echo "  Using user Go: $$($(HOME)/.go/bin/go version)"; \
-		export GOROOT=$(HOME)/.go; \
-	elif [ -x "/usr/local/go/bin/go" ]; then \
-		/usr/local/go/bin/go clean -modcache 2>/dev/null || true; \
-		echo "  Using system Go: $$(/usr/local/go/bin/go version)"; \
-		export GOROOT=/usr/local/go; \
-	elif command -v go >/dev/null 2>&1; then \
-		go clean -modcache 2>/dev/null || true; \
-		echo "  Using PATH Go: $$(go version)"; \
-		export GOROOT=$$(go env GOROOT); \
-	fi
-	@echo "🔧 Running setup script with correct Go environment..."
-	@export PATH=$(HOME)/.go/bin:/usr/local/go/bin:$$PATH GOPATH=$$HOME/go; ./scripts/setup.sh
-	@echo ""
-	@echo "✅ Installation complete!"
-	@echo ""
-	@echo "🎯 To activate Go 1.24.5: export PATH=\"\$$HOME/.go/bin:\$$PATH\""
-
-# Helper target to generate the export command
-activate-go:
-	@echo "export PATH=\"$$HOME/.go/bin:$$PATH\""
-
-# Post-install setup - activates Go and verifies installation
-post-install:
-	@echo "🔄 Activating Go 1.24.5 in current session..."
-	@export PATH="$$HOME/.go/bin:$$PATH"; \
-	echo "🧪 Testing Go version:"; \
-	go version; \
-	if go version | grep -q "go1.24.5"; then \
-		echo "✅ SUCCESS! Go 1.24.5 is active!"; \
-		echo "🏃 Testing IPCrawler:"; \
-		ipcrawler --version 2>/dev/null && echo "✅ IPCrawler is working!" || echo "⚠️  IPCrawler command not found - restart terminal or run: source ~/.bashrc"; \
-	else \
-		echo "❌ Go activation failed. Run: export PATH=\"$$HOME/.go/bin:$$PATH\""; \
-	fi
-
-# Development mode - auto-rebuild on file changes (requires watchexec)
-dev:
-	@if command -v watchexec > /dev/null; then \
-		echo "👀 Watching for changes..."; \
-		watchexec -e go -r "make build && echo '✅ Rebuilt!' || echo '❌ Build failed'"; \
-	else \
-		echo "❌ watchexec not found. Install with: brew install watchexec"; \
-		exit 1; \
-	fi
-
-# Run directly without building
-run:
-	@go run main.go $(ARGS)
-
-# Clean build artifacts
-clean:
-	@echo "🧹 Cleaning..."
-	@rm -f ipcrawler
-	@echo "✅ Clean complete!"
-
-# Update from git and rebuild
+# Update target - pull latest code and rebuild
+.PHONY: update
 update:
-	@echo "🔄 Updating IPCrawler..."
-	@echo "📥 Pulling latest changes..."
-	@git pull origin main || { \
-		echo "❌ Git pull failed!"; \
-		echo "💡 If this is your first time, set up the remote:"; \
-		echo "   git remote add origin https://github.com/YOUR_USERNAME/ipcrawler.git"; \
+	@echo "$(BLUE)🔄 Updating IPCrawler$(NC)"
+	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo "$(YELLOW)📥 Pulling latest changes...$(NC)"
+	@if git pull --ff-only; then \
+		echo "$(GREEN)   ✓ Code updated$(NC)"; \
+	else \
+		echo "$(RED)   ✗ Git pull failed - check for local changes$(NC)"; \
 		exit 1; \
-	}
-	@echo "🔨 Rebuilding and installing globally..."
-	@$(MAKE) install
-	@echo "✅ Update complete! IPCrawler is now up to date."
-	@echo "🎉 Global command updated - try: ipcrawler --version"
+	fi
+	@$(MAKE) check-prerequisites
+	@$(MAKE) build install-binary
+	@echo ""
+	@echo "$(GREEN)✅ Update Complete!$(NC)"
 
-# Show help
+# Check prerequisites
+.PHONY: check-prerequisites
+check-prerequisites:
+	@echo "$(BLUE)🔍 Checking Prerequisites...$(NC)"
+	@MISSING=""
+	
+	@# Check for curl
+	@if ! command -v curl >/dev/null 2>&1; then \
+		MISSING="$$MISSING curl"; \
+	else \
+		echo "$(GREEN)   ✓ curl$(NC)"; \
+	fi
+	
+	@# Check for tar
+	@if ! command -v tar >/dev/null 2>&1; then \
+		MISSING="$$MISSING tar"; \
+	else \
+		echo "$(GREEN)   ✓ tar$(NC)"; \
+	fi
+	
+	@# Check for git (only for update target)
+	@if [ "$(MAKECMDGOALS)" = "update" ] && ! command -v git >/dev/null 2>&1; then \
+		MISSING="$$MISSING git"; \
+	elif command -v git >/dev/null 2>&1; then \
+		echo "$(GREEN)   ✓ git$(NC)"; \
+	fi
+	
+	@# Report missing tools
+	@if [ -n "$$MISSING" ]; then \
+		echo ""; \
+		echo "$(RED)✗ Missing required tools:$$MISSING$(NC)"; \
+		echo ""; \
+		echo "$(YELLOW)Installation instructions:$(NC)"; \
+		if [ "$(OS)" = "darwin" ]; then \
+			echo "   • macOS: $(BLUE)brew install$$MISSING$(NC)"; \
+		elif [ -f /etc/debian_version ]; then \
+			echo "   • Debian/Ubuntu: $(BLUE)sudo apt-get install$$MISSING$(NC)"; \
+		elif [ -f /etc/redhat-release ]; then \
+			echo "   • RHEL/Fedora: $(BLUE)sudo yum install$$MISSING$(NC)"; \
+		elif [ -f /etc/arch-release ]; then \
+			echo "   • Arch Linux: $(BLUE)sudo pacman -S$$MISSING$(NC)"; \
+		else \
+			echo "   • Please install:$$MISSING"; \
+		fi; \
+		exit 1; \
+	else \
+		echo "$(GREEN)   ✓ All prerequisites installed$(NC)"; \
+	fi
+
+# OS detection and validation
+.PHONY: check-os
+check-os:
+	@echo ""
+	@echo "$(BLUE)🔍 Detecting Operating System...$(NC)"
+	@echo "   • OS: $(OS)"
+	@echo "   • Architecture: $(ARCH) ($(GOARCH))"
+	@if [ "$(OS)" = "linux" ] || [ "$(OS)" = "darwin" ]; then \
+		echo "$(GREEN)   ✓ Supported platform$(NC)"; \
+	else \
+		echo "$(RED)   ✗ Unsupported platform: $(OS)$(NC)"; \
+		exit 1; \
+	fi
+
+# Go installation/upgrade - idempotent with symlinks
+.PHONY: install-go
+install-go:
+	@echo ""
+	@echo "$(BLUE)🔧 Go Installation/Upgrade$(NC)"
+	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	
+	@# Check current Go version
+	@SKIP_INSTALL="false"; \
+	CURRENT_GO=$$(command -v go 2>/dev/null); \
+	if [ -n "$$CURRENT_GO" ]; then \
+		CURRENT_VERSION=$$(go version | cut -d' ' -f3 | sed 's/go//'); \
+		echo "   • Current Go: $$CURRENT_VERSION at $$CURRENT_GO"; \
+		if [ "$$CURRENT_VERSION" = "$(GO_VERSION)" ]; then \
+			echo "$(GREEN)   ✓ Go $(GO_VERSION) already installed$(NC)"; \
+			SKIP_INSTALL="true"; \
+		fi; \
+	else \
+		echo "   • No Go installation found"; \
+	fi; \
+	\
+	if [ "$$SKIP_INSTALL" = "false" ]; then \
+		INSTALL_PATH=""; \
+		BIN_PATH=""; \
+		NEED_SUDO=""; \
+		\
+		if [ -w "$(SYSTEM_BIN_PATH)" ] || sudo -n true 2>/dev/null; then \
+			INSTALL_PATH="$(SYSTEM_GO_PATH)"; \
+			BIN_PATH="$(SYSTEM_BIN_PATH)"; \
+			if [ ! -w "$(SYSTEM_BIN_PATH)" ]; then \
+				NEED_SUDO="sudo"; \
+			fi; \
+			echo "   • Mode: System installation"; \
+		else \
+			INSTALL_PATH="$(USER_GO_PATH)"; \
+			BIN_PATH="$(USER_BIN_PATH)"; \
+			mkdir -p "$(USER_BIN_PATH)"; \
+			echo "   • Mode: User installation"; \
+		fi; \
+		\
+		echo "$(YELLOW)   • Downloading Go $(GO_VERSION)...$(NC)"; \
+		mkdir -p "$(CACHE_DIR)"; \
+		if ! curl -L --progress-bar "$(GO_DOWNLOAD_URL)" -o "$(CACHE_DIR)/go$(GO_VERSION).tar.gz"; then \
+			echo "$(RED)   ✗ Download failed$(NC)"; \
+			exit 1; \
+		fi; \
+		\
+		if [ -d "$$INSTALL_PATH" ]; then \
+			echo "$(YELLOW)   • Removing old installation...$(NC)"; \
+			$$NEED_SUDO rm -rf "$$INSTALL_PATH"; \
+		fi; \
+		\
+		echo "$(YELLOW)   • Installing Go $(GO_VERSION)...$(NC)"; \
+		PARENT_DIR=$$(dirname "$$INSTALL_PATH"); \
+		$$NEED_SUDO mkdir -p "$$PARENT_DIR"; \
+		$$NEED_SUDO tar -C "$$PARENT_DIR" -xzf "$(CACHE_DIR)/go$(GO_VERSION).tar.gz"; \
+		\
+		if [ "$$(basename $$INSTALL_PATH)" != "go" ]; then \
+			$$NEED_SUDO mv "$$PARENT_DIR/go" "$$INSTALL_PATH"; \
+		fi; \
+		\
+		echo "$(YELLOW)   • Creating symlinks...$(NC)"; \
+		$$NEED_SUDO ln -sf "$$INSTALL_PATH/bin/go" "$$BIN_PATH/go"; \
+		$$NEED_SUDO ln -sf "$$INSTALL_PATH/bin/gofmt" "$$BIN_PATH/gofmt"; \
+		\
+		echo "$(GREEN)   ✓ Go $(GO_VERSION) installed successfully$(NC)"; \
+		echo "   • Symlinks: $$BIN_PATH/go → $$INSTALL_PATH/bin/go"; \
+	fi
+
+# Build ipcrawler - simplified with symlink assumption
+.PHONY: build
+build:
+	@echo ""
+	@echo "$(BLUE)🔨 Building IPCrawler$(NC)"
+	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	
+	@# Go should be available via symlinks
+	@if ! command -v go >/dev/null 2>&1; then \
+		echo "$(RED)   ✗ Go not found - run 'make install-go' first$(NC)"; \
+		exit 1; \
+	fi
+	
+	@echo "   • Go version: $$(go version)"
+	@echo "   • Building $(PROJECT_NAME)..."
+	
+	@mkdir -p $(BUILD_DIR)
+	@if go build -o $(BUILD_DIR)/$(PROJECT_NAME) .; then \
+		echo "$(GREEN)   ✓ Build successful$(NC)"; \
+		echo "   • Binary: $(BUILD_DIR)/$(PROJECT_NAME)"; \
+		echo "   • Size: $$(du -h $(BUILD_DIR)/$(PROJECT_NAME) | cut -f1)"; \
+	else \
+		echo "$(RED)   ✗ Build failed$(NC)"; \
+		exit 1; \
+	fi
+
+# Install ipcrawler binary - using symlinks only
+.PHONY: install-binary
+install-binary:
+	@echo ""
+	@echo "$(BLUE)📦 Installing IPCrawler Binary$(NC)"
+	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	
+	@if [ ! -f "$(BUILD_DIR)/$(PROJECT_NAME)" ]; then \
+		echo "$(RED)   ✗ Binary not found. Run 'make build' first$(NC)"; \
+		exit 1; \
+	fi
+	
+	@# Determine install location
+	@BIN_PATH=""; \
+	NEED_SUDO=""; \
+	if [ -w "$(SYSTEM_BIN_PATH)" ] || sudo -n true 2>/dev/null; then \
+		BIN_PATH="$(SYSTEM_BIN_PATH)"; \
+		if [ ! -w "$(SYSTEM_BIN_PATH)" ]; then \
+			NEED_SUDO="sudo"; \
+		fi; \
+		echo "   • Mode: System installation"; \
+	else \
+		BIN_PATH="$(USER_BIN_PATH)"; \
+		mkdir -p "$(USER_BIN_PATH)"; \
+		echo "   • Mode: User installation"; \
+	fi; \
+	\
+	FULL_BINARY_PATH="$$(cd $(BUILD_DIR) && pwd)/$(PROJECT_NAME)"; \
+	echo "$(YELLOW)   • Creating symlink...$(NC)"; \
+	$$NEED_SUDO ln -sf "$$FULL_BINARY_PATH" "$$BIN_PATH/$(PROJECT_NAME)"; \
+	\
+	echo "$(GREEN)   ✓ IPCrawler installed successfully$(NC)"; \
+	echo "   • Symlink: $$BIN_PATH/$(PROJECT_NAME) → $$FULL_BINARY_PATH"
+
+# Clean build artifacts and cache
+.PHONY: clean
+clean:
+	@echo "$(BLUE)🧹 Cleaning build artifacts and cache$(NC)"
+	@rm -rf $(BUILD_DIR)
+	@rm -rf $(CACHE_DIR)
+	@go clean -cache 2>/dev/null || true
+	@echo "$(GREEN)   ✓ Clean complete$(NC)"
+
+# Help target
+.PHONY: help
 help:
-	@echo "IPCrawler Build Commands:"
-	@echo "  make             - Build the binary (auto-installs Go if needed)"
-	@echo "  make install     - Install (use ./quick-install.sh for single-command solution)"
-	@echo "  make update      - Pull latest changes, rebuild, and update global command"
-	@echo "  make dev         - Watch files and auto-rebuild"
-	@echo "  make run         - Run without building (use ARGS='...' for arguments)"
-	@echo "  make clean       - Remove build artifacts"
-	@echo "  make check-go      - Check Go installation and version (forces upgrade if < 1.23)"
-	@echo "  make install-go    - Install/upgrade Go system-wide (requires sudo)"
-	@echo "  make install-user-go - Install Go to user directory (~/.go) - no sudo needed"
-	@echo "  make install-legacy  - Legacy Makefile-based install (if script fails)"
-	@echo "  make setup-go      - Setup Go environment"
-	@echo "  make force-build - Build using Go in /usr/local/go/bin (after PATH issues)"
-	@echo "  make clean-go    - Remove old Go installations (keeps only /usr/local/go)"
-	@echo "  make activate-go - Print PATH export command for Go 1.24.5"
-	@echo "  make post-install - Activate Go and verify installation after make install"
-	@echo "  make help        - Show this help"
+	@echo "$(BLUE)IPCrawler Makefile$(NC)"
+	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
 	@echo ""
-	@echo "Examples:"
-	@echo "  make                              # Build (auto-installs Go if needed)"
-	@echo "  make install                      # Install IPCrawler globally (auto-installs Go)"
-	@echo "  make install && export PATH=\"\$$HOME/.go/bin:\$$PATH\" && go version  # Complete installation"
-	@echo "  make post-install                 # Activate Go after make install"
-	@echo "  make check-go                     # Check Go installation"
-	@echo "  source ~/.bashrc && make build    # After Go installation on Linux"
-	@echo "  make force-build                  # If PATH issues after Go install"
-	@echo "  make clean-go                     # Remove old Go versions"
-	@echo "  make run ARGS='--version'"
-	@echo "  make run ARGS='192.168.1.1 --debug'"
+	@echo "$(YELLOW)Available targets:$(NC)"
+	@echo "  $(GREEN)make install$(NC)  - Complete installation (Go + IPCrawler)"
+	@echo "  $(GREEN)make update$(NC)   - Update to latest code and rebuild"
+	@echo "  $(GREEN)make build$(NC)    - Build IPCrawler binary only"
+	@echo "  $(GREEN)make clean$(NC)    - Clean build artifacts and cache"
+	@echo "  $(GREEN)make help$(NC)     - Show this help message"
 	@echo ""
-	@echo "Automatic Go Installation:"
-	@echo "  - 'make' and 'make install' automatically handle Go installation"
-	@echo "  - No separate commands needed - just run 'make install'!"
-	@echo "  - Automatically detects OS (Linux/macOS/Windows)"
-	@echo "  - Downloads and installs Go $(GO_VERSION) if needed"
-	@echo "  - Upgrades automatically if current version < 1.23"
-	@echo "  - Prefers user-level installation (no sudo required)"
-	@echo "  - Sets up PATH and environment variables"
+	@echo "$(YELLOW)Configuration:$(NC)"
+	@echo "  $(BLUE)GO_VERSION$(NC)    - Go version to install (default: $(GO_VERSION))"
 	@echo ""
-	@echo "  Installation Priority:"
-	@echo "    1. User-level: ~/.go (preferred, no sudo needed)"
-	@echo "    2. System-wide: /usr/local/go (fallback if user install fails)"
-	@echo "    3. Uses existing compatible Go if found"
+	@echo "$(YELLOW)Usage:$(NC)"
+	@echo "  make install                    # First-time setup"
+	@echo "  make update                     # Get latest changes"
+	@echo "  make install GO_VERSION=1.23.0  # Install specific Go version"
 	@echo ""
-	@echo "  Manual Installation (if needed):"
-	@echo "    make install-user-go    # Install to ~/.go (no sudo)"
-	@echo "    make install-go         # Install system-wide (requires sudo)"
-	@echo ""
-	@echo "Troubleshooting:"
-	@echo "  If 'go command not found' after installation:"
-	@echo "  1. source ~/.bashrc   (or ~/.zshrc)"
-	@echo "  2. export PATH=/usr/local/go/bin:\$$PATH"
-	@echo "  3. make force-build   (uses /usr/local/go/bin directly)"
-	@echo "  4. make clean-go      (removes conflicting Go installations)"
-	@echo "  5. Restart terminal"
+	@echo "$(YELLOW)Notes:$(NC)"
+	@echo "  • No PATH modifications needed - uses symlinks"
+	@echo "  • Installs to /usr/local/bin (system) or ~/bin (user)"
+	@echo "  • Commands available immediately after install"

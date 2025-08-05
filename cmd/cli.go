@@ -23,15 +23,20 @@ import (
 
 const (
 	appName        = "ipcrawler"
-	appVersion     = "0.1.1"
 	configFile     = "config.yaml"
 	workflowsDir   = "workflows"
 )
 
 func Execute() error {
+	// Load config to get version and other settings
+	config, err := core.LoadConfig(configFile)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
 	app := &cli.App{
 		Name:    appName,
-		Version: appVersion,
+		Version: config.Version,
 		Usage:   "Crawl IP addresses and domains",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -143,7 +148,7 @@ func Execute() error {
 			// Handle --health flag
 			if c.Bool("health") {
 				pterm.Success.Println("System Status: OK")
-				pterm.Info.Printf("Version: %s\n", appVersion)
+				pterm.Info.Printf("Version: %s\n", config.Version)
 				pterm.Success.Println("All systems operational")
 				return nil
 			}
