@@ -37,10 +37,16 @@ func (up *UniversalProcessor) Process(input *AgentInput) (*AgentOutput, error) {
 	output := up.CreateOutput(nil, input.Metadata, true)
 	processedData := make(map[string]*UniversalOutput)
 
-	// Extract tool outputs from input
+	// Try to extract tool outputs from input, if not available get from receiver output
 	toolOutputs, ok := input.Data.(map[string]*ToolOutput)
 	if !ok {
-		return nil, fmt.Errorf("invalid input data format")
+		// If direct data cast fails, try to get raw data from files
+		up.LogInfo("Direct data cast failed, collecting tool outputs from raw directory")
+		var err error
+		toolOutputs, err = up.collectToolOutputsFromRaw(input.ReportDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to collect tool outputs: %w", err)
+		}
 	}
 
 	// Process each tool output
@@ -353,6 +359,95 @@ func (up *UniversalProcessor) saveProcessedOutput(reportDir, toolName string, re
 	}
 
 	return nil
+}
+
+// collectToolOutputsFromRaw scans the raw directory for tool outputs (similar to receiver agent)
+func (up *UniversalProcessor) collectToolOutputsFromRaw(reportDir string) (map[string]*ToolOutput, error) {
+	toolOutputs := make(map[string]*ToolOutput)
+	rawDir := filepath.Join(reportDir, "raw")
+	
+	// Check if raw directory exists
+	if _, err := os.Stat(rawDir); os.IsNotExist(err) {
+		return toolOutputs, nil // Empty but not an error
+	}
+	
+	// Read directory contents
+	entries, err := os.ReadDir(rawDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read raw directory: %w", err)
+	}
+	
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		
+		fileName := entry.Name()
+		filePath := filepath.Join(rawDir, fileName)
+		
+		// Determine tool name from filename
+		toolName := up.extractToolNameFromFile(fileName)
+		if toolName == "" {
+			up.LogWarning("Could not determine tool name from file: %s", fileName)
+			continue
+		}
+		
+		// Skip nmap files as they're handled by nmap_processor
+		if toolName == "nmap" {
+			continue
+		}
+		
+		// Read file content
+		rawData, err := os.ReadFile(filePath)
+		if err != nil {
+			up.LogError("Failed to read file %s: %v", filePath, err)
+			continue
+		}
+		
+		// Verify file has meaningful content
+		if len(rawData) == 0 {
+			up.LogWarning("File %s is empty, skipping", fileName)
+			continue
+		}
+		
+		// Create ToolOutput
+		toolOutput := &ToolOutput{
+			ToolName:    toolName,
+			FilePath:    filePath,
+			RawData:     rawData,
+			CleanerType: "universal_processor",
+			Valid:       true,
+		}
+		
+		toolOutputs[toolName] = toolOutput
+		up.LogInfo("Collected output from tool: %s (%d bytes)", toolName, len(rawData))
+	}
+	
+	return toolOutputs, nil
+}
+
+// extractToolNameFromFile determines tool name from filename using simple pattern matching
+func (up *UniversalProcessor) extractToolNameFromFile(fileName string) string {
+	lowerName := strings.ToLower(fileName)
+	
+	// Common tool patterns
+	if strings.Contains(lowerName, "naabu") {
+		return "naabu"
+	}
+	if strings.Contains(lowerName, "nuclei") {
+		return "nuclei"
+	}
+	if strings.Contains(lowerName, "nmap") {
+		return "nmap"
+	}
+	
+	// Try to extract from common patterns like "tool_scan_target.ext"
+	parts := strings.Split(strings.TrimSuffix(fileName, filepath.Ext(fileName)), "_")
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	
+	return ""
 }
 
 // Validate checks if the processor is properly configured

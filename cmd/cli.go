@@ -455,7 +455,7 @@ func executeWorkflow(ctx context.Context, workflowKey string, workflows map[stri
 	providedDataMutex.Unlock()
 	
 	// Special handling for nuclei workflows - convert discovered_ports to target_urls
-	if strings.Contains(workflowKey, "nuclei") || strings.Contains(workflowKey, "vulnerability-scan") {
+	if core.IsNucleiWorkflow(workflow) {
 		if discoveredPorts, exists := localVars["discovered_ports"]; exists && discoveredPorts != "" {
 			localVars["target_urls"] = core.ConvertPortsToURLs(target, discoveredPorts)
 			if debugMode {
@@ -471,7 +471,7 @@ func executeWorkflow(ctx context.Context, workflowKey string, workflows map[stri
 	}
 	
 	// Special handling for nmap deep scan - provide fallback ports if none discovered
-	if strings.Contains(workflowKey, "nmap") && strings.Contains(workflowKey, "deep") {
+	if core.IsNmapDeepScan(workflow) {
 		if discoveredPorts, exists := localVars["discovered_ports"]; !exists || discoveredPorts == "" {
 			// Use common ports as fallback for deep scan
 			localVars["discovered_ports"] = "22,53,80,135,139,443,445,993,995,3306,3389,5432,5900,8080,8443"
@@ -848,20 +848,18 @@ func executeWorkflow(ctx context.Context, workflowKey string, workflows map[stri
 
 // executeWorkflowsInParallel executes multiple workflows with a modern parallel display
 func executeWorkflowsInParallel(ctx context.Context, workflowKeys []string, workflows map[string]*core.Workflow, vars map[string]string, providedData map[string]string, providedDataMutex *sync.Mutex, debugMode bool, reportDir, target string, config *core.Config, useSudo bool) error {
+	
 	if debugMode {
-		// In debug mode, execute sequentially with detailed output
-		for _, workflowKey := range workflowKeys {
-			if err := executeWorkflow(ctx, workflowKey, workflows, vars, providedData, providedDataMutex, debugMode, reportDir, target, config, useSudo); err != nil {
-				return err
-			}
-		}
-		return nil
+		pterm.Info.Printf("Starting parallel execution of %d workflows: %v\n", len(workflowKeys), workflowKeys)
 	}
 	
-	// Create parallel progress display
-	parallelDisplay := NewParallelDisplay(workflowKeys, workflows)
-	parallelDisplay.Start()
-	defer parallelDisplay.Stop()
+	// Create parallel progress display (skip in debug mode for cleaner output)
+	var parallelDisplay *ParallelDisplay
+	if !debugMode {
+		parallelDisplay = NewParallelDisplay(workflowKeys, workflows)
+		parallelDisplay.Start()
+		defer parallelDisplay.Stop()
+	}
 	
 	// Execute workflows in parallel
 	var wg sync.WaitGroup
@@ -874,19 +872,36 @@ func executeWorkflowsInParallel(ctx context.Context, workflowKeys []string, work
 			defer wg.Done()
 			startTime := time.Now()
 			
-			// Update display to show workflow started
-			parallelDisplay.UpdateStatus(wk, "running", "")
+			if debugMode {
+				pterm.Info.Printf("[%s] Starting parallel execution...\n", wk)
+			} else {
+				// Update display to show workflow started
+				parallelDisplay.UpdateStatus(wk, "running", "")
+			}
 			
-			// Execute workflow without spinner (we have our own display)
-			err := executeWorkflowSilent(ctx, wk, workflows, vars, providedData, providedDataMutex, reportDir, target, config, useSudo)
+			// Execute workflow - use regular executeWorkflow in debug mode for detailed output
+			var err error
+			if debugMode {
+				err = executeWorkflow(ctx, wk, workflows, vars, providedData, providedDataMutex, debugMode, reportDir, target, config, useSudo)
+			} else {
+				err = executeWorkflowSilent(ctx, wk, workflows, vars, providedData, providedDataMutex, reportDir, target, config, useSudo)
+			}
 			
 			duration := time.Since(startTime)
 			
 			if err != nil {
-				parallelDisplay.UpdateStatus(wk, "failed", fmt.Sprintf("Failed after %v", duration.Round(time.Second)))
+				if debugMode {
+					pterm.Error.Printf("[%s] Failed after %v: %v\n", wk, duration.Round(time.Second), err)
+				} else {
+					parallelDisplay.UpdateStatus(wk, "failed", fmt.Sprintf("Failed after %v", duration.Round(time.Second)))
+				}
 				errChan <- err
 			} else {
-				parallelDisplay.UpdateStatus(wk, "completed", fmt.Sprintf("Completed in %v", duration.Round(time.Second)))
+				if debugMode {
+					pterm.Success.Printf("[%s] Completed successfully in %v\n", wk, duration.Round(time.Second))
+				} else {
+					parallelDisplay.UpdateStatus(wk, "completed", fmt.Sprintf("Completed in %v", duration.Round(time.Second)))
+				}
 				resultChan <- ParallelResult{WorkflowKey: wk, Duration: duration, Success: true}
 			}
 		}(workflowKey)
@@ -1108,7 +1123,7 @@ func executeWorkflowSilent(ctx context.Context, workflowKey string, workflows ma
 	providedDataMutex.Unlock()
 	
 	// Special handling for nuclei workflows - convert discovered_ports to target_urls
-	if strings.Contains(workflowKey, "nuclei") || strings.Contains(workflowKey, "vulnerability-scan") {
+	if core.IsNucleiWorkflow(workflow) {
 		if discoveredPorts, exists := localVars["discovered_ports"]; exists && discoveredPorts != "" {
 			localVars["target_urls"] = core.ConvertPortsToURLs(target, discoveredPorts)
 		} else {
@@ -1118,7 +1133,7 @@ func executeWorkflowSilent(ctx context.Context, workflowKey string, workflows ma
 	}
 	
 	// Special handling for nmap deep scan - provide fallback ports if none discovered
-	if strings.Contains(workflowKey, "nmap") && strings.Contains(workflowKey, "deep") {
+	if core.IsNmapDeepScan(workflow) {
 		if discoveredPorts, exists := localVars["discovered_ports"]; !exists || discoveredPorts == "" {
 			// Use common ports as fallback for deep scan
 			localVars["discovered_ports"] = "22,53,80,135,139,443,445,993,995,3306,3389,5432,5900,8080,8443"

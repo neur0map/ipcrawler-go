@@ -93,6 +93,36 @@ func LoadWorkflow(path string) (*Workflow, error) {
 	return &workflow, nil
 }
 
+// extractToolFromWorkflow extracts the tool name from the first step of a workflow
+func extractToolFromWorkflow(workflow *Workflow) string {
+	if len(workflow.Steps) > 0 {
+		return workflow.Steps[0].Tool
+	}
+	return "unknown"
+}
+
+// IsNucleiWorkflow checks if a workflow uses nuclei or is a vulnerability scan
+func IsNucleiWorkflow(workflow *Workflow) bool {
+	if len(workflow.Steps) > 0 && workflow.Steps[0].Tool == "nuclei" {
+		return true
+	}
+	// Also check if it's a vulnerability scan (alternative detection)
+	return strings.Contains(strings.ToLower(workflow.Name), "vulnerability") ||
+		   strings.Contains(strings.ToLower(workflow.Description), "vulnerability")
+}
+
+// IsNmapDeepScan checks if a workflow is an nmap deep scan
+func IsNmapDeepScan(workflow *Workflow) bool {
+	if len(workflow.Steps) == 0 || workflow.Steps[0].Tool != "nmap" {
+		return false
+	}
+	// Check if it's a deep scan by name or description
+	return strings.Contains(strings.ToLower(workflow.Name), "deep") ||
+		   strings.Contains(strings.ToLower(workflow.Description), "deep") ||
+		   strings.Contains(strings.ToLower(workflow.Name), "service") ||
+		   strings.Contains(strings.ToLower(workflow.Description), "service")
+}
+
 func LoadTemplateWorkflows(workflowsDir, templateName string) (map[string]*Workflow, error) {
 	templateDir := filepath.Join(workflowsDir, templateName)
 	
@@ -103,42 +133,34 @@ func LoadTemplateWorkflows(workflowsDir, templateName string) (map[string]*Workf
 
 	workflows := make(map[string]*Workflow)
 
-	// Walk through all tool directories in the template
-	entries, err := os.ReadDir(templateDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read template directory: %w", err)
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		toolName := entry.Name()
-		toolDir := filepath.Join(templateDir, toolName)
-
-		// Read all YAML files in the tool directory
-		toolEntries, err := os.ReadDir(toolDir)
+	// Recursively walk all directories and find YAML files
+	err := filepath.WalkDir(templateDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			continue // Skip if we can't read the tool directory
+			return nil // Skip files/directories we can't access
 		}
-
-		for _, toolEntry := range toolEntries {
-			if toolEntry.IsDir() || !strings.HasSuffix(toolEntry.Name(), ".yaml") {
-				continue
-			}
-
-			workflowFile := filepath.Join(toolDir, toolEntry.Name())
-			workflow, err := LoadWorkflow(workflowFile)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load workflow %s for %s: %w", toolEntry.Name(), toolName, err)
-			}
-
-			// Create a unique key for each workflow (tool_workflowname)
-			workflowBaseName := strings.TrimSuffix(toolEntry.Name(), ".yaml")
-			workflowKey := fmt.Sprintf("%s_%s", toolName, workflowBaseName)
-			workflows[workflowKey] = workflow
+		
+		// Skip directories and non-YAML files
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".yaml") {
+			return nil
 		}
+		
+		// Load workflow and extract tool name from YAML content
+		workflow, err := LoadWorkflow(path)
+		if err != nil {
+			return fmt.Errorf("failed to load workflow %s: %w", path, err)
+		}
+		
+		// Get tool name from first step (more reliable than directory name)
+		toolName := extractToolFromWorkflow(workflow)
+		workflowBaseName := strings.TrimSuffix(d.Name(), ".yaml")
+		workflowKey := fmt.Sprintf("%s_%s", toolName, workflowBaseName)
+		
+		workflows[workflowKey] = workflow
+		return nil
+	})
+	
+	if err != nil {
+		return nil, fmt.Errorf("failed to walk template directory: %w", err)
 	}
 
 	return workflows, nil
