@@ -6,7 +6,7 @@ default: build
 # OS and Architecture detection
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
-GO_VERSION := 1.23.5
+GO_VERSION := 1.24.5
 
 # Determine OS and architecture for Go installation
 ifeq ($(UNAME_S),Linux)
