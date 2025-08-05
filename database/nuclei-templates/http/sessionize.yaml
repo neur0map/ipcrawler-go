@@ -1,0 +1,37 @@
+id: sessionize
+
+info:
+  name: Sessionize User Information - Detect
+  author: rxerium
+  severity: info
+  description: |
+    Sessionize user profile information check was conducted.
+  classification:
+    cvss-metrics: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N
+    cwe-id: CWE-200
+  metadata:
+    max-request: 1
+    verified: true
+  tags: osint,osint-social,sessionize
+
+self-contained: true
+
+http:
+  - method: GET
+    path:
+      - "https://sessionize.com/{{user}}"
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'alt="Sessionize">'
+          - 'profile'
+          - 'Favorite</span>'
+        condition: and
+
+      - type: status
+        status:
+          - 200
+# digest: 4a0a00473045022100f3842c0144b0b075f3b79833650544dcdba72cc8879fbfef47c6962f6814ac9202203c9247bfba8b026e3d06120a3fcce6877ce7b01e3af80d02bfe8884d63d5f42b:922c64590222798bb761d5b6d8e72950
