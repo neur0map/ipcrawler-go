@@ -34,12 +34,24 @@ SYSTEM_GO_PATH := /usr/local/go
 USER_GO_PATH := $(HOME)/.go
 SYSTEM_BIN_PATH := /usr/local/bin
 
-# Mac-specific: use /usr/local/bin even for user installs since ~/bin isn't in PATH
+# Determine BIN_PATH once - test write access to system location first
+BIN_PATH := $(shell if [ -w "$(SYSTEM_BIN_PATH)" ] || sudo -n true 2>/dev/null; then echo "$(SYSTEM_BIN_PATH)"; else echo "$(HOME)/bin"; fi)
+
+# Mac-specific: always use /usr/local/bin since ~/bin isn't in PATH
 ifeq ($(OS),darwin)
-    USER_BIN_PATH := /usr/local/bin
-else
-    USER_BIN_PATH := $(HOME)/bin
+    BIN_PATH := /usr/local/bin
 endif
+
+# Export GOBIN to ensure go install puts binaries in our chosen directory
+export GOBIN := $(BIN_PATH)
+
+# Tools to install with go install
+GO_TOOLS := \
+    github.com/projectdiscovery/naabu/v2/cmd/naabu@latest \
+    github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+
+# System packages to install (nmap)
+SYSTEM_PACKAGES := nmap
 
 # Colors for output
 RED := \033[0;31m
@@ -52,20 +64,24 @@ NC := \033[0m # No Color
 .PHONY: all
 all: install
 
-# Main installation target - always builds/updates ipcrawler
+# Main installation target - complete setup including tools
 .PHONY: install
 install:
 	@echo "$(BLUE)🚀 IPCrawler Installation$(NC)"
 	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@# Ensure BIN_PATH directory exists
+	@mkdir -p $(BIN_PATH)
 	@$(MAKE) check-prerequisites
 	@$(MAKE) check-os
 	@$(MAKE) install-go
 	@$(MAKE) build
 	@$(MAKE) install-binary
+	@$(MAKE) install-tools
 	@echo ""
 	@echo "$(GREEN)✅ Installation Complete!$(NC)"
 	@echo "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
-	@echo "You can now run: $(BLUE)go version$(NC) and $(BLUE)ipcrawler --help$(NC)"
+	@echo "Installed tools are available at: $(BLUE)$(BIN_PATH)$(NC)"
+	@echo "You can now run: $(BLUE)ipcrawler$(NC), $(BLUE)naabu$(NC), $(BLUE)nuclei$(NC), $(BLUE)nmap$(NC)"
 
 # Update target - pull latest code and rebuild
 .PHONY: update
@@ -276,6 +292,82 @@ install-binary:
 	echo "$(GREEN)   ✓ IPCrawler installed successfully$(NC)"; \
 	echo "   • Symlink: $$BIN_PATH/$(PROJECT_NAME) → $$FULL_BINARY_PATH"
 
+# Install additional tools - Go tools via go install, system tools via package manager
+.PHONY: install-tools
+install-tools:
+	@echo ""
+	@echo "$(BLUE)🛠️  Installing Additional Tools$(NC)"
+	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	
+	@# Ensure Go is available
+	@if ! command -v go >/dev/null 2>&1; then \
+		echo "$(RED)   ✗ Go not found - run 'make install-go' first$(NC)"; \
+		exit 1; \
+	fi
+	
+	@# Determine if we need sudo for BIN_PATH
+	@NEED_SUDO=""; \
+	if [ "$(BIN_PATH)" = "$(SYSTEM_BIN_PATH)" ] && [ ! -w "$(BIN_PATH)" ]; then \
+		NEED_SUDO="sudo"; \
+	fi
+	
+	@echo "$(YELLOW)📦 Installing Go tools to $(BIN_PATH)...$(NC)"
+	@echo "   • GOBIN=$(GOBIN)"
+	
+	@# Install each Go tool
+	@for tool in $(GO_TOOLS); do \
+		TOOL_NAME=$$(echo $$tool | sed 's|.*/||; s|@.*||'); \
+		echo ""; \
+		echo "$(YELLOW)   • Installing $$TOOL_NAME...$(NC)"; \
+		if GOBIN=$(GOBIN) go install $$tool; then \
+			echo "$(GREEN)   ✓ $$TOOL_NAME → $(BIN_PATH)/$$TOOL_NAME$(NC)"; \
+		else \
+			echo "$(RED)   ✗ Failed to install $$TOOL_NAME$(NC)"; \
+		fi; \
+	done
+	
+	@echo ""
+	@echo "$(YELLOW)📦 Installing system packages...$(NC)"
+	
+	@# Install system packages based on OS
+	@for pkg in $(SYSTEM_PACKAGES); do \
+		if command -v $$pkg >/dev/null 2>&1; then \
+			echo "$(GREEN)   ✓ $$pkg already installed$(NC)"; \
+		else \
+			echo "$(YELLOW)   • Installing $$pkg...$(NC)"; \
+			if [ "$(OS)" = "darwin" ]; then \
+				if command -v brew >/dev/null 2>&1; then \
+					brew install $$pkg || echo "$(YELLOW)   ⚠ Failed to install $$pkg - install manually$(NC)"; \
+				else \
+					echo "$(YELLOW)   ⚠ Homebrew not found - install $$pkg manually$(NC)"; \
+				fi; \
+			elif [ -f /etc/debian_version ]; then \
+				if $$NEED_SUDO apt-get install -y $$pkg 2>/dev/null; then \
+					echo "$(GREEN)   ✓ $$pkg installed$(NC)"; \
+				else \
+					echo "$(YELLOW)   ⚠ Failed to install $$pkg - install manually with: sudo apt-get install $$pkg$(NC)"; \
+				fi; \
+			elif [ -f /etc/redhat-release ]; then \
+				if $$NEED_SUDO yum install -y $$pkg 2>/dev/null; then \
+					echo "$(GREEN)   ✓ $$pkg installed$(NC)"; \
+				else \
+					echo "$(YELLOW)   ⚠ Failed to install $$pkg - install manually with: sudo yum install $$pkg$(NC)"; \
+				fi; \
+			elif [ -f /etc/arch-release ]; then \
+				if $$NEED_SUDO pacman -S --noconfirm $$pkg 2>/dev/null; then \
+					echo "$(GREEN)   ✓ $$pkg installed$(NC)"; \
+				else \
+					echo "$(YELLOW)   ⚠ Failed to install $$pkg - install manually with: sudo pacman -S $$pkg$(NC)"; \
+				fi; \
+			else \
+				echo "$(YELLOW)   ⚠ Unknown OS - install $$pkg manually$(NC)"; \
+			fi; \
+		fi; \
+	done
+	
+	@echo ""
+	@echo "$(GREEN)   ✓ Tool installation complete$(NC)"
+
 # Clean build artifacts and cache
 .PHONY: clean
 clean:
@@ -292,21 +384,27 @@ help:
 	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
 	@echo ""
 	@echo "$(YELLOW)Available targets:$(NC)"
-	@echo "  $(GREEN)make install$(NC)  - Complete installation (Go + IPCrawler)"
-	@echo "  $(GREEN)make update$(NC)   - Update to latest code and rebuild"
-	@echo "  $(GREEN)make build$(NC)    - Build IPCrawler binary only"
-	@echo "  $(GREEN)make clean$(NC)    - Clean build artifacts and cache"
-	@echo "  $(GREEN)make help$(NC)     - Show this help message"
+	@echo "  $(GREEN)make install$(NC)       - Complete installation (Go + IPCrawler + tools)"
+	@echo "  $(GREEN)make update$(NC)        - Update to latest code and rebuild"
+	@echo "  $(GREEN)make install-tools$(NC) - Install/update naabu, nuclei, nmap"
+	@echo "  $(GREEN)make build$(NC)         - Build IPCrawler binary only"
+	@echo "  $(GREEN)make clean$(NC)         - Clean build artifacts and cache"
+	@echo "  $(GREEN)make help$(NC)          - Show this help message"
 	@echo ""
 	@echo "$(YELLOW)Configuration:$(NC)"
 	@echo "  $(BLUE)GO_VERSION$(NC)    - Go version to install (default: $(GO_VERSION))"
+	@echo "  $(BLUE)GOBIN$(NC)         - Binary installation path ($(GOBIN))"
+	@echo ""
+	@echo "$(YELLOW)Tools installed:$(NC)"
+	@echo "  • Go tools: naabu, nuclei (via go install)"
+	@echo "  • System tools: nmap (via package manager)"
 	@echo ""
 	@echo "$(YELLOW)Usage:$(NC)"
-	@echo "  make install                    # First-time setup"
+	@echo "  make install                    # First-time setup with all tools"
 	@echo "  make update                     # Get latest changes"
-	@echo "  make install GO_VERSION=1.23.0  # Install specific Go version"
+	@echo "  make install-tools              # Update tools only"
 	@echo ""
 	@echo "$(YELLOW)Notes:$(NC)"
-	@echo "  • No PATH modifications needed - uses symlinks"
-	@echo "  • Installs to /usr/local/bin (system) or ~/bin (user)"
+	@echo "  • No PATH modifications needed - uses GOBIN=$(GOBIN)"
+	@echo "  • All tools installed to: $(BIN_PATH)"
 	@echo "  • Commands available immediately after install"
