@@ -10,12 +10,13 @@ import (
 )
 
 type Workflow struct {
-	Name        string       `yaml:"name"`
-	Description string       `yaml:"description"`
-	Report      interface{}  `yaml:"report,omitempty"` // Can be bool or ReportConfig
-	Requires    []string     `yaml:"requires,omitempty"` // Dependencies on other workflows
-	Provides    []string     `yaml:"provides,omitempty"` // Data this workflow provides
-	Steps       []Step       `yaml:"steps"`
+	Name          string       `yaml:"name"`
+	Description   string       `yaml:"description"`
+	Report        interface{}  `yaml:"report,omitempty"` // Can be bool or ReportConfig
+	Requires      []string     `yaml:"requires,omitempty"` // Dependencies on other workflows
+	Provides      []string     `yaml:"provides,omitempty"` // Data this workflow provides
+	ParallelGroup string       `yaml:"parallel_group,omitempty"` // Workflows with same group can run in parallel
+	Steps         []Step       `yaml:"steps"`
 }
 
 type Step struct {

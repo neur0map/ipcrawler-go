@@ -1,11 +1,13 @@
 name: "Deep Service Analysis"
 description: "Detailed service and version detection on discovered open ports"
+parallel_group: "analysis"
 requires:
   - "port-discovery"
 report:
   enabled: true
   agents:
     - receiver
+    - nmap_processor
     - universal_processor
     - validator
     - reporter

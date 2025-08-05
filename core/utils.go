@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -603,15 +604,35 @@ func ShowPortDiscoveryResults(results *ScanResults) {
 		return
 	}
 	
-	var openPorts []string
+	var openPorts []PortInfo
 	for _, port := range results.Ports {
 		if port.State == "open" {
-			openPorts = append(openPorts, strconv.Itoa(port.Number))
+			openPorts = append(openPorts, port)
 		}
 	}
 	
 	if len(openPorts) > 0 {
-		pterm.Info.Printf("🔍 Found %d open ports: %s\n", len(openPorts), strings.Join(openPorts, ", "))
+		// Create table data
+		tableData := [][]string{
+			{"Port", "Protocol", "State"},
+		}
+		
+		for _, port := range openPorts {
+			protocol := port.Service
+			if protocol == "" {
+				protocol = "tcp" // Default protocol for naabu
+			}
+			tableData = append(tableData, []string{
+				strconv.Itoa(port.Number),
+				protocol,
+				"open",
+			})
+		}
+		
+		// Display header and table
+		pterm.Info.Printf("🔍 Found %d open ports:\n", len(openPorts))
+		pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		fmt.Println()
 	}
 }
 
@@ -842,5 +863,494 @@ func validateArgsSubstitution(args []string) error {
 		}
 	}
 	return nil
+}
+
+// WaitForToolCompletion waits for expected output files to be created and completed
+func WaitForToolCompletion(reportDir string, workflows map[string]*Workflow, timeout time.Duration, debugMode bool) error {
+	if debugMode {
+		pterm.Info.Println("🔍 Waiting for tool outputs to complete...")
+	}
+	
+	// Collect expected output files from all workflows
+	expectedFiles := collectExpectedOutputFiles(reportDir, workflows)
+	if len(expectedFiles) == 0 {
+		if debugMode {
+			pterm.Info.Println("No output files expected, continuing immediately")
+		}
+		return nil
+	}
+	
+	if debugMode {
+		pterm.Info.Printf("Waiting for %d expected output files...\n", len(expectedFiles))
+		for _, file := range expectedFiles {
+			pterm.Info.Printf("  - %s\n", file)
+		}
+	}
+	
+	start := time.Now()
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-time.After(timeout):
+			missing := []string{}
+			for _, file := range expectedFiles {
+				if !isFileCompletelyWritten(file) {
+					missing = append(missing, file)
+				}
+			}
+			if len(missing) > 0 {
+				return fmt.Errorf("timeout waiting for tools to complete. Missing files: %v", missing)
+			}
+			return nil
+			
+		case <-ticker.C:
+			allComplete := true
+			for _, file := range expectedFiles {
+				if !isFileCompletelyWritten(file) {
+					allComplete = false
+					break
+				}
+			}
+			
+			if allComplete {
+				if debugMode {
+					pterm.Success.Printf("✅ All output files ready after %v\n", time.Since(start).Round(time.Millisecond))
+				}
+				return nil
+			}
+		}
+	}
+}
+
+// collectExpectedOutputFiles gathers the list of output files that tools should create
+func collectExpectedOutputFiles(reportDir string, workflows map[string]*Workflow) []string {
+	var files []string
+	
+	for _, workflow := range workflows {
+		for _, step := range workflow.Steps {
+			// Look for output file specifications in arguments
+			for i, arg := range step.ArgsSudo {
+				if (arg == "-o" || arg == "-oX" || arg == "-oN" || arg == "-oG") && i+1 < len(step.ArgsSudo) {
+					outputFile := step.ArgsSudo[i+1]
+					// Replace placeholders with actual values
+					outputFile = strings.ReplaceAll(outputFile, "{{report_dir}}", reportDir)
+					files = append(files, outputFile)
+				}
+			}
+			for i, arg := range step.ArgsNormal {
+				if (arg == "-o" || arg == "-oX" || arg == "-oN" || arg == "-oG") && i+1 < len(step.ArgsNormal) {
+					outputFile := step.ArgsNormal[i+1]
+					// Replace placeholders with actual values
+					outputFile = strings.ReplaceAll(outputFile, "{{report_dir}}", reportDir)
+					files = append(files, outputFile)
+				}
+			}
+		}
+	}
+	
+	return files
+}
+
+// isFileCompletelyWritten checks if a file exists and appears to be completely written
+func isFileCompletelyWritten(filePath string) bool {
+	// Check if file exists
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return false
+	}
+	
+	// Check if file has content
+	if info.Size() == 0 {
+		return false
+	}
+	
+	// Wait a brief moment and check if size changed (indicates ongoing write)
+	initialSize := info.Size()
+	time.Sleep(50 * time.Millisecond)
+	
+	info2, err := os.Stat(filePath)
+	if err != nil {
+		return false
+	}
+	
+	// If size changed, file is still being written
+	if info2.Size() != initialSize {
+		return false
+	}
+	
+	// Additional check: try to open file for reading to ensure it's not locked
+	file, err := os.Open(filePath)
+	if err != nil {
+		return false
+	}
+	file.Close()
+	
+	return true
+}
+
+// DisplayRawResults shows raw tool outputs when reporting pipeline fails
+func DisplayRawResults(reportDir, target string, debugMode bool) {
+	pterm.Warning.Println("📄 Showing raw scan results since report generation failed:")
+	pterm.Println()
+	
+	rawDir := filepath.Join(reportDir, "raw")
+	
+	// Check if raw directory exists
+	if _, err := os.Stat(rawDir); os.IsNotExist(err) {
+		pterm.Error.Printf("Raw results directory not found: %s\n", rawDir)
+		return
+	}
+	
+	// Look for common output files
+	filePatterns := []string{
+		"naabu_*.json",
+		"nmap_*.xml",
+		"nmap_*.txt", 
+		"nuclei_*.json",
+		"*.json",
+		"*.xml",
+		"*.txt",
+	}
+	
+	foundFiles := false
+	
+	for _, pattern := range filePatterns {
+		files, err := filepath.Glob(filepath.Join(rawDir, pattern))
+		if err != nil {
+			continue
+		}
+		
+		for _, file := range files {
+			foundFiles = true
+			displayRawFile(file, debugMode)
+		}
+	}
+	
+	if !foundFiles {
+		pterm.Warning.Printf("No raw result files found in %s\n", rawDir)
+		
+		// Try to list what files are actually there
+		files, err := ioutil.ReadDir(rawDir)
+		if err == nil && len(files) > 0 {
+			pterm.Info.Println("Available files in raw directory:")
+			for _, file := range files {
+				pterm.Info.Printf("  - %s (%d bytes)\n", file.Name(), file.Size())
+			}
+		}
+	}
+}
+
+// displayRawFile shows the contents of a raw output file
+func displayRawFile(filePath string, debugMode bool) {
+	fileName := filepath.Base(filePath)
+	
+	// Determine file type and display accordingly
+	if strings.HasSuffix(fileName, ".json") {
+		displayJSONFile(filePath, fileName, debugMode)
+	} else if strings.HasSuffix(fileName, ".xml") {
+		displayXMLFile(filePath, fileName, debugMode)
+	} else {
+		displayTextFile(filePath, fileName, debugMode)
+	}
+}
+
+// displayJSONFile shows structured JSON output
+func displayJSONFile(filePath, fileName string, debugMode bool) {
+	pterm.Info.Printf("📋 %s:\n", fileName)
+	
+	data, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		pterm.Error.Printf("Failed to read %s: %v\n", fileName, err)
+		return
+	}
+	
+	content := string(data)
+	if content == "" {
+		pterm.Warning.Printf("File %s is empty\n", fileName)
+		return
+	}
+	
+	// Try to parse and display structured data for known tools
+	if strings.Contains(fileName, "naabu") {
+		displayNaabuResults(content)
+	} else if strings.Contains(fileName, "nuclei") {
+		displayNucleiResults(content)
+	} else {
+		// Display raw JSON with some formatting
+		lines := strings.Split(content, "\n")
+		displayed := 0
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				fmt.Printf("  %s\n", line)
+				displayed++
+				if displayed >= 20 && !debugMode {
+					remaining := len(lines) - displayed
+					if remaining > 0 {
+						pterm.Info.Printf("  ... (%d more lines, use --debug to see all)\n", remaining)
+					}
+					break
+				}
+			}
+		}
+	}
+	pterm.Println()
+}
+
+// displayXMLFile shows XML output (typically from nmap)
+func displayXMLFile(filePath, fileName string, debugMode bool) {
+	pterm.Info.Printf("📋 %s:\n", fileName)
+	
+	data, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		pterm.Error.Printf("Failed to read %s: %v\n", fileName, err)
+		return
+	}
+	
+	content := string(data)
+	if content == "" {
+		pterm.Warning.Printf("File %s is empty\n", fileName)
+		return
+	}
+	
+	// For XML files, show a summary instead of raw XML
+	if strings.Contains(fileName, "nmap") {
+		extractNmapSummaryFromXML(content)
+	} else {
+		// Show first few lines of XML
+		lines := strings.Split(content, "\n")
+		displayed := 0
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.HasPrefix(line, "<?xml") && !strings.HasPrefix(line, "<!DOCTYPE") {
+				fmt.Printf("  %s\n", line)
+				displayed++
+				if displayed >= 10 && !debugMode {
+					remaining := len(lines) - displayed
+					if remaining > 0 {
+						pterm.Info.Printf("  ... (%d more lines, use --debug to see all)\n", remaining)
+					}
+					break
+				}
+			}
+		}
+	}
+	pterm.Println()
+}
+
+// displayTextFile shows plain text output
+func displayTextFile(filePath, fileName string, debugMode bool) {
+	pterm.Info.Printf("📋 %s:\n", fileName)
+	
+	data, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		pterm.Error.Printf("Failed to read %s: %v\n", fileName, err)
+		return
+	}
+	
+	content := string(data)
+	if content == "" {
+		pterm.Warning.Printf("File %s is empty\n", fileName)
+		return
+	}
+	
+	lines := strings.Split(content, "\n")
+	displayed := 0
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			fmt.Printf("  %s\n", line)
+			displayed++
+			if displayed >= 20 && !debugMode {
+				remaining := len(lines) - displayed
+				if remaining > 0 {
+					pterm.Info.Printf("  ... (%d more lines, use --debug to see all)\n", remaining)
+				}
+				break
+			}
+		}
+	}
+	pterm.Println()
+}
+
+// displayNaabuResults shows structured naabu port discovery results
+func displayNaabuResults(content string) {
+	lines := strings.Split(content, "\n")
+	var ports []int
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.HasPrefix(line, "{") {
+			continue
+		}
+		
+		var result struct {
+			Port int    `json:"port"`
+			Host string `json:"host"`
+		}
+		
+		if err := json.Unmarshal([]byte(line), &result); err == nil {
+			ports = append(ports, result.Port)
+		}
+	}
+	
+	if len(ports) > 0 {
+		pterm.Success.Printf("🔍 Found %d open ports: ", len(ports))
+		
+		// Group consecutive ports for better display
+		groups := groupConsecutivePorts(ports)
+		fmt.Printf("%s\n", strings.Join(groups, ", "))
+	} else {
+		pterm.Warning.Println("No open ports found in naabu output")
+	}
+}
+
+// displayNucleiResults shows structured nuclei vulnerability results  
+func displayNucleiResults(content string) {
+	lines := strings.Split(content, "\n")
+	var vulns []map[string]interface{}
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.HasPrefix(line, "{") {
+			continue
+		}
+		
+		var result map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &result); err == nil {
+			vulns = append(vulns, result)
+		}
+	}
+	
+	if len(vulns) > 0 {
+		pterm.Warning.Printf("⚠️  Found %d potential vulnerabilities:\n", len(vulns))
+		
+		for i, vuln := range vulns {
+			if i >= 10 { // Limit display to first 10
+				pterm.Info.Printf("  ... and %d more vulnerabilities\n", len(vulns)-10)
+				break
+			}
+			
+			if templateID, ok := vuln["template-id"].(string); ok {
+				severity := "unknown"
+				if info, ok := vuln["info"].(map[string]interface{}); ok {
+					if sev, ok := info["severity"].(string); ok {
+						severity = sev
+					}
+				}
+				
+				severityColor := pterm.FgWhite
+				switch strings.ToLower(severity) {
+				case "critical":
+					severityColor = pterm.FgRed
+				case "high":
+					severityColor = pterm.FgLightRed
+				case "medium":
+					severityColor = pterm.FgYellow
+				case "low":
+					severityColor = pterm.FgLightBlue
+				}
+				
+				pterm.Printf("  • %s ", 
+					pterm.NewStyle(severityColor, pterm.Bold).Sprintf("[%s]", strings.ToUpper(severity)))
+				fmt.Printf("%s\n", templateID)
+			}
+		}
+	} else {
+		pterm.Success.Println("No vulnerabilities found in nuclei output")
+	}
+}
+
+// extractNmapSummaryFromXML extracts key information from nmap XML output
+func extractNmapSummaryFromXML(content string) {
+	// Simple regex-based extraction for quick summary
+	hostRegex := regexp.MustCompile(`<host[^>]*>.*?</host>`)
+	portRegex := regexp.MustCompile(`<port protocol="([^"]*)" portid="([^"]*)"[^>]*>.*?<state state="([^"]*)"[^>]*/>.*?</port>`)
+	serviceRegex := regexp.MustCompile(`<service name="([^"]*)"[^>]*/>`)
+	
+	hosts := hostRegex.FindAllString(content, -1)
+	if len(hosts) == 0 {
+		pterm.Warning.Println("No host information found in nmap XML")
+		return
+	}
+	
+	var openPorts []string
+	var services []string
+	
+	for _, host := range hosts {
+		ports := portRegex.FindAllStringSubmatch(host, -1)
+		for _, port := range ports {
+			if len(port) >= 4 && port[3] == "open" {
+				portNum := port[2]
+				protocol := port[1]
+				openPorts = append(openPorts, fmt.Sprintf("%s/%s", portNum, protocol))
+				
+				// Extract service info
+				serviceMatches := serviceRegex.FindAllStringSubmatch(port[0], -1)
+				for _, service := range serviceMatches {
+					if len(service) >= 2 {
+						services = append(services, service[1])
+					}
+				}
+			}
+		}
+	}
+	
+	if len(openPorts) > 0 {
+		pterm.Success.Printf("🔍 Found %d open ports: %s\n", len(openPorts), strings.Join(openPorts, ", "))
+		
+		if len(services) > 0 {
+			uniqueServices := removeDuplicateStrings(services)
+			pterm.Info.Printf("🔎 Services detected: %s\n", strings.Join(uniqueServices, ", "))
+		}
+	} else {
+		pterm.Warning.Println("No open ports found in nmap XML")
+	}
+}
+
+// groupConsecutivePorts groups consecutive port numbers for better display
+func groupConsecutivePorts(ports []int) []string {
+	if len(ports) == 0 {
+		return []string{}
+	}
+	
+	// Sort ports first
+	for i := 0; i < len(ports)-1; i++ {
+		for j := i + 1; j < len(ports); j++ {
+			if ports[i] > ports[j] {
+				ports[i], ports[j] = ports[j], ports[i]
+			}
+		}
+	}
+	
+	var groups []string
+	start := ports[0]
+	end := ports[0]
+	
+	for i := 1; i < len(ports); i++ {
+		if ports[i] == end+1 {
+			end = ports[i]
+		} else {
+			// Add current group
+			if start == end {
+				groups = append(groups, strconv.Itoa(start))
+			} else {
+				groups = append(groups, fmt.Sprintf("%d-%d", start, end))
+			}
+			start = ports[i]
+			end = ports[i]
+		}
+	}
+	
+	// Add final group
+	if start == end {
+		groups = append(groups, strconv.Itoa(start))
+	} else {
+		groups = append(groups, fmt.Sprintf("%d-%d", start, end))
+	}
+	
+	return groups
 }
 

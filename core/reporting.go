@@ -80,7 +80,7 @@ func RunReportingPipeline(reportDir, target string, workflows map[string]*Workfl
 	}
 	
 	// Add agents to pipeline in the correct order
-	agentOrder := []string{"receiver", "nmap_processor", "data_accumulator", "coordinator", "validator", "reporter"}
+	agentOrder := []string{"receiver", "nmap_processor", "universal_processor", "data_accumulator", "coordinator", "validator", "reporter"}
 	
 	for _, agentName := range agentOrder {
 		if !requiredAgents[agentName] {
@@ -166,7 +166,8 @@ func RunReportingPipeline(reportDir, target string, workflows map[string]*Workfl
 	startTime := time.Now()
 	result, err := pipeline.Execute(target, nil)
 	if err != nil {
-		return fmt.Errorf("pipeline execution failed: %w", err)
+		// Enhanced error context
+		return fmt.Errorf("pipeline execution failed after %v: %w", time.Since(startTime), err)
 	}
 
 	duration := time.Since(startTime)
@@ -174,12 +175,21 @@ func RunReportingPipeline(reportDir, target string, workflows map[string]*Workfl
 		log.Printf("Reporting pipeline completed in %v", duration)
 	}
 
-	// Check results
+	// Check results - be more strict about failures
 	if !result.Success {
 		if debugMode {
 			log.Printf("Pipeline completed with errors: %v", result.Error)
 		}
-		return fmt.Errorf("pipeline completed with errors: %w", result.Error)
+		// This is now a hard failure instead of just a warning
+		return fmt.Errorf("reporting pipeline failed: %w", result.Error)
+	}
+
+	// Verify that expected output files were actually created
+	if err := verifyReportOutputs(reportDir, debugMode); err != nil {
+		if debugMode {
+			log.Printf("Report verification failed: %v", err)
+		}
+		return fmt.Errorf("report verification failed: %w", err)
 	}
 
 	if debugMode {
@@ -279,7 +289,7 @@ func RunWorkflowReporting(reportDir, target, workflowKey string, workflow *Workf
 	}
 	
 	// Add agents specified in the workflow in the correct order
-	agentOrder := []string{"receiver", "nmap_processor", "data_accumulator", "coordinator", "validator", "reporter"}
+	agentOrder := []string{"receiver", "nmap_processor", "universal_processor", "data_accumulator", "coordinator", "validator", "reporter"}
 	
 	for _, agentName := range agentOrder {
 		// Check if this agent is required by the workflow
@@ -553,4 +563,49 @@ func (d *dataAccumulatorAgent) Process(input *agents.AgentInput) (*agents.AgentO
 	// Pass accumulated outputs to next agent (coordinator)
 	output := d.CreateOutput(d.cleanerOutputs, input.Metadata, true)
 	return output, nil
+}
+
+// verifyReportOutputs checks that expected report files were created
+func verifyReportOutputs(reportDir string, debugMode bool) error {
+	expectedDirs := []string{
+		filepath.Join(reportDir, "processed"),
+		filepath.Join(reportDir, "summary"),
+	}
+	
+	// Check that expected directories exist
+	for _, dir := range expectedDirs {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			return fmt.Errorf("expected report directory missing: %s", dir)
+		}
+	}
+	
+	// Check for summary files (at least one should exist)
+	summaryDir := filepath.Join(reportDir, "summary")
+	files, err := ioutil.ReadDir(summaryDir)
+	if err != nil {
+		return fmt.Errorf("failed to read summary directory: %w", err)
+	}
+	
+	if len(files) == 0 {
+		return fmt.Errorf("no summary files generated in %s", summaryDir)
+	}
+	
+	// Check that summary files have content
+	hasValidSummary := false
+	for _, file := range files {
+		if file.Size() > 0 {
+			hasValidSummary = true
+			break
+		}
+	}
+	
+	if !hasValidSummary {
+		return fmt.Errorf("all summary files are empty in %s", summaryDir)
+	}
+	
+	if debugMode {
+		log.Printf("Report verification passed: found %d files in summary directory", len(files))
+	}
+	
+	return nil
 }
