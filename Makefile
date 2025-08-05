@@ -305,24 +305,35 @@ install-tools:
 		exit 1; \
 	fi
 	
-	@# Determine if we need sudo for BIN_PATH
-	@NEED_SUDO=""; \
-	if [ "$(BIN_PATH)" = "$(SYSTEM_BIN_PATH)" ] && [ ! -w "$(BIN_PATH)" ]; then \
-		NEED_SUDO="sudo"; \
-	fi
-	
 	@echo "$(YELLOW)📦 Installing Go tools to $(BIN_PATH)...$(NC)"
 	@echo "   • GOBIN=$(GOBIN)"
 	
-	@# Install each Go tool
+	@# Install each Go tool with proper permission handling
 	@for tool in $(GO_TOOLS); do \
 		TOOL_NAME=$$(echo $$tool | sed 's|.*/||; s|@.*||'); \
 		echo ""; \
 		echo "$(YELLOW)   • Installing $$TOOL_NAME...$(NC)"; \
-		if GOBIN=$(GOBIN) go install $$tool; then \
-			echo "$(GREEN)   ✓ $$TOOL_NAME → $(BIN_PATH)/$$TOOL_NAME$(NC)"; \
+		if [ ! -w "$(BIN_PATH)" ]; then \
+			echo "     System directory detected - using alternative installation..."; \
+			TEMP_BIN=$$(mktemp -d); \
+			if GOBIN=$$TEMP_BIN go install $$tool; then \
+				if sudo mv $$TEMP_BIN/$$TOOL_NAME $(BIN_PATH)/ 2>/dev/null; then \
+					echo "$(GREEN)   ✓ $$TOOL_NAME → $(BIN_PATH)/$$TOOL_NAME$(NC)"; \
+				else \
+					echo "$(RED)   ✗ Failed to move $$TOOL_NAME to $(BIN_PATH)$(NC)"; \
+					echo "     Binary available at: $$TEMP_BIN/$$TOOL_NAME"; \
+					echo "     Move manually with: sudo mv $$TEMP_BIN/$$TOOL_NAME $(BIN_PATH)/"; \
+				fi; \
+			else \
+				echo "$(RED)   ✗ Failed to build $$TOOL_NAME$(NC)"; \
+			fi; \
+			rm -rf $$TEMP_BIN 2>/dev/null || true; \
 		else \
-			echo "$(RED)   ✗ Failed to install $$TOOL_NAME$(NC)"; \
+			if GOBIN=$(GOBIN) go install $$tool; then \
+				echo "$(GREEN)   ✓ $$TOOL_NAME → $(BIN_PATH)/$$TOOL_NAME$(NC)"; \
+			else \
+				echo "$(RED)   ✗ Failed to install $$TOOL_NAME$(NC)"; \
+			fi; \
 		fi; \
 	done
 	
