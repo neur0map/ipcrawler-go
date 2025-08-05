@@ -254,17 +254,17 @@ install-user-go:
 	echo "🔧 Updating PATH configuration for user installation..."; \
 	if [ -f ~/.bashrc ]; then \
 		sed -i '/.*\.go\/bin/d' ~/.bashrc 2>/dev/null || true; \
-		echo 'export PATH="$$HOME/.go/bin:$$PATH"' >> ~/.bashrc; \
+		echo "export PATH=\"\$$HOME/.go/bin:\$$PATH\"" >> ~/.bashrc; \
 		echo "  ✅ Updated ~/.bashrc with user Go PATH"; \
 	fi; \
 	if [ -f ~/.zshrc ]; then \
 		sed -i '/.*\.go\/bin/d' ~/.zshrc 2>/dev/null || true; \
-		echo 'export PATH="$$HOME/.go/bin:$$PATH"' >> ~/.zshrc; \
+		echo "export PATH=\"\$$HOME/.go/bin:\$$PATH\"" >> ~/.zshrc; \
 		echo "  ✅ Updated ~/.zshrc with user Go PATH"; \
 	fi; \
 	if [ -f ~/.profile ]; then \
 		sed -i '/.*\.go\/bin/d' ~/.profile 2>/dev/null || true; \
-		echo 'export PATH="$$HOME/.go/bin:$$PATH"' >> ~/.profile; \
+		echo "export PATH=\"\$$HOME/.go/bin:\$$PATH\"" >> ~/.profile; \
 		echo "  ✅ Updated ~/.profile with user Go PATH"; \
 	fi; \
 	echo ""; \
