@@ -7,6 +7,7 @@ GO_VERSION ?= 1.24.5
 PROJECT_NAME = ipcrawler
 BUILD_DIR = build
 CACHE_DIR = $(HOME)/.cache/$(PROJECT_NAME)
+TEMPLATES_DIR = database/nuclei-templates
 
 # OS and Architecture Detection
 OS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
@@ -377,7 +378,19 @@ install-tools:
 	done
 	
 	@echo ""
+	@echo "$(YELLOW)📥 Checking nuclei templates...$(NC)"
+	@# Check that templates exist (no download/update)
+	@EXISTING_COUNT=$$(find "$(TEMPLATES_DIR)" -name "*.yaml" 2>/dev/null | wc -l | tr -d ' '); \
+	if [ "$$EXISTING_COUNT" -gt 1000 ]; then \
+		echo "$(GREEN)   ✓ Found $$EXISTING_COUNT templates$(NC)"; \
+	else \
+		echo "$(YELLOW)   ⚠ Only found $$EXISTING_COUNT templates$(NC)"; \
+		echo "   Templates should be included with the repository"; \
+	fi
+	
+	@echo ""
 	@echo "$(GREEN)   ✓ Tool installation complete$(NC)"
+
 
 # Clean build artifacts and cache
 .PHONY: clean
@@ -395,12 +408,12 @@ help:
 	@echo "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
 	@echo ""
 	@echo "$(YELLOW)Available targets:$(NC)"
-	@echo "  $(GREEN)make install$(NC)       - Complete installation (Go + IPCrawler + tools)"
-	@echo "  $(GREEN)make update$(NC)        - Update to latest code and rebuild"
+	@echo "  $(GREEN)make install$(NC)      - Complete installation (Go + IPCrawler + tools)"
+	@echo "  $(GREEN)make update$(NC)       - Update to latest code and rebuild"
 	@echo "  $(GREEN)make install-tools$(NC) - Install/update naabu, nuclei, nmap"
-	@echo "  $(GREEN)make build$(NC)         - Build IPCrawler binary only"
-	@echo "  $(GREEN)make clean$(NC)         - Clean build artifacts and cache"
-	@echo "  $(GREEN)make help$(NC)          - Show this help message"
+	@echo "  $(GREEN)make build$(NC)        - Build IPCrawler binary only"
+	@echo "  $(GREEN)make clean$(NC)        - Clean build artifacts and cache"
+	@echo "  $(GREEN)make help$(NC)         - Show this help message"
 	@echo ""
 	@echo "$(YELLOW)Configuration:$(NC)"
 	@echo "  $(BLUE)GO_VERSION$(NC)    - Go version to install (default: $(GO_VERSION))"
@@ -409,6 +422,7 @@ help:
 	@echo "$(YELLOW)Tools installed:$(NC)"
 	@echo "  • Go tools: naabu, nuclei (via go install)"
 	@echo "  • System tools: nmap (via package manager)"
+	@echo "  • Nuclei templates: included in repository"
 	@echo ""
 	@echo "$(YELLOW)Usage:$(NC)"
 	@echo "  make install                    # First-time setup with all tools"

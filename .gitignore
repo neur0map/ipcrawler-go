@@ -65,3 +65,15 @@ temp/
 coverage.txt
 coverage.html
 c.out
+
+# Nuclei templates - ignore everything except essential YAML templates
+database/nuclei-templates/*
+!database/nuclei-templates/http/
+!database/nuclei-templates/network/
+!database/nuclei-templates/dns/
+!database/nuclei-templates/ssl/
+!database/nuclei-templates/file/
+!database/nuclei-templates/cloud/
+database/nuclei-templates/**/.git*
+database/nuclei-templates/**/README*
+database/nuclei-templates/**/LICENSE*
