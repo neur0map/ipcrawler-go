@@ -1,4 +1,4 @@
-.PHONY: build install dev run clean update help check-go install-go setup-go force-build clean-go install-user-go ensure-go
+.PHONY: build install install-legacy dev run clean update help check-go install-go setup-go force-build clean-go install-user-go ensure-go fix-shell-config activate-go
 
 # Default target
 default: build
@@ -279,33 +279,19 @@ install-user-go:
 		echo "❌ User Go installation verification failed"; \
 		exit 1; \
 	fi; \
-	echo "🔄 Attempting to reload shell configuration..."; \
-	if [ -n "$$BASH_VERSION" ] && [ -f ~/.bashrc ]; then \
-		echo "  Detected bash - sourcing ~/.bashrc"; \
-		. ~/.bashrc 2>/dev/null || true; \
-	elif [ -n "$$ZSH_VERSION" ] && [ -f ~/.zshrc ]; then \
-		echo "  Detected zsh - sourcing ~/.zshrc"; \
-		. ~/.zshrc 2>/dev/null || true; \
-	elif [ -f ~/.profile ]; then \
-		echo "  Sourcing ~/.profile"; \
-		. ~/.profile 2>/dev/null || true; \
-	fi; \
+	echo "🔄 Setting up Go 1.24.5 for immediate use..."; \
 	echo ""; \
-	echo "🧪 Testing Go availability in current session..."; \
-	if command -v go >/dev/null 2>&1; then \
-		GO_CURRENT=$$(go version 2>/dev/null || echo "unknown"); \
-		if echo "$$GO_CURRENT" | grep -q "go1.24.5"; then \
-			echo "✅ Success! Go 1.24.5 is now active: $$GO_CURRENT"; \
-		else \
-			echo "⚠️  Shell reload partially successful. Current go: $$GO_CURRENT"; \
-			echo "💡 For Go 1.24.5, run: source ~/.bashrc (or restart terminal)"; \
-		fi; \
-	else \
-		echo "⚠️  Go not found in current session PATH"; \
-		echo "💡 Run: source ~/.bashrc (or restart terminal)"; \
-	fi; \
+	echo "📝 Creating activation script..."; \
+	echo 'export PATH="$$HOME/.go/bin:$$PATH"' > $(HOME)/.go_activate; \
+	chmod +x $(HOME)/.go_activate; \
 	echo ""; \
-	echo "💡 Note: User installation ($$GO_DEST) takes precedence over system Go"; \
+	echo "🎯 CRITICAL: To activate Go 1.24.5 in your current session, run:"; \
+	echo ""; \
+	echo "    source $(HOME)/.go_activate"; \
+	echo ""; \
+	echo "🧪 Then verify: go version"; \
+	echo ""; \
+	echo "💡 Note: Future terminal sessions will automatically use Go 1.24.5"; \
 	echo "🎉 Installation complete!"
 
 # Setup Go environment (run after installing Go)
@@ -435,8 +421,13 @@ clean-go:
 		echo "❌ Go cleanup cancelled"; \
 	fi
 
-# Install globally (creates symlink if needed) - handles Go installation automatically
-install: ensure-go build
+# Install using the dedicated installation script
+install:
+	@echo "🚀 Running installation script..."
+	@./scripts/install.sh
+
+# Legacy install target (Makefile-based)
+install-legacy: ensure-go build
 	@echo "🧹 Cleaning Go module cache to prevent version conflicts..."
 	@export PATH=$(HOME)/.go/bin:/usr/local/go/bin:$$PATH; \
 	if [ -x "$(HOME)/.go/bin/go" ]; then \
@@ -454,6 +445,14 @@ install: ensure-go build
 	fi
 	@echo "🔧 Running setup script with correct Go environment..."
 	@export PATH=$(HOME)/.go/bin:/usr/local/go/bin:$$PATH GOPATH=$$HOME/go; ./scripts/setup.sh
+	@echo ""
+	@echo "✅ Installation complete!"
+	@echo ""
+	@echo "🎯 To activate Go 1.24.5: export PATH=\"\$$HOME/.go/bin:\$$PATH\""
+
+# Helper target to generate the export command
+activate-go:
+	@echo "export PATH=\"$$HOME/.go/bin:$$PATH\""
 
 # Development mode - auto-rebuild on file changes (requires watchexec)
 dev:
@@ -494,7 +493,7 @@ update:
 help:
 	@echo "IPCrawler Build Commands:"
 	@echo "  make             - Build the binary (auto-installs Go if needed)"
-	@echo "  make install     - Build and install globally (auto-installs Go if needed)"
+	@echo "  make install     - Run installation script (recommended - handles PATH automatically)"
 	@echo "  make update      - Pull latest changes, rebuild, and update global command"
 	@echo "  make dev         - Watch files and auto-rebuild"
 	@echo "  make run         - Run without building (use ARGS='...' for arguments)"
@@ -502,9 +501,11 @@ help:
 	@echo "  make check-go      - Check Go installation and version (forces upgrade if < 1.23)"
 	@echo "  make install-go    - Install/upgrade Go system-wide (requires sudo)"
 	@echo "  make install-user-go - Install Go to user directory (~/.go) - no sudo needed"
+	@echo "  make install-legacy  - Legacy Makefile-based install (if script fails)"
 	@echo "  make setup-go      - Setup Go environment"
 	@echo "  make force-build - Build using Go in /usr/local/go/bin (after PATH issues)"
 	@echo "  make clean-go    - Remove old Go installations (keeps only /usr/local/go)"
+	@echo "  make activate-go - Print PATH export command for Go 1.24.5"
 	@echo "  make help        - Show this help"
 	@echo ""
 	@echo "Examples:"
