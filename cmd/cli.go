@@ -19,6 +19,7 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -462,21 +463,6 @@ func executeWorkflow(ctx context.Context, workflowKey string, workflows map[stri
 	}
 	providedDataMutex.Unlock()
 	
-	// Special handling for nuclei workflows - convert discovered_ports to target_urls
-	if core.IsNucleiWorkflow(workflow) {
-		if discoveredPorts, exists := localVars["discovered_ports"]; exists && discoveredPorts != "" {
-			localVars["target_urls"] = core.ConvertPortsToURLs(target, discoveredPorts)
-			if debugMode {
-				pterm.Info.Printf("  🔗 Using discovered ports for nuclei: %s -> %s\n", discoveredPorts, localVars["target_urls"])
-			}
-		} else {
-			// Fallback to basic target if no ports were discovered
-			localVars["target_urls"] = target
-			if debugMode {
-				pterm.Warning.Printf("  ⚠️ No discovered ports found, using target directly: %s\n", target)
-			}
-		}
-	}
 	
 	// Special handling for nmap deep scan - provide fallback ports if none discovered
 	if core.IsNmapDeepScan(workflow) {
@@ -528,8 +514,8 @@ func executeWorkflow(ctx context.Context, workflowKey string, workflows map[stri
 					pterm.Success.Printf("  ✅ Completed\n")
 					workflowResults = results
 				}
-			} else if step.Tool == "nmap" || step.Tool == "nuclei" {
-				// For nmap and nuclei, use enhanced execution with real-time results
+			} else if step.Tool == "nmap" {
+				// For nmap, use enhanced execution with real-time results
 				results, err := core.ExecuteCommandWithRealTimeResultsContext(ctx, step.Tool, args, debugMode, useSudo)
 				if err != nil {
 					if ctx.Err() != nil {
@@ -573,7 +559,7 @@ func executeWorkflow(ctx context.Context, workflowKey string, workflows map[stri
 				core.ShowDeepScanResults(workflowResults)
 			} else if workflowResults.ScanType == "vulnerability-scan" {
 				pterm.Info.Printf("  📊 Vulnerability Results:\n")
-				core.ShowNucleiResults(workflowResults)
+				core.ShowVulnerabilityResults(workflowResults)
 			}
 		}
 	} else {
@@ -622,8 +608,8 @@ func executeWorkflow(ctx context.Context, workflowKey string, workflows map[stri
 					break
 				}
 				workflowResults = results
-			} else if step.Tool == "nmap" || step.Tool == "nuclei" {
-				// For nmap and nuclei, use enhanced execution with real-time results
+			} else if step.Tool == "nmap" {
+				// For nmap, use enhanced execution with real-time results
 				results, err := core.ExecuteCommandWithRealTimeResultsContext(ctx, step.Tool, args, debugMode, useSudo)
 				if err != nil {
 					if ctx.Err() != nil {
@@ -665,7 +651,7 @@ func executeWorkflow(ctx context.Context, workflowKey string, workflows map[stri
 			} else if workflowResults.ScanType == "deep-scan" {
 				core.ShowDeepScanResults(workflowResults)
 			} else if workflowResults.ScanType == "vulnerability-scan" {
-				core.ShowNucleiResults(workflowResults)
+				core.ShowVulnerabilityResults(workflowResults)
 			}
 			pterm.Println()
 		}
@@ -864,7 +850,7 @@ func executeWorkflow(ctx context.Context, workflowKey string, workflows map[stri
 	return nil
 }
 
-// executeWorkflowsInParallel executes multiple workflows with a modern parallel display
+// executeWorkflowsInParallel executes multiple workflows using errgroup for better error handling and system compatibility
 func executeWorkflowsInParallel(ctx context.Context, workflowKeys []string, workflows map[string]*core.Workflow, vars map[string]string, providedData map[string]string, providedDataMutex *sync.Mutex, debugMode bool, reportDir, target string, config *core.Config, useSudo bool) error {
 	
 	if debugMode {
@@ -889,15 +875,25 @@ func executeWorkflowsInParallel(ctx context.Context, workflowKeys []string, work
 		}()
 	}
 	
-	// Execute workflows in parallel
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(workflowKeys))
-	resultChan := make(chan ParallelResult, len(workflowKeys))
+	// Create errgroup with context for automatic error propagation and cancellation
+	g, groupCtx := errgroup.WithContext(ctx)
 	
+	// Set concurrency limit based on configuration and system resources
+	maxConcurrency := config.GetMaxConcurrency(len(workflowKeys))
+	g.SetLimit(maxConcurrency)
+	
+	if debugMode {
+		pterm.Info.Printf("Using errgroup with max concurrency: %d\n", maxConcurrency)
+	}
+	
+	// Results tracking with thread-safe access
+	var resultsMutex sync.Mutex
+	var results []ParallelResult
+	
+	// Execute workflows in parallel using errgroup
 	for _, workflowKey := range workflowKeys {
-		wg.Add(1)
-		go func(wk string) {
-			defer wg.Done()
+		wk := workflowKey // Capture loop variable
+		g.Go(func() error {
 			startTime := time.Now()
 			
 			if debugMode {
@@ -910,9 +906,9 @@ func executeWorkflowsInParallel(ctx context.Context, workflowKeys []string, work
 			// Execute workflow - use regular executeWorkflow in debug mode for detailed output
 			var err error
 			if debugMode {
-				err = executeWorkflow(ctx, wk, workflows, vars, providedData, providedDataMutex, debugMode, reportDir, target, config, useSudo)
+				err = executeWorkflow(groupCtx, wk, workflows, vars, providedData, providedDataMutex, debugMode, reportDir, target, config, useSudo)
 			} else {
-				err = executeWorkflowSilent(ctx, wk, workflows, vars, providedData, providedDataMutex, reportDir, target, config, useSudo)
+				err = executeWorkflowSilent(groupCtx, wk, workflows, vars, providedData, providedDataMutex, reportDir, target, config, useSudo)
 			}
 			
 			duration := time.Since(startTime)
@@ -923,37 +919,41 @@ func executeWorkflowsInParallel(ctx context.Context, workflowKeys []string, work
 				} else {
 					parallelDisplay.UpdateStatus(wk, "failed", fmt.Sprintf("Failed after %v", duration.Round(time.Second)))
 				}
-				errChan <- err
+				// errgroup will automatically cancel other goroutines on first error
+				return fmt.Errorf("workflow %s failed: %w", wk, err)
 			} else {
 				if debugMode {
 					pterm.Success.Printf("[%s] Completed successfully in %v\n", wk, duration.Round(time.Second))
 				} else {
 					parallelDisplay.UpdateStatus(wk, "completed", fmt.Sprintf("Completed in %v", duration.Round(time.Second)))
 				}
-				resultChan <- ParallelResult{WorkflowKey: wk, Duration: duration, Success: true}
+				
+				// Thread-safe result collection
+				resultsMutex.Lock()
+				results = append(results, ParallelResult{WorkflowKey: wk, Duration: duration, Success: true})
+				resultsMutex.Unlock()
+				
+				return nil
 			}
-		}(workflowKey)
+		})
 	}
 	
-	wg.Wait()
-	close(errChan)
-	close(resultChan)
-	
-	// Check for errors from parallel execution
-	for err := range errChan {
-		if err != nil {
-			return err
+	// Wait for all workflows to complete or first error
+	if err := g.Wait(); err != nil {
+		// errgroup automatically cancels remaining workflows on first error
+		if debugMode {
+			pterm.Error.Printf("Parallel execution stopped due to error: %v\n", err)
 		}
+		return err
 	}
 	
 	// Show results summary
-	var results []ParallelResult
-	for result := range resultChan {
-		results = append(results, result)
+	if len(results) > 0 && !debugMode {
+		parallelDisplay.ShowSummary(results)
 	}
 	
-	if len(results) > 0 {
-		parallelDisplay.ShowSummary(results)
+	if debugMode {
+		pterm.Success.Printf("All %d workflows completed successfully\n", len(results))
 	}
 	
 	return nil
@@ -1150,15 +1150,6 @@ func executeWorkflowSilent(ctx context.Context, workflowKey string, workflows ma
 	}
 	providedDataMutex.Unlock()
 	
-	// Special handling for nuclei workflows - convert discovered_ports to target_urls
-	if core.IsNucleiWorkflow(workflow) {
-		if discoveredPorts, exists := localVars["discovered_ports"]; exists && discoveredPorts != "" {
-			localVars["target_urls"] = core.ConvertPortsToURLs(target, discoveredPorts)
-		} else {
-			// Fallback to basic target if no ports were discovered
-			localVars["target_urls"] = target
-		}
-	}
 	
 	// Special handling for nmap deep scan - provide fallback ports if none discovered
 	if core.IsNmapDeepScan(workflow) {
@@ -1195,7 +1186,7 @@ func executeWorkflowSilent(ctx context.Context, workflowKey string, workflows ma
 				return err
 			}
 			workflowResults = results
-		} else if step.Tool == "nmap" || step.Tool == "nuclei" {
+		} else if step.Tool == "nmap" {
 			results, err := core.ExecuteCommandWithRealTimeResultsContext(ctx, step.Tool, args, false, useSudo)
 			if err != nil {
 				if ctx.Err() != nil {

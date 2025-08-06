@@ -293,8 +293,6 @@ func ExecuteCommandWithRealTimeResultsContext(ctx context.Context, tool string, 
 	// Parse the output based on tool
 	if tool == "nmap" {
 		return parseNmapOutput(outputLines, args)
-	} else if tool == "nuclei" {
-		return parseNucleiOutput(outputLines, args)
 	} else if tool == "naabu" {
 		return parseNaabuOutput(outputLines, args)
 	}
@@ -334,7 +332,7 @@ func needsSudo(tool string, args []string, useSudo bool) bool {
 	case "masscan":
 		return true // masscan generally requires root
 	default:
-		// Most other tools (naabu, nuclei, etc.) don't need sudo
+		// Most other tools (naabu, etc.) don't need sudo
 		return false
 	}
 }
@@ -491,77 +489,6 @@ func parseNmapOutput(outputLines []string, args []string) (*ScanResults, error) 
 	return results, nil
 }
 
-// parseNucleiOutput parses nuclei JSON output and extracts vulnerability information
-func parseNucleiOutput(outputLines []string, args []string) (*ScanResults, error) {
-	results := &ScanResults{
-		Vulnerabilities: []VulnerabilityInfo{},
-		ScanType:        "vulnerability-scan",
-	}
-	
-	// Extract target from args (look for -u flag value)
-	for i, arg := range args {
-		if arg == "-u" && i+1 < len(args) {
-			results.Target = args[i+1]
-			break
-		}
-	}
-	
-	// Parse each line as JSON (nuclei outputs one JSON object per line)
-	for _, line := range outputLines {
-		line = strings.TrimSpace(line)
-		if line == "" || !strings.HasPrefix(line, "{") {
-			continue
-		}
-		
-		var nucleiResult struct {
-			TemplateID   string `json:"template-id"`
-			TemplateURL  string `json:"template-url"`
-			Name         string `json:"template"`
-			Info         struct {
-				Name        string   `json:"name"`
-				Severity    string   `json:"severity"`
-				Description string   `json:"description"`
-				Tags        []string `json:"tags"`
-				Reference   []string `json:"reference"`
-				CVE         []string `json:"classification.cve-id"`
-				CWE         []string `json:"classification.cwe-id"`
-			} `json:"info"`
-			Type         string `json:"type"`
-			Host         string `json:"host"`
-			MatchedAt    string `json:"matched-at"`
-			ExtractedResults []string `json:"extracted-results"`
-			Request      string `json:"request"`
-			Response     string `json:"response"`
-			CurlCommand  string `json:"curl-command"`
-			Timestamp    string `json:"timestamp"`
-		}
-		
-		if err := json.Unmarshal([]byte(line), &nucleiResult); err != nil {
-			continue // Skip malformed JSON lines
-		}
-		
-		// Create vulnerability info from nuclei result
-		vuln := VulnerabilityInfo{
-			TemplateID:  nucleiResult.TemplateID,
-			Name:        nucleiResult.Info.Name,
-			Severity:    nucleiResult.Info.Severity,
-			Description: nucleiResult.Info.Description,
-			URL:         nucleiResult.MatchedAt,
-			CVE:         nucleiResult.Info.CVE,
-			CWE:         nucleiResult.Info.CWE,
-			Tags:        nucleiResult.Info.Tags,
-		}
-		
-		// Use template name if info name is empty
-		if vuln.Name == "" {
-			vuln.Name = nucleiResult.Name
-		}
-		
-		results.Vulnerabilities = append(results.Vulnerabilities, vuln)
-	}
-	
-	return results, nil
-}
 
 // parseNaabuOutput parses naabu JSON output and extracts port information
 func parseNaabuOutput(outputLines []string, args []string) (*ScanResults, error) {
@@ -720,8 +647,8 @@ func removeDuplicateStrings(slice []string) []string {
 	return result
 }
 
-// ShowNucleiResults displays the results of nuclei vulnerability scan
-func ShowNucleiResults(results *ScanResults) {
+// ShowVulnerabilityResults displays the results of vulnerability scans
+func ShowVulnerabilityResults(results *ScanResults) {
 	if results == nil || len(results.Vulnerabilities) == 0 {
 		return
 	}
@@ -793,7 +720,7 @@ func ShowNucleiResults(results *ScanResults) {
 	}
 }
 
-// ConvertPortsToURLs converts discovered ports to nuclei-compatible target URLs
+// ConvertPortsToURLs converts discovered ports to URL format
 func ConvertPortsToURLs(target string, discoveredPorts string) string {
 	if discoveredPorts == "" {
 		return target
@@ -819,7 +746,7 @@ func ConvertPortsToURLs(target string, discoveredPorts string) string {
 		case "8443", "9443":
 			urls = append(urls, fmt.Sprintf("https://%s:%s", target, port))
 		default:
-			// For non-HTTP ports, use the target:port format for nuclei network templates
+			// For non-HTTP ports, use the target:port format
 			urls = append(urls, fmt.Sprintf("%s:%s", target, port))
 		}
 	}
@@ -1032,7 +959,6 @@ func DisplayRawResults(reportDir, target string, debugMode bool) {
 		"naabu_*.json",
 		"nmap_*.xml",
 		"nmap_*.txt", 
-		"nuclei_*.json",
 		"*.json",
 		"*.xml",
 		"*.txt",
@@ -1099,8 +1025,6 @@ func displayJSONFile(filePath, fileName string, debugMode bool) {
 	// Try to parse and display structured data for known tools
 	if strings.Contains(fileName, "naabu") {
 		displayNaabuResults(content)
-	} else if strings.Contains(fileName, "nuclei") {
-		displayNucleiResults(content)
 	} else {
 		// Display raw JSON with some formatting
 		lines := strings.Split(content, "\n")
@@ -1231,61 +1155,6 @@ func displayNaabuResults(content string) {
 	}
 }
 
-// displayNucleiResults shows structured nuclei vulnerability results  
-func displayNucleiResults(content string) {
-	lines := strings.Split(content, "\n")
-	var vulns []map[string]interface{}
-	
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || !strings.HasPrefix(line, "{") {
-			continue
-		}
-		
-		var result map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &result); err == nil {
-			vulns = append(vulns, result)
-		}
-	}
-	
-	if len(vulns) > 0 {
-		pterm.Warning.Printf("⚠️  Found %d potential vulnerabilities:\n", len(vulns))
-		
-		for i, vuln := range vulns {
-			if i >= 10 { // Limit display to first 10
-				pterm.Info.Printf("  ... and %d more vulnerabilities\n", len(vulns)-10)
-				break
-			}
-			
-			if templateID, ok := vuln["template-id"].(string); ok {
-				severity := "unknown"
-				if info, ok := vuln["info"].(map[string]interface{}); ok {
-					if sev, ok := info["severity"].(string); ok {
-						severity = sev
-					}
-				}
-				
-				severityColor := pterm.FgWhite
-				switch strings.ToLower(severity) {
-				case "critical":
-					severityColor = pterm.FgRed
-				case "high":
-					severityColor = pterm.FgLightRed
-				case "medium":
-					severityColor = pterm.FgYellow
-				case "low":
-					severityColor = pterm.FgLightBlue
-				}
-				
-				pterm.Printf("  • %s ", 
-					pterm.NewStyle(severityColor, pterm.Bold).Sprintf("[%s]", strings.ToUpper(severity)))
-				fmt.Printf("%s\n", templateID)
-			}
-		}
-	} else {
-		pterm.Success.Println("No vulnerabilities found in nuclei output")
-	}
-}
 
 // extractNmapSummaryFromXML extracts key information from nmap XML output
 func extractNmapSummaryFromXML(content string) {

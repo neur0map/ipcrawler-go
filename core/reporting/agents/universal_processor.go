@@ -8,21 +8,18 @@ import (
 	"strings"
 	"time"
 
-	"ipcrawler/core/database"
 	"ipcrawler/internal/utils"
 )
 
 // UniversalProcessor processes any tool output using simple conventions
 type UniversalProcessor struct {
 	*BaseAgent
-	database *database.DatabaseManager
 }
 
 // NewUniversalProcessor creates a new universal processor
 func NewUniversalProcessor() *UniversalProcessor {
 	return &UniversalProcessor{
 		BaseAgent: NewBaseAgent("universal_processor", nil),
-		database:  database.GetGlobalDatabase(),
 	}
 }
 
@@ -182,8 +179,6 @@ func (up *UniversalProcessor) parseJSON(result *UniversalOutput, rawData []byte,
 	switch strings.ToLower(toolName) {
 	case "naabu":
 		up.parseNaabuJSON(result, data)
-	case "nuclei":
-		up.parseNucleiJSON(result, data)
 	}
 
 	return nil
@@ -214,8 +209,6 @@ func (up *UniversalProcessor) parseJSONLines(result *UniversalOutput, rawData []
 		switch strings.ToLower(toolName) {
 		case "naabu":
 			up.parseNaabuObject(result, obj)
-		case "nuclei":
-			up.parseNucleiObject(result, obj)
 		}
 	}
 
@@ -242,33 +235,6 @@ func (up *UniversalProcessor) parseNaabuObject(result *UniversalOutput, obj inte
 	}
 }
 
-// parseNucleiObject processes a single nuclei JSON object
-func (up *UniversalProcessor) parseNucleiObject(result *UniversalOutput, obj interface{}) {
-	if objMap, ok := obj.(map[string]interface{}); ok {
-		vuln := UniversalVuln{}
-
-		if templateID, exists := objMap["template-id"]; exists {
-			vuln.ID = fmt.Sprintf("%v", templateID)
-		}
-		if info, exists := objMap["info"]; exists {
-			if infoMap, ok := info.(map[string]interface{}); ok {
-				if name, exists := infoMap["name"]; exists {
-					vuln.Name = fmt.Sprintf("%v", name)
-				}
-				if severity, exists := infoMap["severity"]; exists {
-					vuln.Severity = fmt.Sprintf("%v", severity)
-				}
-			}
-		}
-		if matchedAt, exists := objMap["matched-at"]; exists {
-			vuln.URL = fmt.Sprintf("%v", matchedAt)
-		}
-
-		if vuln.ID != "" {
-			result.Vulnerabilities = append(result.Vulnerabilities, vuln)
-		}
-	}
-}
 
 // Simplified parsers for other formats
 func (up *UniversalProcessor) parseNaabuJSON(result *UniversalOutput, data interface{}) {
@@ -276,10 +242,7 @@ func (up *UniversalProcessor) parseNaabuJSON(result *UniversalOutput, data inter
 	up.parseNaabuObject(result, data)
 }
 
-func (up *UniversalProcessor) parseNucleiJSON(result *UniversalOutput, data interface{}) {
-	// Handle single object case
-	up.parseNucleiObject(result, data)
-}
+
 
 func (up *UniversalProcessor) parseXML(result *UniversalOutput, rawData []byte, toolName string) error {
 	result.RawData = string(rawData)
@@ -288,6 +251,8 @@ func (up *UniversalProcessor) parseXML(result *UniversalOutput, rawData []byte, 
 
 func (up *UniversalProcessor) parseText(result *UniversalOutput, rawData []byte, toolName string) error {
 	result.RawData = string(rawData)
+	
+	
 	return nil
 }
 
@@ -433,9 +398,6 @@ func (up *UniversalProcessor) extractToolNameFromFile(fileName string) string {
 	// Common tool patterns
 	if strings.Contains(lowerName, "naabu") {
 		return "naabu"
-	}
-	if strings.Contains(lowerName, "nuclei") {
-		return "nuclei"
 	}
 	if strings.Contains(lowerName, "nmap") {
 		return "nmap"

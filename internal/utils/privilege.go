@@ -128,7 +128,7 @@ func requiresPrivileges(tool string, args []string) bool {
 	case "masscan":
 		return true // masscan generally requires root
 	default:
-		// Most other tools (naabu, nuclei, etc.) don't need sudo
+		// Most other tools (naabu, etc.) don't need sudo
 		return false
 	}
 }

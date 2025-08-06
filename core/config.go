@@ -12,6 +12,7 @@ type Config struct {
 	DefaultTemplate string          `yaml:"default_template"`
 	Templates       []string        `yaml:"templates"`
 	Reporting       *ReportingConfig `yaml:"reporting,omitempty"`
+	Concurrency     *ConcurrencyConfig `yaml:"concurrency,omitempty"`
 	ReportDir       string          // Calculated field
 }
 
@@ -62,6 +63,13 @@ type PipelineConfig struct {
 	LogLevel      string `yaml:"log_level"`
 }
 
+// ConcurrencyConfig holds parallel execution configuration
+type ConcurrencyConfig struct {
+	MaxConcurrentWorkflows int  `yaml:"max_concurrent_workflows"`
+	EnableAutoLimit        bool `yaml:"enable_auto_limit"`
+	UseErrGroup           bool  `yaml:"use_errgroup"`
+}
+
 func (c *Config) Validate() error {
 	if c.Version == "" {
 		return fmt.Errorf("version is required in config")
@@ -85,4 +93,44 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// GetMaxConcurrency returns the maximum concurrent workflows with sensible defaults
+func (c *Config) GetMaxConcurrency(workflowCount int) int {
+	// If no concurrency config, use sensible defaults
+	if c.Concurrency == nil {
+		if workflowCount <= 4 {
+			return workflowCount
+		}
+		return 4
+	}
+	
+	// If auto-limit is enabled, adapt based on workflow count and system resources
+	if c.Concurrency.EnableAutoLimit {
+		maxLimit := c.Concurrency.MaxConcurrentWorkflows
+		if maxLimit <= 0 {
+			maxLimit = 4 // Default fallback
+		}
+		
+		if workflowCount < maxLimit {
+			return workflowCount
+		}
+		return maxLimit
+	}
+	
+	// Use configured value with fallback
+	if c.Concurrency.MaxConcurrentWorkflows > 0 {
+		return c.Concurrency.MaxConcurrentWorkflows
+	}
+	
+	// Fallback to sensible default
+	return 4
+}
+
+// UseErrGroup returns whether to use errgroup for parallel execution
+func (c *Config) UseErrGroup() bool {
+	if c.Concurrency == nil {
+		return true // Default to using errgroup
+	}
+	return c.Concurrency.UseErrGroup
 }

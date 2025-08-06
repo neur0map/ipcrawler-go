@@ -6,3 +6,9 @@ default_template: basic
 # Available scan templates  
 templates:
   - basic
+
+# Parallel execution configuration
+concurrency:
+  max_concurrent_workflows: 4
+  enable_auto_limit: true
+  use_errgroup: true

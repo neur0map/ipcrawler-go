@@ -344,34 +344,19 @@ func (r *ValidatorAgent) verifyServiceDetection(data map[string]interface{}) *Va
 	return result
 }
 
-// checkVulnerabilityCompleteness validates nuclei vulnerability findings
+// checkVulnerabilityCompleteness validates vulnerability findings
 func (r *ValidatorAgent) checkVulnerabilityCompleteness(data map[string]interface{}) *ValidationResult {
 	result := &ValidationResult{
 		RuleName: "check_vulnerability_completeness",
-		Tool:     "nuclei",
+		Tool:     "general",
 		Severity: "high",
 		Details:  make([]string, 0),
 	}
 	
 	score := 0
-	
-	// Check if nuclei data exists
-	nucleiData, exists := data["nuclei"]
-	if !exists {
-		result.Message = "No nuclei data found"
-		result.Score = 0
-		result.Passed = true
-		return result
-	}
-	
-	// Validate nuclei data (simplified)
-	if nucleiData != nil {
-		result.Details = append(result.Details, "Nuclei vulnerability data validation placeholder")
-	}
-	
 	result.Score = score
-	result.Passed = score == 0
-	result.Message = "Vulnerability scan appears complete"
+	result.Passed = true
+	result.Message = "Vulnerability validation placeholder"
 	
 	return result
 }
@@ -380,7 +365,7 @@ func (r *ValidatorAgent) checkVulnerabilityCompleteness(data map[string]interfac
 func (r *ValidatorAgent) verifySeverityClassification(data map[string]interface{}) *ValidationResult {
 	result := &ValidationResult{
 		RuleName: "verify_severity_classification",
-		Tool:     "nuclei",
+		Tool:     "general",
 		Severity: "medium",
 		Details:  make([]string, 0),
 	}
@@ -397,7 +382,7 @@ func (r *ValidatorAgent) verifySeverityClassification(data map[string]interface{
 func (r *ValidatorAgent) validateCVEMapping(data map[string]interface{}) *ValidationResult {
 	result := &ValidationResult{
 		RuleName: "validate_cve_mapping",
-		Tool:     "nuclei",
+		Tool:     "general",
 		Severity: "medium",
 		Details:  make([]string, 0),
 	}

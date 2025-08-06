@@ -48,8 +48,7 @@ export GOBIN := $(BIN_PATH)
 
 # Tools to install with go install
 GO_TOOLS := \
-    github.com/projectdiscovery/naabu/v2/cmd/naabu@latest \
-    github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+    github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
 
 # System packages to install (nmap)
 SYSTEM_PACKAGES := nmap
@@ -82,7 +81,7 @@ install:
 	@echo "$(GREEN)✅ Installation Complete!$(NC)"
 	@echo "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
 	@echo "Installed tools are available at: $(BLUE)$(BIN_PATH)$(NC)"
-	@echo "You can now run: $(BLUE)ipcrawler$(NC), $(BLUE)naabu$(NC), $(BLUE)nuclei$(NC), $(BLUE)nmap$(NC)"
+	@echo "You can now run: $(BLUE)ipcrawler$(NC), $(BLUE)naabu$(NC), $(BLUE)nmap$(NC)"
 
 # Update target - pull latest code and rebuild
 .PHONY: update
@@ -381,16 +380,6 @@ install-tools:
 		fi; \
 	done
 	
-	@echo ""
-	@echo "$(YELLOW)📥 Checking nuclei templates...$(NC)"
-	@# Check that templates exist (no download/update)
-	@EXISTING_COUNT=$$(find "$(TEMPLATES_DIR)" -name "*.yaml" 2>/dev/null | wc -l | tr -d ' '); \
-	if [ "$$EXISTING_COUNT" -gt 1000 ]; then \
-		echo "$(GREEN)   ✓ Found $$EXISTING_COUNT templates$(NC)"; \
-	else \
-		echo "$(YELLOW)   ⚠ Only found $$EXISTING_COUNT templates$(NC)"; \
-		echo "   Templates should be included with the repository"; \
-	fi
 	
 	@echo ""
 	@echo "$(GREEN)   ✓ Tool installation complete$(NC)"
@@ -419,7 +408,7 @@ help:
 	@echo "  $(GREEN)make install$(NC)      - Complete installation (Go + IPCrawler + tools)"
 	@echo "  $(GREEN)make update$(NC)       - Update to latest code and rebuild"
 	@echo "  $(GREEN)make build$(NC)        - Build IPCrawler binary to build/ (cleans old builds)"
-	@echo "  $(GREEN)make install-tools$(NC) - Install/update naabu, nuclei, nmap"
+	@echo "  $(GREEN)make install-tools$(NC) - Install/update naabu, nmap"
 	@echo "  $(GREEN)make clean$(NC)        - Clean all build artifacts and outdated binaries"
 	@echo "  $(GREEN)make help$(NC)         - Show this help message"
 	@echo ""
@@ -428,9 +417,8 @@ help:
 	@echo "  $(BLUE)GOBIN$(NC)         - Binary installation path ($(GOBIN))"
 	@echo ""
 	@echo "$(YELLOW)Tools installed:$(NC)"
-	@echo "  • Go tools: naabu, nuclei (via go install)"
+	@echo "  • Go tools: naabu (via go install)"
 	@echo "  • System tools: nmap (via package manager)"
-	@echo "  • Nuclei templates: included in repository"
 	@echo ""
 	@echo "$(YELLOW)Usage:$(NC)"
 	@echo "  make install                    # First-time setup with all tools"

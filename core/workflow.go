@@ -101,15 +101,6 @@ func extractToolFromWorkflow(workflow *Workflow) string {
 	return "unknown"
 }
 
-// IsNucleiWorkflow checks if a workflow uses nuclei or is a vulnerability scan
-func IsNucleiWorkflow(workflow *Workflow) bool {
-	if len(workflow.Steps) > 0 && workflow.Steps[0].Tool == "nuclei" {
-		return true
-	}
-	// Also check if it's a vulnerability scan (alternative detection)
-	return strings.Contains(strings.ToLower(workflow.Name), "vulnerability") ||
-		   strings.Contains(strings.ToLower(workflow.Description), "vulnerability")
-}
 
 // IsNmapDeepScan checks if a workflow is an nmap deep scan
 func IsNmapDeepScan(workflow *Workflow) bool {

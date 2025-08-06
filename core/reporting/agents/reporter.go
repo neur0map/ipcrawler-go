@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 	
-	"ipcrawler/core/database"
 	"ipcrawler/internal/utils"
 )
 
@@ -241,11 +240,13 @@ func (r *ReporterAgent) collectReportData(input *AgentInput, reviewerResult *Rev
 				if port.Service != "" {
 					services = append(services, fmt.Sprintf("%s (%d/%s)", port.Service, port.Number, port.Protocol))
 				}
-				// Check if port is high-risk using database
-				if isHighRisk, portInfo, err := database.GetGlobalDatabase().IsHighRiskPort(port.Number); err == nil && isHighRisk {
-					highRiskPorts = append(highRiskPorts, port.Number)
-					if portInfo != nil {
-						r.LogInfo("High-risk port detected: %d (%s) - %s", port.Number, portInfo.Service, portInfo.Description)
+				// Check if port is commonly high-risk
+				highRiskPortNumbers := []int{21, 22, 23, 25, 135, 139, 445, 1433, 3306, 3389, 5432, 5900}
+				for _, riskPort := range highRiskPortNumbers {
+					if port.Number == riskPort {
+						highRiskPorts = append(highRiskPorts, port.Number)
+						r.LogInfo("High-risk port detected: %d", port.Number)
+						break
 					}
 				}
 			}
@@ -641,35 +642,17 @@ func (r *ReporterAgent) calculateOverallRisk(data *ReportData) string {
 		return "unknown"
 	}
 	
-	// Use database to assess risk
-	db := database.GetGlobalDatabase()
-	
 	highRiskCount := len(data.PortScanResults.HighRiskPorts)
 	totalPorts := data.PortScanResults.OpenPorts
 	
-	// Get comprehensive risk assessment
-	if riskDB, err := db.GetRiskLevels(); err == nil {
-		criticalPorts := 0
-		for _, port := range data.PortScanResults.HighRiskPorts {
-			for _, criticalPort := range riskDB.PortRiskMappings.CriticalPorts {
-				if port == criticalPort {
-					criticalPorts++
-					break
-				}
-			}
-		}
-		
-		// Risk calculation logic
-		if criticalPorts > 0 {
-			return "critical"
-		} else if highRiskCount > 3 {
-			return "high"
-		} else if highRiskCount > 0 {
-			return "medium"
-		} else if totalPorts > 10 {
-			return "medium"
-		}
+	// Simple risk calculation based on high-risk ports
+	if highRiskCount >= 3 {
+		return "high"
+	} else if highRiskCount > 0 {
+		return "medium"
+	} else if totalPorts > 10 {
+		return "medium"
+	} else {
+		return "low"
 	}
-	
-	return "low"
 }

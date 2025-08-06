@@ -235,7 +235,7 @@ func (r *ReceiverAgent) extractToolNameFromFile(fileName string) string {
 	
 	// Common tool patterns
 	baseNameLower := strings.ToLower(baseName)
-	toolNames := []string{"nmap", "naabu", "nuclei", "masscan", "gobuster", "ffuf", "nikto"}
+	toolNames := []string{"nmap", "naabu", "masscan", "gobuster", "ffuf"}
 	
 	for _, tool := range toolNames {
 		if strings.Contains(baseNameLower, tool) {
