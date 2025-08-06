@@ -12,7 +12,6 @@ import (
 type Workflow struct {
 	Name          string       `yaml:"name"`
 	Description   string       `yaml:"description"`
-	Report        interface{}  `yaml:"report,omitempty"` // Can be bool or ReportConfig
 	Requires      []string     `yaml:"requires,omitempty"` // Dependencies on other workflows
 	Provides      []string     `yaml:"provides,omitempty"` // Data this workflow provides
 	ParallelGroup string       `yaml:"parallel_group,omitempty"` // Workflows with same group can run in parallel
@@ -40,44 +39,6 @@ func (s *Step) GetArgs(useSudo bool) []string {
 	return s.Args
 }
 
-type ReportConfig struct {
-	Enabled      bool     `yaml:"enabled"`
-	OutputFormat []string `yaml:"output_format"`
-	Agents       []string `yaml:"agents"`
-	Coordination bool     `yaml:"coordination,omitempty"` // Whether this workflow needs coordination
-}
-
-type AgentConfig struct {
-	Receiver *ReceiverAgentConfig `yaml:"receiver,omitempty"`
-	Cleaner  *CleanerAgentConfig  `yaml:"cleaner,omitempty"`
-	Reviewer *ReviewerAgentConfig `yaml:"reviewer,omitempty"`
-	Reporter *ReporterAgentConfig `yaml:"reporter,omitempty"`
-}
-
-type ReceiverAgentConfig struct {
-	ValidateSchema bool   `yaml:"validate_schema"`
-	ErrorHandling  string `yaml:"error_handling"`
-}
-
-type CleanerAgentConfig struct {
-	Type                string   `yaml:"type"`
-	ExtractFields       []string `yaml:"extract_fields"`
-	SeverityFilter      []string `yaml:"severity_filter,omitempty"`
-	GroupByTemplate     bool     `yaml:"group_by_template,omitempty"`
-	IncludeClosedPorts  bool     `yaml:"include_closed_ports,omitempty"`
-	MinimumPorts        int      `yaml:"minimum_ports,omitempty"`
-	FilterStatusCodes   []string `yaml:"filter_status_codes,omitempty"`
-	MinResponseSize     int      `yaml:"min_response_size,omitempty"`
-}
-
-type ReviewerAgentConfig struct {
-	ValidationRules []string `yaml:"validation_rules"`
-}
-
-type ReporterAgentConfig struct {
-	Templates      []string `yaml:"templates"`
-	IncludeRawData bool     `yaml:"include_raw_data"`
-}
 
 func LoadWorkflow(path string) (*Workflow, error) {
 	data, err := os.ReadFile(path)
@@ -91,6 +52,67 @@ func LoadWorkflow(path string) (*Workflow, error) {
 	}
 
 	return &workflow, nil
+}
+
+// LoadWorkflows loads workflows from a directory - alias for LoadTemplateWorkflows
+func LoadWorkflows(workflowsDir string) (map[string]*Workflow, error) {
+	// Extract template name from the path (assume it's the parent directory)
+	parts := strings.Split(workflowsDir, "/")
+	if len(parts) >= 2 {
+		templateName := parts[len(parts)-2] // Get the second-to-last part (template name)
+		baseDir := strings.Join(parts[:len(parts)-2], "/") // Everything except "scanning" and template
+		return LoadTemplateWorkflows(baseDir, templateName)
+	}
+	
+	// Fallback - try to load from current directory structure
+	return LoadTemplateWorkflows("workflows", "basic")
+}
+
+// ExtractToolsFromWorkflows extracts all tools used in the workflows
+func ExtractToolsFromWorkflows(workflows map[string]*Workflow) []string {
+	toolsMap := make(map[string]bool)
+	var tools []string
+	
+	for _, workflow := range workflows {
+		for _, step := range workflow.Steps {
+			if !toolsMap[step.Tool] {
+				toolsMap[step.Tool] = true
+				tools = append(tools, step.Tool)
+			}
+		}
+	}
+	
+	return tools
+}
+
+// ExtractToolsAndArgsFromWorkflows extracts tools and their arguments from workflows
+func ExtractToolsAndArgsFromWorkflows(workflows map[string]*Workflow) ([]string, [][]string) {
+	toolsMap := make(map[string][]string)
+	var tools []string
+	var allArgs [][]string
+	
+	for _, workflow := range workflows {
+		for _, step := range workflow.Steps {
+			if _, exists := toolsMap[step.Tool]; !exists {
+				tools = append(tools, step.Tool)
+				// Use sudo args if available, otherwise normal args, otherwise legacy args
+				if len(step.ArgsSudo) > 0 {
+					toolsMap[step.Tool] = step.ArgsSudo
+				} else if len(step.ArgsNormal) > 0 {
+					toolsMap[step.Tool] = step.ArgsNormal
+				} else {
+					toolsMap[step.Tool] = step.Args
+				}
+			}
+		}
+	}
+	
+	// Build the args array in the same order as tools
+	for _, tool := range tools {
+		allArgs = append(allArgs, toolsMap[tool])
+	}
+	
+	return tools, allArgs
 }
 
 // extractToolFromWorkflow extracts the tool name from the first step of a workflow
@@ -176,81 +198,6 @@ func (w *Workflow) ReplaceVars(vars map[string]string) {
 	}
 }
 
-// HasReporting returns true if the workflow has reporting enabled
-func (w *Workflow) HasReporting() bool {
-	if w.Report == nil {
-		return false
-	}
-	
-	// Handle simple boolean format
-	if enabled, ok := w.Report.(bool); ok {
-		return enabled
-	}
-	
-	// Handle map format (YAML parsed as map[string]interface{})
-	if reportMap, ok := w.Report.(map[string]interface{}); ok {
-		if enabled, ok := reportMap["enabled"].(bool); ok {
-			return enabled
-		}
-	}
-	
-	// Handle full config format
-	if config, ok := w.Report.(*ReportConfig); ok {
-		return config.Enabled
-	}
-	
-	return false
-}
-
-// GetReportConfig returns the report configuration or default if using simple format
-func (w *Workflow) GetReportConfig() *ReportConfig {
-	if w.Report == nil {
-		return nil
-	}
-	
-	// If it's a simple boolean, return default config
-	if enabled, ok := w.Report.(bool); ok && enabled {
-		return &ReportConfig{
-			Enabled:      true,
-			OutputFormat: []string{"json", "txt"},
-			Agents:       []string{"receiver", "validator", "reporter"}, // Default agents
-		}
-	}
-	
-	// If it's a map (YAML parsed as map[string]interface{}), convert it
-	if reportMap, ok := w.Report.(map[string]interface{}); ok {
-		config := &ReportConfig{}
-		if enabled, ok := reportMap["enabled"].(bool); ok {
-			config.Enabled = enabled
-		}
-		if agents, ok := reportMap["agents"].([]interface{}); ok {
-			config.Agents = make([]string, 0, len(agents))
-			for _, agent := range agents {
-				if agentStr, ok := agent.(string); ok {
-					config.Agents = append(config.Agents, agentStr)
-				}
-			}
-		}
-		if outputFormat, ok := reportMap["output_format"].([]interface{}); ok {
-			config.OutputFormat = make([]string, 0, len(outputFormat))
-			for _, format := range outputFormat {
-				if formatStr, ok := format.(string); ok {
-					config.OutputFormat = append(config.OutputFormat, formatStr)
-				}
-			}
-		} else {
-			config.OutputFormat = []string{"json", "txt"}
-		}
-		return config
-	}
-	
-	// If it's already a config, return it
-	if config, ok := w.Report.(*ReportConfig); ok {
-		return config
-	}
-	
-	return nil
-}
 
 func replacePlaceholders(s string, vars map[string]string) string {
 	result := s

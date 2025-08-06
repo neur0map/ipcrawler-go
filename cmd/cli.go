@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -12,21 +11,40 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 
-	"ipcrawler/core"
+	"ipcrawler/internal/core"
 	"ipcrawler/internal/utils"
+	"ipcrawler/internal/ui"
 
-	"github.com/pterm/pterm"
 	"github.com/urfave/cli/v2"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
 	appName        = "ipcrawler"
-	configFile     = "config.yaml"
-	workflowsDir   = "workflows"
+	configFile     = "configs/config.yaml"
+	workflowsDir   = "configs/workflows"
 )
+
+// convertWorkflowsToInterface converts workflow map to interface{} map for UI display
+func convertWorkflowsToInterface(workflows map[string]*core.Workflow) map[string]interface{} {
+	result := make(map[string]interface{})
+	for key, workflow := range workflows {
+		result[key] = map[string]interface{}{
+			"name":        workflow.Name,
+			"description": workflow.Description,
+			"tool":        getFirstToolFromWorkflow(workflow),
+		}
+	}
+	return result
+}
+
+// getFirstToolFromWorkflow extracts the first tool name from a workflow
+func getFirstToolFromWorkflow(workflow *core.Workflow) string {
+	if len(workflow.Steps) > 0 {
+		return workflow.Steps[0].Tool
+	}
+	return "unknown"
+}
 
 func Execute() error {
 	// Load config to get version and other settings
@@ -48,379 +66,272 @@ func Execute() error {
 			&cli.StringFlag{
 				Name:    "output",
 				Aliases: []string{"o"},
-				Usage:   "Specify output directory for reports (default: 'reports')",
+				Usage:   "Output directory (default: ./reports)",
 			},
 			&cli.BoolFlag{
 				Name:    "debug",
 				Aliases: []string{"d"},
-				Usage:   "Enable debug mode",
+				Usage:   "Enable debug mode with verbose output",
 			},
 			&cli.BoolFlag{
-				Name:  "health",
-				Usage: "Print system status and exit",
+				Name:    "json",
+				Aliases: []string{"j"},
+				Usage:   "Output results in JSON format",
+			},
+			&cli.BoolFlag{
+				Name:    "health",
+				Aliases: []string{"H"},
+				Usage:   "Run health check",
+			},
+			&cli.BoolFlag{
+				Name:    "list-templates",
+				Aliases: []string{"l"},
+				Usage:   "List available templates",
 			},
 		},
 		Action: func(c *cli.Context) error {
-			// Set up signal handling for graceful cancellation
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			
-			// Ensure we're the process group leader for proper signal handling
-			// This is especially important when running under sudo
-			if os.Geteuid() == 0 {
-				syscall.Setpgid(0, 0)
-			}
-			
-			// Create a buffered channel to listen for interrupt signals
-			sigChan := make(chan os.Signal, 3)
-			// Listen for multiple signal types to ensure we catch Ctrl+C in all scenarios
-			signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
-			
-			// Track if we've already handled a signal
-			var signalHandled bool
-			var signalMutex sync.Mutex
-			
-			// Check if we're running as root (sudo mode)
-			isRunningAsRoot := os.Geteuid() == 0
-			
-			// Start a more aggressive goroutine to handle signals
-			go func() {
-				defer signal.Stop(sigChan)
-				signalCount := 0
-				
-				for sig := range sigChan {
-					signalCount++
-					
-					signalMutex.Lock()
-					if signalHandled {
-						signalMutex.Unlock()
-						if signalCount > 1 {
-							// Force exit after 2 Ctrl+C presses - immediate termination
-							fmt.Fprintf(os.Stderr, "\n⚠️  Force terminating after %d interrupts...\n", signalCount)
-							
-							// Kill process group aggressively
-							if isRunningAsRoot {
-								fmt.Fprintf(os.Stderr, "🔒 Force killing sudo process group...\n")
-								syscall.Kill(0, syscall.SIGKILL)
-							} else {
-								// Kill current process group
-								pid := os.Getpid()
-								syscall.Kill(-pid, syscall.SIGKILL)
-							}
-							os.Exit(130) // Standard exit code for Ctrl+C
-						}
-						continue
-					}
-					signalHandled = true
-					signalMutex.Unlock()
-					
-					// Immediately clean up terminal and stop all UI output
-					fmt.Fprintf(os.Stderr, "\033[?25h") // Show cursor
-					fmt.Fprintf(os.Stderr, "\033[2K\r") // Clear current line
-					fmt.Fprintf(os.Stderr, "\033[0m")   // Reset all formatting
-					
-					// Disable pterm output globally to prevent any further UI updates
-					pterm.DisableOutput()
-					
-					// Cancel the context immediately to stop all operations
-					cancel()
-					
-					// Simple, clean cancellation message (no sudo-specific logic here)
-					fmt.Fprintf(os.Stderr, "\n⚠️  Received signal: %v\n", sig)
-					fmt.Fprintf(os.Stderr, "🛑 Cancelling scan...\n")
-					
-					// Set up a simple fallback timeout in case normal exit doesn't work
-					go func() {
-						time.Sleep(2 * time.Second) // Give normal exit a chance first
-						fmt.Fprintf(os.Stderr, "⚠️  Force terminating (timeout reached)...\n")
-						
-						// Kill process group
-						pid := os.Getpid()
-						syscall.Kill(-pid, syscall.SIGKILL)
-						os.Exit(130)
-					}()
-					
-					return
-				}
-			}()
-			
-			// Handle --health flag
 			if c.Bool("health") {
-				pterm.Success.Println("System Status: OK")
-				pterm.Info.Printf("Version: %s\n", config.Version)
-				pterm.Success.Println("All systems operational")
+				runHealthCheck()
 				return nil
 			}
-			
+
+			if c.Bool("list-templates") {
+				listTemplates(config)
+				return nil
+			}
+
+			// Check if target is provided
+			if c.NArg() < 1 {
+				return fmt.Errorf("no target specified. Use: %s <target>", appName)
+			}
+
+			target := c.Args().First()
+			if target == "" {
+				return fmt.Errorf("empty target specified")
+			}
+
+			// Sanitize target to ensure it's a valid hostname/IP
+			if !utils.IsValidTarget(target) {
+				return fmt.Errorf("invalid target format: %s", target)
+			}
+
+			template := c.String("workflow")
+			if template == "" {
+				template = config.DefaultTemplate
+			}
+
+			outputDir := c.String("output")
+			if outputDir != "" {
+				config.SetReportDir(outputDir)
+			}
+
+			debugMode := c.Bool("debug")
+			jsonOutput := c.Bool("json")
+
+			// Show banner in interactive mode
+			if !jsonOutput && !debugMode {
+				ui.Global.Banners.ShowApplicationBanner(config.Version, target, template)
+			}
+
+			// Set up clean cancellation with ctrl+c
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			// Set up signal handling for graceful shutdown
+			sigChan := make(chan os.Signal, 1)
+			signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+			go func() {
+				sig := <-sigChan
+				ui.Global.Messages.DisableOutput()    // Stop any UI updates immediately
+				cancel()                               // Cancel all operations
+				
+				// Clear terminal and show clean shutdown message
+				fmt.Fprintf(os.Stderr, "\033[2K\r") // Clear line
+				fmt.Fprintf(os.Stderr, "\n⚠️  Received signal: %v\n", sig)
+				fmt.Fprintf(os.Stderr, "🛑 Stopping all operations...\n")
+			}()
+
+			// Load workflows from template
+			if debugMode {
+				log.Printf("Loading template: %s", template)
+			}
+			workflows, err := core.LoadWorkflows(filepath.Join(workflowsDir, template, "scanning"))
+			if err != nil {
+				return fmt.Errorf("failed to load workflows: %w", err)
+			}
+
+			if len(workflows) == 0 {
+				return fmt.Errorf("no workflows found in template: %s", template)
+			}
+
+			// Show workflow information
+			if debugMode {
+				ui.Global.Messages.LoadedWorkflows(len(workflows))
+				for key, workflow := range workflows {
+					ui.Global.Messages.WorkflowInfo(key, workflow.Name)
+				}
+			}
+
+			// Initialize variables for template
+			vars := map[string]string{
+				"target": target,
+			}
+
 			// Check if this is a sudo restart and clean up the flag
 			isSudoRestart := utils.IsSudoRestart()
 			if isSudoRestart {
 				utils.RemoveSudoRestartFlag()
 			}
+
+			// Check which tools need sudo and categorize them
+			tools, args := core.ExtractToolsAndArgsFromWorkflows(workflows)
+			privilegedTools := []string{}
+			normalTools := []string{}
 			
-			// Check if target argument is provided
-			if c.NArg() < 1 {
-				pterm.Error.Printf("Target argument is required\n")
-				pterm.Info.Printf("Usage: %s [options] <target>\n", appName)
-				return fmt.Errorf("missing target")
+			for i, tool := range tools {
+				if utils.CheckPrivilegeRequirements([]string{tool}, [][]string{args[i]}) {
+					privilegedTools = append(privilegedTools, tool)
+				} else {
+					normalTools = append(normalTools, tool)
+				}
 			}
 
-			// Parse arguments
-			target := c.Args().Get(0)
-			debugMode := c.Bool("debug")
+			// Generate report directory path for preview (don't create yet)
+			reportDir := core.GenerateReportDirectoryPath(config.ReportDir, target)
 
-			// Load config
-			config, err := core.LoadConfig(configFile)
-			if err != nil {
-				return fmt.Errorf("failed to load config: %w", err)
-			}
+			var privilegeOption *ui.PrivilegeOption
 
-			if err := config.Validate(); err != nil {
-				return fmt.Errorf("invalid config: %w", err)
-			}
-
-			// Determine which template to use
-			templateName := config.DefaultTemplate
-			if workflowOverride := c.String("workflow"); workflowOverride != "" {
-				templateName = workflowOverride
-			}
-
-			// Override report directory if output flag provided
-			if outputDir := c.String("output"); outputDir != "" {
-				config.SetReportDir(outputDir)
-			}
-
-			if debugMode {
-				log.Printf("Target: %s", target)
-				log.Printf("Template: %s", templateName)
-				log.Printf("Output directory: %s", config.ReportDir)
-				log.Printf("Debug mode: %v", debugMode)
-			}
-
-			// Load workflows for the template
-			workflows, err := core.LoadTemplateWorkflows(workflowsDir, templateName)
-			if err != nil {
-				return fmt.Errorf("failed to load workflows: %w", err)
-			}
-
-			// Convert workflows map to slice for preview
-			workflowSlice := make([]*core.Workflow, 0, len(workflows))
-			for _, workflow := range workflows {
-				workflowSlice = append(workflowSlice, workflow)
-			}
-
-			var privilegeOption *core.PrivilegeOption
-			var reportDir string
-			
-			// Handle privilege escalation logic
-			if isSudoRestart {
-				// This is a restart from sudo - skip the prompt and proceed with sudo enabled
-				privilegeOption = &core.PrivilegeOption{UseSudo: true, UserChoice: "restart"}
-				pterm.Success.Println("✓ Running with elevated privileges after restart")
-			} else {
-				// Generate preview report directory path (without creating directories)
-				previewReportDir := core.GenerateReportDirectoryPath(config.ReportDir, target)
-				
-				// Show interactive scan preview and get sudo choice
-				preview := &core.ScanPreview{
-					Target:        target,
-					Template:      templateName,
-					Workflows:     workflowSlice,
-					ReportDir:     previewReportDir,
-					EstimatedTime: core.EstimateScanTime(workflowSlice),
+			// Only show interactive preview if this is NOT a sudo restart
+			if !isSudoRestart {
+				// Show interactive scan preview and get user decision
+				interactive := ui.NewInteractive()
+				scanPreview := &ui.ScanPreview{
+					Target:          target,
+					Template:        template,
+					ReportDir:       reportDir,
+					Workflows:       convertWorkflowsToInterface(workflows),
+					PrivilegedTools: privilegedTools,
+					NormalTools:     normalTools,
 				}
 
 				var err error
-				privilegeOption, err = core.ShowScanPreview(preview)
+				privilegeOption, err = interactive.ShowScanPreview(scanPreview)
 				if err != nil {
 					return fmt.Errorf("failed to get user input: %w", err)
 				}
-				
-				// Handle privilege escalation if user chose sudo
-				if privilegeOption.UseSudo {
-					// Check if we're already running with elevated privileges
-					if utils.IsRunningAsRoot() {
-						pterm.Success.Println("✓ Already running with elevated privileges")
-					} else {
-						// Need to restart with sudo privileges
-						pterm.Info.Println("🔄 Restarting with elevated privileges...")
-						if err := utils.RequestPrivilegeEscalation(); err != nil {
-							pterm.Error.Printf("Failed to restart with elevated privileges: %v\n", err)
-							pterm.Info.Println("Please ensure:")
-							pterm.Info.Println("  • sudo is installed and available in PATH")
-							pterm.Info.Println("  • You have permission to use sudo")
-							return fmt.Errorf("privilege escalation failed: %w", err)
-						}
-						// If we reach here, the restart failed (should not happen normally)
-						return fmt.Errorf("unexpected error during privilege escalation")
-					}
+
+				// Handle privilege escalation if requested
+				if privilegeOption.RequestEscalation && !utils.IsRunningAsRoot() {
+					return utils.RequestPrivilegeEscalation()
+				}
+			} else {
+				// For sudo restarts, automatically use privileged mode
+				privilegeOption = &ui.PrivilegeOption{
+					UseSudo:           true,
+					RequestEscalation: false, // Already escalated
 				}
 			}
 
-			// Now that privilege escalation is decided, create the actual report directory
+			// Now create the actual report directory
 			reportDir, err = core.CreateReportDirectory(config.ReportDir, target)
 			if err != nil {
 				return fmt.Errorf("failed to create report directory: %w", err)
 			}
 
-			// Create variables for placeholder replacement
-			vars := map[string]string{
-				"target":      target,
-				"template":    templateName,
-				"report_dir":  reportDir,
-			}
+			// Add report directory to variables
+			vars["report_dir"] = reportDir
 
-			// Execute workflows with dependency coordination
+			// Execute workflows with coordination
 			if err := executeWorkflowsWithCoordination(ctx, workflows, vars, debugMode, reportDir, target, config, privilegeOption.UseSudo); err != nil {
+				// Check if it was a user cancellation
+				if ctx.Err() != nil {
+					// Show the main cancellation message (spinner already handled)
+					ui.Global.Messages.ScanCancelled()
+					return nil
+				}
 				return fmt.Errorf("workflow execution failed: %w", err)
 			}
 
-			if len(workflows) == 0 {
-				pterm.Warning.Printf("No workflows found for template: %s\n", templateName)
-				pterm.Info.Printf("Check that workflow files exist in: %s\n", 
-					filepath.Join(workflowsDir, templateName))
-			}
-
-			// If reporting is enabled, run the reporting pipeline
-			if hasReporting := checkReportingEnabled(workflows); hasReporting {
-				var reportSpinner *pterm.SpinnerPrinter
-				
-				if debugMode {
-					pterm.Info.Println("📊 Running reporting pipeline...")
-				} else {
-					whiteReportSpinner := pterm.DefaultSpinner.WithMessageStyle(pterm.NewStyle(pterm.FgWhite)).
-						WithStyle(pterm.NewStyle(pterm.FgWhite))
-					reportSpinner, _ = whiteReportSpinner.Start("📊 Generating Reports...")
-				}
-				
-				// Wait for tool outputs to be fully written before starting reporting
-				if debugMode {
-					pterm.Info.Println("🔍 Verifying tool outputs are complete before generating reports...")
-				}
-				
-				if err := core.WaitForToolCompletion(reportDir, workflows, 30*time.Second, debugMode); err != nil {
-					if debugMode {
-						pterm.Warning.Printf("Tool completion wait failed: %v\n", err)
-						log.Printf("Tool completion error: %v", err)
-					}
-					// Continue anyway - some tools might not have written files as expected
-				}
-				
-				// Run the reporting pipeline
-				if debugMode {
-					pterm.Info.Println("🔄 Starting reporting pipeline...")
-				}
-				
-				if err := core.RunReportingPipeline(reportDir, target, workflows, config, debugMode); err != nil {
-					if debugMode {
-						pterm.Error.Printf("Reporting pipeline failed: %v\n", err)
-						log.Printf("Reporting pipeline error: %v", err)
-						pterm.Info.Println("📄 Falling back to raw results display...")
-					} else {
-						reportSpinner.Fail("❌ Report generation failed")
-					}
-					
-					// Show raw results as fallback when reporting fails
-					core.DisplayRawResults(reportDir, target, debugMode)
-				} else {
-					if !debugMode {
-						reportSpinner.Success("✅ Reports generated")
-						pterm.Println()
-						
-						// Show scan summary from the generated reports
-						showScanSummary(reportDir, target)
-					} else {
-						pterm.Success.Println("✅ Reports generated successfully!")
-						pterm.Info.Printf("📁 View reports in: %s/summary/\n", reportDir)
-					}
-				}
+			// Success message
+			if !jsonOutput {
+				ui.Global.Messages.ScanCompleted(target)
+				ui.Global.Messages.ResultsSaved()
 			}
 
 			return nil
 		},
-		ArgsUsage: "<target>",
 	}
 
 	return app.Run(os.Args)
 }
 
-// checkReportingEnabled checks if any workflow has reporting enabled
-func checkReportingEnabled(workflows map[string]*core.Workflow) bool {
-	for _, workflow := range workflows {
-		if workflow.HasReporting() {
-			return true
+// runHealthCheck performs a system health check
+func runHealthCheck() {
+	ui.Global.Messages.SystemHealthOK()
+	ui.Global.Messages.SystemVersion("0.1.1")
+	
+	// Check if running as root
+	if utils.IsRunningAsRoot() {
+		ui.Global.Messages.RunningWithRootPrivileges()
+	}
+	
+	// Check available tools
+	tools := []string{"nmap", "naabu"}
+	var missingTools []string
+	
+	for _, tool := range tools {
+		if _, err := utils.LookPath(tool); err != nil {
+			missingTools = append(missingTools, tool)
 		}
 	}
-	return false
+	
+	if len(missingTools) > 0 {
+		ui.Global.Messages.MissingTools(missingTools)
+	} else {
+		ui.Global.Messages.AllSystemsOperational()
+	}
 }
 
-// executeWorkflowsWithCoordination executes workflows with dependency coordination and parallel execution
+// listTemplates lists available workflow templates
+func listTemplates(config *core.Config) {
+	ui.Global.Messages.AvailableTemplates()
+	for _, template := range config.Templates {
+		if template == config.DefaultTemplate {
+			ui.Global.Messages.DefaultTemplate(template)
+		} else {
+			ui.Global.Messages.Template(template)
+		}
+	}
+}
+
+
+// executeWorkflowsWithCoordination executes workflows sequentially based on dependencies
 func executeWorkflowsWithCoordination(ctx context.Context, workflows map[string]*core.Workflow, vars map[string]string, debugMode bool, reportDir, target string, config *core.Config, useSudo bool) error {
-	// Build dependency graph and execution levels for parallel execution
+	// Build dependency graph and execution levels
 	executionLevels, err := buildExecutionLevels(workflows)
 	if err != nil {
 		return fmt.Errorf("failed to resolve workflow dependencies: %w", err)
 	}
 	
 	if debugMode {
-		fmt.Printf("Workflow execution levels: %v\n", executionLevels)
+		ui.Global.Messages.WorkflowExecutionLevels(executionLevels)
 	}
 	
 	// Keep track of data provided by workflows
 	providedData := make(map[string]string)
 	var providedDataMutex sync.Mutex
 	
-	// Execute workflows level by level, with parallel execution within each level
+	// Execute workflows level by level, sequentially
 	for levelIndex, workflowKeys := range executionLevels {
 		if debugMode {
-			fmt.Printf("Executing level %d with %d workflows: %v\n", levelIndex, len(workflowKeys), workflowKeys)
+			ui.Global.Messages.ExecutingLevel(levelIndex, len(workflowKeys), workflowKeys)
 		}
 		
-		// Group workflows by parallel group within this level
-		parallelGroups := make(map[string][]string)
+		// Execute all workflows in this level sequentially
 		for _, workflowKey := range workflowKeys {
-			workflow := workflows[workflowKey]
-			if workflow == nil {
-				continue
-			}
-			
-			parallelGroup := workflow.ParallelGroup
-			if parallelGroup == "" {
-				parallelGroup = "_sequential_"
-			}
-			
-			parallelGroups[parallelGroup] = append(parallelGroups[parallelGroup], workflowKey)
-		}
-		
-		// Execute sequential workflows first
-		if seqWorkflows, exists := parallelGroups["_sequential_"]; exists {
-			for _, workflowKey := range seqWorkflows {
-				if err := executeWorkflow(ctx, workflowKey, workflows, vars, providedData, &providedDataMutex, debugMode, reportDir, target, config, useSudo); err != nil {
-					return err
-				}
-			}
-		}
-		
-		// Execute parallel groups
-		for groupName, groupWorkflows := range parallelGroups {
-			if groupName == "_sequential_" {
-				continue // Already handled above
-			}
-			
-			if len(groupWorkflows) == 1 {
-				// Single workflow in group - execute normally
-				if err := executeWorkflow(ctx, groupWorkflows[0], workflows, vars, providedData, &providedDataMutex, debugMode, reportDir, target, config, useSudo); err != nil {
-					return err
-				}
-			} else {
-				// Multiple workflows in parallel group - execute in parallel with modern display
-				if debugMode {
-					fmt.Printf("Executing parallel group '%s' with %d workflows: %v\n", groupName, len(groupWorkflows), groupWorkflows)
-				}
-				
-				if err := executeWorkflowsInParallel(ctx, groupWorkflows, workflows, vars, providedData, &providedDataMutex, debugMode, reportDir, target, config, useSudo); err != nil {
-					return err
-				}
+			if err := executeWorkflow(ctx, workflowKey, workflows, vars, providedData, &providedDataMutex, debugMode, reportDir, target, config, useSudo); err != nil {
+				return err
 			}
 		}
 		
@@ -435,12 +346,12 @@ func executeWorkflowsWithCoordination(ctx context.Context, workflows map[string]
 	return nil
 }
 
-// executeWorkflow executes a single workflow (extracted from the main loop for parallel execution)
+// executeWorkflow executes a single workflow
 func executeWorkflow(ctx context.Context, workflowKey string, workflows map[string]*core.Workflow, vars map[string]string, providedData map[string]string, providedDataMutex *sync.Mutex, debugMode bool, reportDir, target string, config *core.Config, useSudo bool) error {
 	// Check if context has been cancelled
 	select {
 	case <-ctx.Done():
-		pterm.Warning.Println("🛑 Scan cancelled by user")
+		// Context cancelled before starting, don't show messages
 		return ctx.Err()
 	default:
 	}
@@ -450,19 +361,23 @@ func executeWorkflow(ctx context.Context, workflowKey string, workflows map[stri
 		return nil // Skip if workflow doesn't exist in template
 	}
 	
-	// Create a local copy of vars to avoid race conditions in parallel execution
+	// Skip the workflow spinner since tool-specific progress will be shown
+	if debugMode {
+		ui.Global.Messages.StartingWorkflow(workflow.Name, workflow.Description)
+	}
+	
+	// Create a local copy of vars
 	localVars := make(map[string]string)
 	for k, v := range vars {
 		localVars[k] = v
 	}
 	
-	// Update local vars with any provided data from previous workflows (thread-safe)
+	// Update with any provided data from previous workflows
 	providedDataMutex.Lock()
 	for key, value := range providedData {
 		localVars[key] = value
 	}
 	providedDataMutex.Unlock()
-	
 	
 	// Special handling for nmap deep scan - provide fallback ports if none discovered
 	if core.IsNmapDeepScan(workflow) {
@@ -470,705 +385,29 @@ func executeWorkflow(ctx context.Context, workflowKey string, workflows map[stri
 			// Use common ports as fallback for deep scan
 			localVars["discovered_ports"] = "22,53,80,135,139,443,445,993,995,3306,3389,5432,5900,8080,8443"
 			if debugMode {
-				pterm.Warning.Printf("  ⚠️ No discovered ports found, using common ports for deep scan\n")
+				ui.Global.Messages.NoDiscoveredPorts()
+			}
+		} else {
+			if debugMode {
+				ui.Global.Messages.UsingDiscoveredPorts(discoveredPorts)
 			}
 		}
 	}
 	
-	// Replace placeholders
+	// Replace placeholders in workflow
 	workflow.ReplaceVars(localVars)
 	
 	var workflowResults *core.ScanResults
-	var workflowFailed bool
+	var workflowError error
 	
-	if debugMode {
-		pterm.DefaultSection.Printf("[%s] %s", workflowKey, workflow.Name)
-		if workflow.Description != "" {
-			pterm.Info.Printf("  Description: %s\n", workflow.Description)
-		}
-		if len(workflow.Requires) > 0 {
-			pterm.Info.Printf("  Dependencies: %v\n", workflow.Requires)
-		}
-		
-		// Debug mode: Execute each step with detailed output
-		for i, step := range workflow.Steps {
-			// Get appropriate args based on sudo preference
-			args := step.GetArgs(useSudo)
-			cmd := workflow.GetCommandWithArgs(step.Tool, args)
-			pterm.Info.Printf("  Executing Step %d: %s\n", i+1, cmd)
-			
-			// For naabu, use optimized fast execution
-			if step.Tool == "naabu" {
-				results, err := core.ExecuteCommandFastContext(ctx, step.Tool, args, debugMode, useSudo)
-				if err != nil {
-					if ctx.Err() != nil {
-						pterm.Warning.Printf("  🛑 Cancelled\n")
-						return ctx.Err()
-					}
-					pterm.Error.Printf("  ❌ Error: %v\n", err)
-					log.Printf("Command execution failed: %v", err)
-					workflowFailed = true
-					// Continue with next step instead of failing completely
-					continue
-				} else {
-					pterm.Success.Printf("  ✅ Completed\n")
-					workflowResults = results
-				}
-			} else if step.Tool == "nmap" {
-				// For nmap, use enhanced execution with real-time results
-				results, err := core.ExecuteCommandWithRealTimeResultsContext(ctx, step.Tool, args, debugMode, useSudo)
-				if err != nil {
-					if ctx.Err() != nil {
-						pterm.Warning.Printf("  🛑 Cancelled\n")
-						return ctx.Err()
-					}
-					pterm.Error.Printf("  ❌ Error: %v\n", err)
-					log.Printf("Command execution failed: %v", err)
-					workflowFailed = true
-					// Continue with next step instead of failing completely
-					continue
-				} else {
-					pterm.Success.Printf("  ✅ Completed\n")
-					workflowResults = results
-				}
-			} else {
-				// Execute the command
-				if err := core.ExecuteCommandWithContext(ctx, step.Tool, args, debugMode); err != nil {
-					if ctx.Err() != nil {
-						pterm.Warning.Printf("  🛑 Cancelled\n")
-						return ctx.Err()
-					}
-					pterm.Error.Printf("  ❌ Error: %v\n", err)
-					log.Printf("Command execution failed: %v", err)
-					workflowFailed = true
-					// Continue with next step instead of failing completely
-					continue
-				} else {
-					pterm.Success.Printf("  ✅ Completed\n")
-				}
-			}
-		}
-		
-		// Show intermediate results in debug mode
-		if workflowResults != nil {
-			if workflowResults.ScanType == "port-discovery" {
-				pterm.Info.Printf("  📊 Scan Results:\n")
-				core.ShowPortDiscoveryResults(workflowResults)
-			} else if workflowResults.ScanType == "deep-scan" {
-				pterm.Info.Printf("  📊 Scan Results:\n")
-				core.ShowDeepScanResults(workflowResults)
-			} else if workflowResults.ScanType == "vulnerability-scan" {
-				pterm.Info.Printf("  📊 Vulnerability Results:\n")
-				core.ShowVulnerabilityResults(workflowResults)
-			}
-		}
-	} else {
-		// Clean format for normal mode with white spinner
-		whiteSpinner := pterm.DefaultSpinner.WithMessageStyle(pterm.NewStyle(pterm.FgWhite)).
-			WithStyle(pterm.NewStyle(pterm.FgWhite))
-		spinner, _ := whiteSpinner.Start(workflow.Name)
-		
-		// Set up a goroutine to stop the spinner if context is cancelled
-		go func() {
-			<-ctx.Done()
-			if spinner != nil {
-				spinner.Stop()
-				// Clear the line to remove any spinner artifacts
-				fmt.Fprintf(os.Stderr, "\033[2K\r")
-			}
-		}()
-		
-		// Execute each step
-		workflowFailed := false
-		for _, step := range workflow.Steps {
-			// Check for cancellation before each step
-			select {
-			case <-ctx.Done():
-				spinner.Stop()
-				fmt.Fprintf(os.Stderr, "🛑 Scan cancelled during workflow execution\n")
-				return ctx.Err()
-			default:
-			}
-			
-			// Get appropriate args based on sudo preference
-			args := step.GetArgs(useSudo)
-			
-			// For naabu, use optimized fast execution
-			if step.Tool == "naabu" {
-				results, err := core.ExecuteCommandFastContext(ctx, step.Tool, args, debugMode, useSudo)
-				if err != nil {
-					if ctx.Err() != nil {
-						spinner.Stop()
-						pterm.Warning.Printf("🛑 Scan cancelled\n")
-						return ctx.Err()
-					}
-					spinner.Fail("❌ Failed")
-					log.Printf("Command execution failed: %v", err)
-					workflowFailed = true
-					break
-				}
-				workflowResults = results
-			} else if step.Tool == "nmap" {
-				// For nmap, use enhanced execution with real-time results
-				results, err := core.ExecuteCommandWithRealTimeResultsContext(ctx, step.Tool, args, debugMode, useSudo)
-				if err != nil {
-					if ctx.Err() != nil {
-						spinner.Stop()
-						pterm.Warning.Printf("🛑 Scan cancelled\n")
-						return ctx.Err()
-					}
-					spinner.Fail("❌ Failed")
-					log.Printf("Command execution failed: %v", err)
-					workflowFailed = true
-					break
-				}
-				workflowResults = results
-			} else {
-				// For non-nmap commands, use regular execution
-				if err := core.ExecuteCommandWithContext(ctx, step.Tool, args, debugMode); err != nil {
-					if ctx.Err() != nil {
-						spinner.Stop()
-						pterm.Warning.Printf("🛑 Scan cancelled\n")
-						return ctx.Err()
-					}
-					spinner.Fail("❌ Failed")
-					log.Printf("Command execution failed: %v", err)
-					workflowFailed = true
-					break
-				}
-			}
-		}
-		
-		// Only show success if workflow didn't fail
-		if !workflowFailed {
-			spinner.Success("✅ Complete")
-		}
-		
-		// Show intermediate results based on workflow type (only if workflow succeeded)
-		if !workflowFailed && workflowResults != nil {
-			if workflowResults.ScanType == "port-discovery" {
-				core.ShowPortDiscoveryResults(workflowResults)
-			} else if workflowResults.ScanType == "deep-scan" {
-				core.ShowDeepScanResults(workflowResults)
-			} else if workflowResults.ScanType == "vulnerability-scan" {
-				core.ShowVulnerabilityResults(workflowResults)
-			}
-			pterm.Println()
-		}
-	}
-	
-	// Thread-safe data provision from scan results (before reporting pipeline) - only if workflow succeeded
-	if !workflowFailed && workflowResults != nil && workflowResults.ScanType == "port-discovery" && len(workflowResults.Ports) > 0 {
-		var openPorts []string
-		for _, port := range workflowResults.Ports {
-			if port.State == "open" {
-				openPorts = append(openPorts, strconv.Itoa(port.Number))
-			}
-		}
-		if len(openPorts) > 0 {
-			discoveredPortsStr := strings.Join(openPorts, ",")
-			
-			// Thread-safe update of provided data
-			providedDataMutex.Lock()
-			providedData["discovered_ports"] = discoveredPortsStr
-			providedDataMutex.Unlock()
-			
-			// Show discovered ports in a compact table format
-			tableData := [][]string{
-				{"Port", "Protocol", "State"},
-			}
-			
-			for _, port := range workflowResults.Ports {
-				if port.State == "open" {
-					protocol := "tcp"
-					if port.Service != "" {
-						protocol = port.Service
-					}
-					tableData = append(tableData, []string{
-						strconv.Itoa(port.Number),
-						protocol,
-						"open",
-					})
-				}
-			}
-			
-			pterm.Success.Printf("  📤 Discovered %d open ports:\n", len(openPorts))
-			pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-			fmt.Println()
-		}
-	}
-	
-	// Handle data provision after workflow completion - only if immediate extraction didn't succeed
-	if len(workflow.Provides) > 0 {
-		// Check if we already have valid data from immediate extraction (thread-safe)
-		hasValidData := false
-		providedDataMutex.Lock()
-		for _, provided := range workflow.Provides {
-			if value, exists := providedData[provided]; exists && value != "" && value != "extracted_by_reporting_pipeline" {
-				hasValidData = true
-				if debugMode {
-					pterm.Success.Printf("  ✓ Using immediate extraction data for %s: %s\n", provided, value)
-				}
-			}
-		}
-		providedDataMutex.Unlock()
-		
-		// Only run reporting extraction if we don't have valid immediate data
-		if !hasValidData {
-			if workflow.HasReporting() {
-				if debugMode {
-					pterm.Info.Printf("  🔧 Running reporting to extract provided data...\n")
-				}
-				// Run reporting pipeline immediately to extract provided data
-				if err := core.RunWorkflowReporting(reportDir, target, workflowKey, workflow, config, debugMode); err != nil {
-					if debugMode {
-						pterm.Error.Printf("  ❌ Reporting Error: %v\n", err)
-						log.Printf("Workflow reporting failed: %v", err)
-					}
-					// Fallback to direct extraction from raw files
-					if debugMode {
-						pterm.Info.Printf("  🔧 Attempting direct extraction from raw files...\n")
-					}
-					extractedData, err := core.ExtractProvidedData(reportDir, workflow.Provides)
-					if err != nil {
-						if debugMode {
-							pterm.Warning.Printf("  ⚠️ Warning: Could not extract provided data - using fallback\n")
-							for _, provided := range workflow.Provides {
-								pterm.Info.Printf("  📤 Provides: %s\n", provided)
-							}
-						}
-						// Use fallback ports for deep scan instead of placeholder (thread-safe)
-						providedDataMutex.Lock()
-						for _, provided := range workflow.Provides {
-							if provided == "discovered_ports" {
-								// Use common ports as fallback
-								providedData[provided] = "22,53,80,135,139,443,445,993,995,3306,3389,5432,5900,8080,8443"
-								if debugMode {
-									pterm.Info.Printf("  🔧 Using fallback common ports for deep scan\n")
-								}
-							} else {
-								providedData[provided] = "extracted_by_reporting_pipeline"
-							}
-						}
-						providedDataMutex.Unlock()
-					} else {
-						if debugMode {
-							for provided, value := range extractedData {
-								pterm.Success.Printf("  📤 Provides: %s = %s\n", provided, value)
-							}
-						}
-						// Thread-safe update of provided data
-						providedDataMutex.Lock()
-						for provided, value := range extractedData {
-							providedData[provided] = value
-						}
-						providedDataMutex.Unlock()
-					}
-				} else {
-					// Extract provided data from reporting results
-					extractedData, err := core.ExtractProvidedData(reportDir, workflow.Provides)
-					if err != nil {
-						if debugMode {
-							pterm.Warning.Printf("  ⚠️ Warning: Could not extract provided data - using fallback\n")
-							for _, provided := range workflow.Provides {
-								pterm.Info.Printf("  📤 Provides: %s\n", provided)
-							}
-						}
-						// Use fallback ports for deep scan instead of placeholder (thread-safe)
-						providedDataMutex.Lock()
-						for _, provided := range workflow.Provides {
-							if provided == "discovered_ports" {
-								// Use common ports as fallback
-								providedData[provided] = "22,53,80,135,139,443,445,993,995,3306,3389,5432,5900,8080,8443"
-								if debugMode {
-									pterm.Info.Printf("  🔧 Using fallback common ports for deep scan\n")
-								}
-							} else {
-								providedData[provided] = "extracted_by_reporting_pipeline"
-							}
-						}
-						providedDataMutex.Unlock()
-					} else {
-						if debugMode {
-							for provided, value := range extractedData {
-								pterm.Success.Printf("  📤 Provides: %s = %s\n", provided, value)
-							}
-						}
-						// Thread-safe update of provided data
-						providedDataMutex.Lock()
-						for provided, value := range extractedData {
-							providedData[provided] = value
-						}
-						providedDataMutex.Unlock()
-					}
-				}
-			} else {
-				// No reporting enabled, try direct extraction
-				if debugMode {
-					pterm.Info.Printf("  🔧 No reporting enabled, attempting direct extraction...\n")
-				}
-				extractedData, err := core.ExtractProvidedData(reportDir, workflow.Provides)
-				if err != nil {
-					if debugMode {
-						pterm.Warning.Printf("  ⚠️ Warning: Could not extract provided data - using fallback\n")
-						for _, provided := range workflow.Provides {
-							pterm.Info.Printf("  📤 Provides: %s\n", provided)
-						}
-					}
-					// Use fallback ports for deep scan instead of placeholder (thread-safe)
-					providedDataMutex.Lock()
-					for _, provided := range workflow.Provides {
-						if provided == "discovered_ports" {
-							// Use common ports as fallback
-							providedData[provided] = "22,53,80,135,139,443,445,993,995,3306,3389,5432,5900,8080,8443"
-							if debugMode {
-								pterm.Info.Printf("  🔧 Using fallback common ports for deep scan\n")
-							}
-						} else {
-							providedData[provided] = "extracted_by_reporting_pipeline"
-						}
-					}
-					providedDataMutex.Unlock()
-				} else {
-					if debugMode {
-						for provided, value := range extractedData {
-							pterm.Success.Printf("  📤 Provides: %s = %s\n", provided, value)
-						}
-					}
-					// Thread-safe update of provided data
-					providedDataMutex.Lock()
-					for provided, value := range extractedData {
-						providedData[provided] = value
-					}
-					providedDataMutex.Unlock()
-				}
-			}
-		}
-	}
-	
-	fmt.Println()
-	return nil
-}
-
-// executeWorkflowsInParallel executes multiple workflows using errgroup for better error handling and system compatibility
-func executeWorkflowsInParallel(ctx context.Context, workflowKeys []string, workflows map[string]*core.Workflow, vars map[string]string, providedData map[string]string, providedDataMutex *sync.Mutex, debugMode bool, reportDir, target string, config *core.Config, useSudo bool) error {
-	
-	if debugMode {
-		pterm.Info.Printf("Starting parallel execution of %d workflows: %v\n", len(workflowKeys), workflowKeys)
-	}
-	
-	// Create parallel progress display (skip in debug mode for cleaner output)
-	var parallelDisplay *ParallelDisplay
-	if !debugMode {
-		parallelDisplay = NewParallelDisplay(workflowKeys, workflows)
-		parallelDisplay.Start()
-		defer parallelDisplay.Stop()
-		
-		// Set up context cancellation handler to stop display immediately
-		go func() {
-			<-ctx.Done()
-			if parallelDisplay != nil {
-				parallelDisplay.Stop()
-				// Clear any remaining UI artifacts
-				fmt.Fprintf(os.Stderr, "\033[2K\r")
-			}
-		}()
-	}
-	
-	// Create errgroup with context for automatic error propagation and cancellation
-	g, groupCtx := errgroup.WithContext(ctx)
-	
-	// Set concurrency limit based on configuration and system resources
-	maxConcurrency := config.GetMaxConcurrency(len(workflowKeys))
-	g.SetLimit(maxConcurrency)
-	
-	if debugMode {
-		pterm.Info.Printf("Using errgroup with max concurrency: %d\n", maxConcurrency)
-	}
-	
-	// Results tracking with thread-safe access
-	var resultsMutex sync.Mutex
-	var results []ParallelResult
-	
-	// Execute workflows in parallel using errgroup
-	for _, workflowKey := range workflowKeys {
-		wk := workflowKey // Capture loop variable
-		g.Go(func() error {
-			startTime := time.Now()
-			
-			if debugMode {
-				pterm.Info.Printf("[%s] Starting parallel execution...\n", wk)
-			} else {
-				// Update display to show workflow started
-				parallelDisplay.UpdateStatus(wk, "running", "")
-			}
-			
-			// Execute workflow - use regular executeWorkflow in debug mode for detailed output
-			var err error
-			if debugMode {
-				err = executeWorkflow(groupCtx, wk, workflows, vars, providedData, providedDataMutex, debugMode, reportDir, target, config, useSudo)
-			} else {
-				err = executeWorkflowSilent(groupCtx, wk, workflows, vars, providedData, providedDataMutex, reportDir, target, config, useSudo)
-			}
-			
-			duration := time.Since(startTime)
-			
-			if err != nil {
-				if debugMode {
-					pterm.Error.Printf("[%s] Failed after %v: %v\n", wk, duration.Round(time.Second), err)
-				} else {
-					parallelDisplay.UpdateStatus(wk, "failed", fmt.Sprintf("Failed after %v", duration.Round(time.Second)))
-				}
-				// errgroup will automatically cancel other goroutines on first error
-				return fmt.Errorf("workflow %s failed: %w", wk, err)
-			} else {
-				if debugMode {
-					pterm.Success.Printf("[%s] Completed successfully in %v\n", wk, duration.Round(time.Second))
-				} else {
-					parallelDisplay.UpdateStatus(wk, "completed", fmt.Sprintf("Completed in %v", duration.Round(time.Second)))
-				}
-				
-				// Thread-safe result collection
-				resultsMutex.Lock()
-				results = append(results, ParallelResult{WorkflowKey: wk, Duration: duration, Success: true})
-				resultsMutex.Unlock()
-				
-				return nil
-			}
-		})
-	}
-	
-	// Wait for all workflows to complete or first error
-	if err := g.Wait(); err != nil {
-		// errgroup automatically cancels remaining workflows on first error
-		if debugMode {
-			pterm.Error.Printf("Parallel execution stopped due to error: %v\n", err)
-		}
-		return err
-	}
-	
-	// Show results summary
-	if len(results) > 0 && !debugMode {
-		parallelDisplay.ShowSummary(results)
-	}
-	
-	if debugMode {
-		pterm.Success.Printf("All %d workflows completed successfully\n", len(results))
-	}
-	
-	return nil
-}
-
-// ParallelResult represents the result of a parallel workflow execution
-type ParallelResult struct {
-	WorkflowKey string
-	Duration    time.Duration
-	Success     bool
-}
-
-// ParallelDisplay manages the display of parallel workflow execution
-type ParallelDisplay struct {
-	workflowKeys []string
-	workflows    map[string]*core.Workflow
-	statuses     map[string]string
-	messages     map[string]string
-	startTime    time.Time
-	mutex        sync.Mutex
-	area         *pterm.AreaPrinter
-	ticker       *time.Ticker
-	done         chan bool
-	stopOnce     sync.Once
-}
-
-// NewParallelDisplay creates a new parallel display manager
-func NewParallelDisplay(workflowKeys []string, workflows map[string]*core.Workflow) *ParallelDisplay {
-	return &ParallelDisplay{
-		workflowKeys: workflowKeys,
-		workflows:    workflows,
-		statuses:     make(map[string]string),
-		messages:     make(map[string]string),
-		startTime:    time.Now(),
-		done:         make(chan bool),
-	}
-}
-
-// Start begins the parallel display
-func (pd *ParallelDisplay) Start() {
-	pd.mutex.Lock()
-	defer pd.mutex.Unlock()
-	
-	// Initialize statuses
-	for _, key := range pd.workflowKeys {
-		pd.statuses[key] = "waiting"
-		pd.messages[key] = "Waiting to start..."
-	}
-	
-	// Create area printer for updating display
-	pd.area, _ = pterm.DefaultArea.Start()
-	
-	// Start ticker for updating elapsed time
-	pd.ticker = time.NewTicker(500 * time.Millisecond)
-	go pd.updateDisplay()
-	
-	// Initial render
-	pd.render()
-}
-
-// Stop ends the parallel display
-func (pd *ParallelDisplay) Stop() {
-	pd.stopOnce.Do(func() {
-		if pd.ticker != nil {
-			pd.ticker.Stop()
-		}
-		if pd.done != nil {
-			close(pd.done)
-		}
-		if pd.area != nil {
-			pd.area.Stop()
-		}
-	})
-}
-
-// UpdateStatus updates the status of a workflow
-func (pd *ParallelDisplay) UpdateStatus(workflowKey, status, message string) {
-	pd.mutex.Lock()
-	defer pd.mutex.Unlock()
-	
-	pd.statuses[workflowKey] = status
-	pd.messages[workflowKey] = message
-	pd.render()
-}
-
-// updateDisplay handles periodic updates
-func (pd *ParallelDisplay) updateDisplay() {
-	for {
-		select {
-		case <-pd.ticker.C:
-			pd.mutex.Lock()
-			pd.render()
-			pd.mutex.Unlock()
-		case <-pd.done:
-			return
-		}
-	}
-}
-
-// render updates the display
-func (pd *ParallelDisplay) render() {
-	if pd.area == nil {
-		return
-	}
-	
-	var output strings.Builder
-	
-	// Header
-	totalElapsed := time.Since(pd.startTime).Round(time.Second)
-	output.WriteString(pterm.Sprintf("%s %s\n\n", 
-		pterm.NewStyle(pterm.FgLightBlue, pterm.Bold).Sprint("⚡ Parallel Execution"),
-		pterm.NewStyle(pterm.FgGray).Sprintf("(Total: %v)", totalElapsed)))
-	
-	// Progress for each workflow
-	for _, key := range pd.workflowKeys {
-		workflow := pd.workflows[key]
-		status := pd.statuses[key]
-		message := pd.messages[key]
-		
-		var statusIcon string
-		var statusColor pterm.Color
-		switch status {
-		case "waiting":
-			statusIcon = "⏳"
-			statusColor = pterm.FgGray
-		case "running":
-			statusIcon = "🔄"
-			statusColor = pterm.FgLightBlue
-		case "completed":
-			statusIcon = "✅"
-			statusColor = pterm.FgGreen
-		case "failed":
-			statusIcon = "❌"
-			statusColor = pterm.FgRed
-		default:
-			statusIcon = "❓"
-			statusColor = pterm.FgGray
-		}
-		
-		workflowName := workflow.Name
-		if len(workflowName) > 35 {
-			workflowName = workflowName[:32] + "..."
-		}
-		
-		output.WriteString(pterm.Sprintf("%s %s %s\n", 
-			statusIcon,
-			pterm.NewStyle(pterm.FgWhite, pterm.Bold).Sprintf("%-38s", workflowName),
-			pterm.NewStyle(statusColor).Sprint(message)))
-	}
-	
-	pd.area.Update(output.String())
-}
-
-// ShowSummary displays the final summary
-func (pd *ParallelDisplay) ShowSummary(results []ParallelResult) {
-	pd.Stop()
-	
-	fmt.Println()
-	pterm.Success.Printf("🎉 Parallel execution completed in %v\n", time.Since(pd.startTime).Round(time.Second))
-	
-	for _, result := range results {
-		workflow := pd.workflows[result.WorkflowKey]
-		if result.Success {
-			pterm.Info.Printf("  ✅ %s: %v\n", workflow.Name, result.Duration.Round(time.Second))
-		}
-	}
-	fmt.Println()
-}
-
-// executeWorkflowSilent executes a workflow without any spinner output for parallel execution
-func executeWorkflowSilent(ctx context.Context, workflowKey string, workflows map[string]*core.Workflow, vars map[string]string, providedData map[string]string, providedDataMutex *sync.Mutex, reportDir, target string, config *core.Config, useSudo bool) error {
-	// Check if context has been cancelled
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-	}
-	
-	workflow, exists := workflows[workflowKey]
-	if !exists {
-		return nil // Skip if workflow doesn't exist in template
-	}
-	
-	// Create a local copy of vars to avoid race conditions in parallel execution
-	localVars := make(map[string]string)
-	for k, v := range vars {
-		localVars[k] = v
-	}
-	
-	// Update local vars with any provided data from previous workflows (thread-safe)
-	providedDataMutex.Lock()
-	for key, value := range providedData {
-		localVars[key] = value
-	}
-	providedDataMutex.Unlock()
-	
-	
-	// Special handling for nmap deep scan - provide fallback ports if none discovered
-	if core.IsNmapDeepScan(workflow) {
-		if discoveredPorts, exists := localVars["discovered_ports"]; !exists || discoveredPorts == "" {
-			// Use common ports as fallback for deep scan
-			localVars["discovered_ports"] = "22,53,80,135,139,443,445,993,995,3306,3389,5432,5900,8080,8443"
-		}
-	}
-	
-	// Replace placeholders
-	workflow.ReplaceVars(localVars)
-	
-	var workflowResults *core.ScanResults
-	
-	// Execute each step silently
+	// Execute each step
 	for _, step := range workflow.Steps {
 		// Check for cancellation before each step
 		select {
 		case <-ctx.Done():
+			if !debugMode {
+				ui.Global.Spinners.Fail("Cancelled by user")
+			}
 			return ctx.Err()
 		default:
 		}
@@ -1176,68 +415,124 @@ func executeWorkflowSilent(ctx context.Context, workflowKey string, workflows ma
 		// Get appropriate args based on sudo preference
 		args := step.GetArgs(useSudo)
 		
-		// Execute commands without any output
+		if debugMode {
+			ui.Global.Messages.ExecutingCommand(step.Tool, args)
+		}
+		
+		// Execute commands with specific handling for different tools
 		if step.Tool == "naabu" {
-			results, err := core.ExecuteCommandFastContext(ctx, step.Tool, args, false, useSudo)
+			// Use fast execution for naabu with context
+			results, err := core.ExecuteCommandFastContext(ctx, step.Tool, args, debugMode, useSudo)
 			if err != nil {
+				workflowError = err
 				if ctx.Err() != nil {
+					if !debugMode {
+						ui.Global.Spinners.Fail("Cancelled by user")
+					}
 					return ctx.Err()
 				}
-				return err
+				break
 			}
 			workflowResults = results
+			
+			if debugMode && results != nil {
+				core.ShowNaabuResults(results)
+			}
 		} else if step.Tool == "nmap" {
-			results, err := core.ExecuteCommandWithRealTimeResultsContext(ctx, step.Tool, args, false, useSudo)
+			// For nmap, use enhanced execution with real-time results
+			// Show real-time results in debug mode
+			results, err := core.ExecuteCommandWithRealTimeResultsContext(ctx, step.Tool, args, debugMode, useSudo)
 			if err != nil {
+				workflowError = err
 				if ctx.Err() != nil {
+					if !debugMode {
+						ui.Global.Spinners.Fail("Cancelled by user")
+					}
 					return ctx.Err()
 				}
-				return err
+				break
 			}
 			workflowResults = results
+			
+			if debugMode && results != nil {
+				core.ShowNmapResults(results)
+			}
 		} else {
-			if err := core.ExecuteCommandWithContext(ctx, step.Tool, args, false); err != nil {
+			// Standard execution for other tools
+			if err := core.ExecuteCommandWithContext(ctx, step.Tool, args, debugMode); err != nil {
+				workflowError = err
 				if ctx.Err() != nil {
+					if !debugMode {
+						ui.Global.Spinners.Fail("Cancelled by user")
+					}
 					return ctx.Err()
 				}
-				return err
+				break
 			}
 		}
 	}
 	
-	// Handle data provision from scan results (thread-safe)
-	if workflowResults != nil && workflowResults.ScanType == "port-discovery" && len(workflowResults.Ports) > 0 {
-		var openPorts []string
-		for _, port := range workflowResults.Ports {
-			if port.State == "open" {
-				openPorts = append(openPorts, strconv.Itoa(port.Number))
+	// Handle workflow errors (success is already handled by tool-specific completion)
+	if !debugMode && workflowError != nil {
+		ui.Global.Spinners.Fail(fmt.Sprintf("%s failed: %v", workflow.Name, workflowError))
+	}
+	
+	if workflowError != nil {
+		return fmt.Errorf("workflow %s failed: %w", workflow.Name, workflowError)
+	}
+	
+	// Handle results and data provision
+	if workflowResults != nil {
+		// Display vulnerability results if this was a vulnerability scan
+		if workflowResults.ScanType == "vulnerability-scan" {
+			if !debugMode && len(workflowResults.Vulnerabilities) > 0 {
+				core.ShowVulnerabilityResults(workflowResults)
 			}
 		}
-		if len(openPorts) > 0 {
-			discoveredPortsStr := strings.Join(openPorts, ",")
-			
-			// Thread-safe update of provided data
+		
+		// If this workflow provides data, extract it
+		if workflowResults.ScanType == "port-discovery" && len(workflowResults.Ports) > 0 {
+			// Extract open ports for next workflow
+			var openPorts []string
+			for _, port := range workflowResults.Ports {
+				if port.State == "open" {
+					openPorts = append(openPorts, strconv.Itoa(port.Number))
+				}
+			}
+			if len(openPorts) > 0 {
+				discoveredPortsStr := strings.Join(openPorts, ",")
+				providedDataMutex.Lock()
+				providedData["discovered_ports"] = discoveredPortsStr
+				providedDataMutex.Unlock()
+				
+				if debugMode {
+					ui.Global.Messages.DiscoveredPorts(len(openPorts), discoveredPortsStr)
+				}
+			}
+		}
+	}
+	
+	// Handle workflow-specific data provision from file outputs
+	if len(workflow.Provides) > 0 {
+		// Extract data from output files
+		extractedData, err := core.ExtractProvidedData(reportDir, workflow.Provides)
+		if err == nil && len(extractedData) > 0 {
 			providedDataMutex.Lock()
-			providedData["discovered_ports"] = discoveredPortsStr
+			for key, value := range extractedData {
+				providedData[key] = value
+				if debugMode {
+					ui.Global.Messages.ProvidedData(key, value)
+				}
+			}
 			providedDataMutex.Unlock()
 		}
 	}
 	
-	// Handle workflow reporting (thread-safe)
-	if len(workflow.Provides) > 0 {
-		// Run workflow reporting if enabled
-		if workflow.HasReporting() {
-			if err := core.RunWorkflowReporting(reportDir, target, workflowKey, workflow, config, false); err != nil {
-				// Don't fail completely on reporting errors in parallel mode
-				log.Printf("Workflow reporting failed for %s: %v", workflowKey, err)
-			}
-		}
-	}
-	
+	fmt.Println()
 	return nil
 }
 
-// buildExecutionLevels creates execution levels for parallel workflow execution
+// buildExecutionLevels creates execution levels based on dependencies
 func buildExecutionLevels(workflows map[string]*core.Workflow) ([][]string, error) {
 	// First, build a dependency graph to determine execution levels
 	workflowNames := make(map[string]string) // workflow name -> workflow key
@@ -1255,59 +550,67 @@ func buildExecutionLevels(workflows map[string]*core.Workflow) ([][]string, erro
 		}
 	}
 	
-	// Calculate dependency depth for each workflow
-	var calculateLevel func(string) (int, error)
-	calculateLevel = func(workflowName string) (int, error) {
-		if visiting[workflowName] {
-			return 0, fmt.Errorf("circular dependency detected involving %s", workflowName)
-		}
-		if visited[workflowName] {
-			return workflowLevels[workflowName], nil
-		}
-		
-		workflowKey, exists := workflowNames[workflowName]
-		if !exists {
-			return 0, fmt.Errorf("workflow %s not found", workflowName)
-		}
-		
+	// Calculate execution level for each workflow using DFS
+	var calculateLevel func(workflowKey string) (int, error)
+	calculateLevel = func(workflowKey string) (int, error) {
 		workflow := workflows[workflowKey]
-		visiting[workflowName] = true
 		
-		maxDepLevel := 0
-		// Calculate the maximum level of all dependencies
+		// Check for circular dependencies
+		if visiting[workflowKey] {
+			return 0, fmt.Errorf("circular dependency detected involving %s", workflow.Name)
+		}
+		
+		// If already calculated, return the level
+		if visited[workflowKey] {
+			return workflowLevels[workflowKey], nil
+		}
+		
+		visiting[workflowKey] = true
+		maxDepLevel := -1
+		
+		// Check dependencies
 		for _, dep := range workflow.Requires {
-			depLevel, err := calculateLevel(dep)
+			// Find the workflow key for this dependency
+			depKey, exists := workflowNames[dep]
+			if !exists {
+				// Try to find by scanning all workflows
+				for key, w := range workflows {
+					if w.Name == dep || strings.Contains(key, dep) {
+						depKey = key
+						workflowNames[dep] = key
+						break
+					}
+				}
+				if depKey == "" {
+					return 0, fmt.Errorf("dependency '%s' not found for workflow '%s'", dep, workflow.Name)
+				}
+			}
+			
+			level, err := calculateLevel(depKey)
 			if err != nil {
 				return 0, err
 			}
-			if depLevel >= maxDepLevel {
-				maxDepLevel = depLevel + 1
+			if level > maxDepLevel {
+				maxDepLevel = level
 			}
 		}
 		
-		visiting[workflowName] = false
-		visited[workflowName] = true
-		workflowLevels[workflowName] = maxDepLevel
+		// This workflow's level is one more than its highest dependency
+		workflowLevels[workflowKey] = maxDepLevel + 1
+		visiting[workflowKey] = false
+		visited[workflowKey] = true
 		
-		return maxDepLevel, nil
+		return workflowLevels[workflowKey], nil
 	}
 	
 	// Calculate levels for all workflows
 	for key := range workflows {
-		parts := strings.Split(key, "_")
-		workflowName := key
-		if len(parts) > 1 {
-			workflowName = parts[1]
-		}
-		
-		if !visited[workflowName] {
-			if _, err := calculateLevel(workflowName); err != nil {
-				return nil, err
-			}
+		if _, err := calculateLevel(key); err != nil {
+			return nil, err
 		}
 	}
 	
-	// Group workflows by their execution level and parallel group
+	// Group workflows by level
 	maxLevel := 0
 	for _, level := range workflowLevels {
 		if level > maxLevel {
@@ -1315,315 +618,10 @@ func buildExecutionLevels(workflows map[string]*core.Workflow) ([][]string, erro
 		}
 	}
 	
-	// Create execution levels
 	executionLevels := make([][]string, maxLevel+1)
-	levelGroups := make([]map[string][]string, maxLevel+1) // level -> parallel_group -> workflows
-	
-	for i := range levelGroups {
-		levelGroups[i] = make(map[string][]string)
+	for key, level := range workflowLevels {
+		executionLevels[level] = append(executionLevels[level], key)
 	}
 	
-	// Organize workflows into levels and parallel groups
-	for workflowName, level := range workflowLevels {
-		workflowKey := workflowNames[workflowName]
-		workflow := workflows[workflowKey]
-		
-		parallelGroup := workflow.ParallelGroup
-		if parallelGroup == "" {
-			parallelGroup = "_sequential_" // Default group for sequential execution
-		}
-		
-		levelGroups[level][parallelGroup] = append(levelGroups[level][parallelGroup], workflowKey)
-	}
-	
-	// Build final execution levels
-	// Workflows in the same parallel group at the same level can run in parallel
-	for level := 0; level <= maxLevel; level++ {
-		var levelWorkflows []string
-		
-		// First, add all sequential workflows
-		if seqWorkflows, exists := levelGroups[level]["_sequential_"]; exists {
-			levelWorkflows = append(levelWorkflows, seqWorkflows...)
-		}
-		
-		// Then, add parallel groups (each group as a batch)
-		for groupName, groupWorkflows := range levelGroups[level] {
-			if groupName != "_sequential_" {
-				// All workflows in the same parallel group go to the same execution level
-				levelWorkflows = append(levelWorkflows, groupWorkflows...)
-			}
-		}
-		
-		if len(levelWorkflows) > 0 {
-			executionLevels[level] = levelWorkflows
-		}
-	}
-	
-	// Remove empty levels
-	var compactLevels [][]string
-	for _, level := range executionLevels {
-		if len(level) > 0 {
-			compactLevels = append(compactLevels, level)
-		}
-	}
-	
-	return compactLevels, nil
-}
-
-// buildExecutionOrder creates an execution order based on workflow dependencies
-func buildExecutionOrder(workflows map[string]*core.Workflow) ([]string, error) {
-	var order []string
-	visited := make(map[string]bool)
-	visiting := make(map[string]bool)
-	
-	// Extract workflow name from key (remove tool prefix)
-	workflowNames := make(map[string]string)
-	for key := range workflows {
-		// Extract the actual workflow filename from the key (e.g., "nmap_port-discovery" -> "port-discovery")
-		parts := strings.Split(key, "_")
-		if len(parts) > 1 {
-			workflowNames[parts[1]] = key
-		} else {
-			workflowNames[key] = key
-		}
-	}
-	
-	var visit func(string) error
-	visit = func(workflowName string) error {
-		if visiting[workflowName] {
-			return fmt.Errorf("circular dependency detected involving %s", workflowName)
-		}
-		if visited[workflowName] {
-			return nil
-		}
-		
-		workflowKey, exists := workflowNames[workflowName]
-		if !exists {
-			return fmt.Errorf("workflow %s not found", workflowName)
-		}
-		
-		workflow := workflows[workflowKey]
-		visiting[workflowName] = true
-		
-		// Visit dependencies first
-		for _, dep := range workflow.Requires {
-			if err := visit(dep); err != nil {
-				return err
-			}
-		}
-		
-		visiting[workflowName] = false
-		visited[workflowName] = true
-		order = append(order, workflowKey)
-		
-		return nil
-	}
-	
-	// Visit all workflows
-	for key := range workflows {
-		parts := strings.Split(key, "_")
-		workflowName := key
-		if len(parts) > 1 {
-			workflowName = parts[1]
-		}
-		
-		if !visited[workflowName] {
-			if err := visit(workflowName); err != nil {
-				return nil, err
-			}
-		}
-	}
-	
-	return order, nil
-}
-
-// showScanSummary displays a clean summary of scan results
-func showScanSummary(reportDir, target string) {
-	// Create a styled header section
-	pterm.DefaultSection.Println("🎯 SCAN SUMMARY")
-	
-	// Try to read summary data from the nmap_cleaned.json file
-	nmapDataPath := filepath.Join(reportDir, "processed", "nmap_cleaned.json")
-	if data, err := os.ReadFile(nmapDataPath); err == nil {
-		var nmapData struct {
-			Ports []struct {
-				Number  int    `json:"number"`
-				State   string `json:"state"`
-				Service string `json:"service"`
-			} `json:"ports"`
-		}
-		
-		if err := json.Unmarshal(data, &nmapData); err == nil {
-			var openPorts []string
-			var services []string
-			var tableData [][]string
-			
-			// Add table header
-			tableData = append(tableData, []string{"Port", "State", "Service"})
-			
-			for _, port := range nmapData.Ports {
-				if port.State == "open" {
-					openPorts = append(openPorts, strconv.Itoa(port.Number))
-					if port.Service != "" && port.Service != "unknown" {
-						services = append(services, port.Service)
-					}
-					
-					// Add port data to table
-					service := port.Service
-					if service == "" {
-						service = "unknown"
-					}
-					tableData = append(tableData, []string{
-						strconv.Itoa(port.Number),
-						port.State,
-						service,
-					})
-				}
-			}
-			
-			// Display results with PTerm
-			if len(openPorts) > 0 {
-				pterm.Success.Printf("Found %d open ports\n", len(openPorts))
-				
-				// Display ports table
-				pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-				
-				if len(services) > 0 {
-					uniqueServices := removeDuplicates(services)
-					pterm.Info.Printf("Services detected: %s\n", strings.Join(uniqueServices, ", "))
-				}
-				
-				// Risk level with color coding
-				riskLevel := calculateRiskLevel(nmapData.Ports, services)
-				displayRiskLevel(riskLevel)
-			} else {
-				pterm.Warning.Println("No open ports found")
-			}
-		}
-	} else {
-		pterm.Warning.Println("Scan results not available yet")
-	}
-	
-	pterm.Println()
-	pterm.Info.Printf("📁 Full reports available at: %s/summary/\n", reportDir)
-}
-
-// removeDuplicates removes duplicate strings from a slice
-func removeDuplicates(slice []string) []string {
-	keys := make(map[string]bool)
-	var result []string
-	
-	for _, item := range slice {
-		if !keys[item] {
-			keys[item] = true
-			result = append(result, item)
-		}
-	}
-	
-	return result
-}
-
-// RiskLevel represents the security risk level
-type RiskLevel int
-
-const (
-	RiskLow RiskLevel = iota
-	RiskMedium
-	RiskHigh
-	RiskCritical
-)
-
-// calculateRiskLevel determines risk level based on open ports and services
-func calculateRiskLevel(ports []struct {
-	Number  int    `json:"number"`
-	State   string `json:"state"`
-	Service string `json:"service"`
-}, services []string) RiskLevel {
-	var openPorts []int
-	var criticalServices []string
-	var highRiskServices []string
-	
-	// Define high-risk ports and services
-	criticalPorts := map[int]bool{
-		21: true,   // FTP
-		23: true,   // Telnet
-		25: true,   // SMTP
-		53: true,   // DNS
-		135: true,  // RPC
-		139: true,  // NetBIOS
-		445: true,  // SMB
-		1433: true, // MSSQL
-		3389: true, // RDP
-		5432: true, // PostgreSQL
-	}
-	
-	highRiskPorts := map[int]bool{
-		22: true,   // SSH
-		80: true,   // HTTP
-		443: true,  // HTTPS
-		993: true,  // IMAPS
-		995: true,  // POP3S
-		3306: true, // MySQL
-		5900: true, // VNC
-		8080: true, // HTTP-alt
-	}
-	
-	criticalServiceNames := []string{"ftp", "telnet", "smtp", "rpc", "netbios", "smb", "microsoft-ds", "mssql", "ms-wbt-server", "postgresql"}
-	highRiskServiceNames := []string{"ssh", "http", "https", "mysql", "vnc"}
-	
-	// Analyze ports
-	for _, port := range ports {
-		if port.State == "open" {
-			openPorts = append(openPorts, port.Number)
-			
-			if criticalPorts[port.Number] {
-				criticalServices = append(criticalServices, port.Service)
-			} else if highRiskPorts[port.Number] {
-				highRiskServices = append(highRiskServices, port.Service)
-			}
-		}
-	}
-	
-	// Analyze services
-	for _, service := range services {
-		for _, critical := range criticalServiceNames {
-			if strings.Contains(strings.ToLower(service), critical) {
-				criticalServices = append(criticalServices, service)
-				break
-			}
-		}
-		for _, high := range highRiskServiceNames {
-			if strings.Contains(strings.ToLower(service), high) {
-				highRiskServices = append(highRiskServices, service)
-				break
-			}
-		}
-	}
-	
-	// Determine risk level
-	if len(criticalServices) > 0 {
-		return RiskCritical
-	}
-	if len(highRiskServices) > 2 || len(openPorts) > 10 {
-		return RiskHigh
-	}
-	if len(highRiskServices) > 0 || len(openPorts) > 5 {
-		return RiskMedium
-	}
-	
-	return RiskLow
-}
-
-// displayRiskLevel shows the risk level with simple colors
-func displayRiskLevel(risk RiskLevel) {
-	switch risk {
-	case RiskCritical:
-		pterm.Error.Println("Risk Level: CRITICAL")
-	case RiskHigh:
-		pterm.Warning.Println("Risk Level: HIGH")
-	case RiskMedium:
-		pterm.Warning.Println("Risk Level: MEDIUM")
-	case RiskLow:
-		pterm.Success.Println("Risk Level: LOW")
-	}
+	return executionLevels, nil
 }

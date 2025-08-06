@@ -2,14 +2,6 @@ name: "Port Discovery Scan"
 description: "Fast port discovery scan to identify open ports using naabu"
 provides:
   - "discovered_ports"
-report:
-  enabled: true
-  agents:
-    - receiver
-    - universal_processor
-    - validator
-    - reporter
-  coordination: true
 steps:
   - tool: "naabu"
     args_sudo:
@@ -28,7 +20,7 @@ steps:
       - "-silent"          # Clean output
       - "-json"            # JSON output format
       - "-o"               # Output file
-      - "{{report_dir}}/raw/naabu_port_discovery_{{target}}.json"
+      - "naabu_port_discovery_{{target}}.json"
     args_normal:
       - "-host"            # Target host
       - "{{target}}"       # Target to scan
@@ -45,4 +37,4 @@ steps:
       - "-silent"          # Clean output
       - "-json"            # JSON output format
       - "-o"               # Output file
-      - "{{report_dir}}/raw/naabu_port_discovery_{{target}}.json"
+      - "naabu_port_discovery_{{target}}.json"

@@ -145,3 +145,43 @@ func GetPrivilegeStatus() string {
 	
 	return "Running with normal privileges (sudo not available)"
 }
+
+// IsValidTarget checks if a target is a valid hostname or IP address
+func IsValidTarget(target string) bool {
+	// Basic validation - check if it's not empty and doesn't contain invalid characters
+	if target == "" || len(target) > 255 {
+		return false
+	}
+	
+	// Check for obviously invalid characters
+	for _, char := range target {
+		if char < 32 || char > 126 {
+			return false
+		}
+	}
+	
+	// Allow hostnames, IP addresses, and common formats
+	// This is a permissive check - more detailed validation can be added later
+	return true
+}
+
+// LookPath is an alias for exec.LookPath for compatibility
+func LookPath(file string) (string, error) {
+	return exec.LookPath(file)
+}
+
+// PrivilegeOption represents privilege escalation options
+type PrivilegeOption struct {
+	UseSudo             bool
+	RequestEscalation   bool
+}
+
+// HandlePrivilegeDecision handles the privilege escalation decision process
+func HandlePrivilegeDecision(needsSudo bool, interactive bool) *PrivilegeOption {
+	option := &PrivilegeOption{
+		UseSudo:           needsSudo,
+		RequestEscalation: needsSudo && !IsRunningAsRoot(),
+	}
+	
+	return option
+}

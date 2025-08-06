@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +15,7 @@ import (
 	"time"
 	
 	"ipcrawler/internal/utils"
-	"github.com/pterm/pterm"
+	"ipcrawler/internal/ui"
 )
 
 // PortInfo represents discovered port information
@@ -49,41 +48,14 @@ type VulnerabilityInfo struct {
 
 // GenerateReportDirectoryPath generates the report directory path without creating directories
 func GenerateReportDirectoryPath(baseDir, target string) string {
-	// Sanitize target name for directory
-	sanitizedTarget := strings.ReplaceAll(target, ".", "_")
-	sanitizedTarget = strings.ReplaceAll(sanitizedTarget, ":", "_")
-	sanitizedTarget = strings.ReplaceAll(sanitizedTarget, "/", "_")
-	
-	timestamp := time.Now().Format("20060102_150405")
-	return filepath.Join(baseDir, sanitizedTarget, fmt.Sprintf("timestamp_%s", timestamp))
+	// Just return current directory
+	return "."
 }
 
 // CreateReportDirectory creates the report directory structure for a target
 func CreateReportDirectory(baseDir, target string) (string, error) {
-	reportPath := GenerateReportDirectoryPath(baseDir, target)
-	
-	// Create directory structure
-	dirs := []string{
-		reportPath,
-		filepath.Join(reportPath, "raw"),
-		filepath.Join(reportPath, "processed"),
-		filepath.Join(reportPath, "summary"),
-		filepath.Join(reportPath, "logs"),
-	}
-	
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return "", fmt.Errorf("failed to create directory %s: %w", dir, err)
-		}
-	}
-	
-	// Fix permissions if running with sudo
-	if err := utils.FixSudoPermissions(reportPath); err != nil {
-		// Log warning but don't fail - the directories still work for root
-		pterm.Warning.Printf("Could not fix permissions for %s: %v\n", reportPath, err)
-	}
-	
-	return reportPath, nil
+	// Just return current directory, no need to create subdirectories
+	return ".", nil
 }
 
 // ExecuteCommand executes a security tool command with the given arguments
@@ -126,7 +98,23 @@ func ExecuteCommandWithRealTimeResultsContext(ctx context.Context, tool string, 
 	// Log the full command being executed for debugging
 	fullCmd := fmt.Sprintf("%s %s", tool, strings.Join(args, " "))
 	if debugMode {
-		pterm.Info.Printf("Executing command: %s\n", fullCmd)
+		ui.Global.Messages.ExecutingCommandDebug(fullCmd)
+	}
+	
+	// Extract target from args for progress display
+	target := extractTargetFromArgs(args)
+	
+	// Create streaming output processor for real-time display
+	// Always show enhanced UI, but in debug mode also show raw output
+	var processor *ui.StreamingOutputProcessor
+	processor = ui.Global.CreateStreamingProcessor(tool, target)
+	if processor != nil {
+		processor.Start()
+		defer func() {
+			if processor != nil {
+				processor.Complete()
+			}
+		}()
 	}
 	
 	// Ensure output directories exist for any output files specified in args
@@ -146,7 +134,7 @@ func ExecuteCommandWithRealTimeResultsContext(ctx context.Context, tool string, 
 		sudoArgs := append([]string{tool}, args...)
 		cmd = exec.CommandContext(ctx, "sudo", sudoArgs...)
 		if debugMode {
-			pterm.Info.Printf("Running with sudo: sudo %s\n", strings.Join(sudoArgs, " "))
+			ui.Global.Messages.RunningSudo(sudoArgs)
 		}
 	} else {
 		cmd = exec.CommandContext(ctx, tool, args...)
@@ -214,7 +202,11 @@ func ExecuteCommandWithRealTimeResultsContext(ctx context.Context, tool string, 
 				} else {
 					outputLines = append(outputLines, line)
 					if debugMode {
-						fmt.Println(line)
+						ui.Global.Messages.Println(line)
+					}
+					if processor != nil {
+						// Process line for real-time display (works in both debug and normal modes)
+						processor.ProcessLine(line)
 					}
 				}
 			case line, ok := <-errorChan:
@@ -259,6 +251,11 @@ func ExecuteCommandWithRealTimeResultsContext(ctx context.Context, tool string, 
 			}
 		}
 		
+		// Mark processor as failed if we have one
+		if processor != nil {
+			processor.Fail("command cancelled")
+		}
+		
 		// Don't wait for the done channel - return immediately
 		return nil, fmt.Errorf("command cancelled: %w", ctx.Err())
 	case <-done:
@@ -267,6 +264,11 @@ func ExecuteCommandWithRealTimeResultsContext(ctx context.Context, tool string, 
 	
 	// Check if the process had an error (after normal completion)
 	if cmd.ProcessState != nil && !cmd.ProcessState.Success() {
+		// Mark processor as failed if we have one
+		if processor != nil {
+			processor.Fail("command execution failed")
+		}
+		
 		// Enhanced error reporting with stderr output
 		var errorMessage strings.Builder
 		errorMessage.WriteString(fmt.Sprintf("failed to execute %s", tool))
@@ -284,7 +286,7 @@ func ExecuteCommandWithRealTimeResultsContext(ctx context.Context, tool string, 
 	// If no stdout output but we have stderr, this might indicate the tool is writing to stderr instead
 	if len(outputLines) == 0 && len(errorLines) > 0 {
 		if debugMode {
-			pterm.Warning.Printf("No stdout output detected, checking if tool wrote to stderr instead\n")
+			ui.Global.Messages.NoStdoutDetected()
 		}
 		// For tools that might write JSON to stderr, try parsing that
 		outputLines = errorLines
@@ -353,7 +355,23 @@ func ExecuteCommandFastContext(ctx context.Context, tool string, args []string, 
 	// Log the full command being executed for debugging
 	fullCmd := fmt.Sprintf("%s %s", tool, strings.Join(args, " "))
 	if debugMode {
-		pterm.Info.Printf("Executing command (fast mode): %s\n", fullCmd)
+		ui.Global.Messages.ExecutingCommandFast(fullCmd)
+	}
+	
+	// Extract target from args for progress display
+	target := extractTargetFromArgs(args)
+	
+	// Create streaming output processor for real-time display
+	// Always show enhanced UI, but in debug mode also show raw output
+	var processor *ui.StreamingOutputProcessor
+	processor = ui.Global.CreateStreamingProcessor(tool, target)
+	if processor != nil {
+		processor.Start()
+		defer func() {
+			if processor != nil {
+				processor.Complete()
+			}
+		}()
 	}
 	
 	// Ensure output directories exist for any output files specified in args
@@ -373,57 +391,138 @@ func ExecuteCommandFastContext(ctx context.Context, tool string, args []string, 
 		sudoArgs := append([]string{tool}, args...)
 		cmd = exec.CommandContext(ctx, "sudo", sudoArgs...)
 		if debugMode {
-			pterm.Info.Printf("Running with sudo: sudo %s\n", strings.Join(sudoArgs, " "))
+			ui.Global.Messages.RunningSudo(sudoArgs)
 		}
 	} else {
 		cmd = exec.CommandContext(ctx, tool, args...)
 	}
 	
-	// Use CombinedOutput but with context checking
-	done := make(chan error, 1)
+	// Create pipes for real-time processing (similar to ExecuteCommandWithRealTimeResultsContext)
 	var output []byte
+	var outputLines []string
 	
-	go func() {
-		var execErr error
-		output, execErr = cmd.CombinedOutput()
-		done <- execErr
-	}()
-	
-	// Wait for either command completion or context cancellation
-	select {
-	case <-ctx.Done():
-		// Context was cancelled, kill the process aggressively
-		if cmd.Process != nil {
-			// First try to kill the process
-			cmd.Process.Kill()
-			// Give it a moment to die
-			time.Sleep(100 * time.Millisecond)
-			// If still running, try to kill the process group (for sudo processes)
+	if processor != nil {
+		// Use real-time processing with pipes
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
+		
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create stderr pipe: %w", err)
+		}
+		
+		// Start the command
+		if err := cmd.Start(); err != nil {
+			return nil, fmt.Errorf("failed to start %s: %w", tool, err)
+		}
+		
+		// Read output in real-time
+		outputChan := make(chan string)
+		errorChan := make(chan string)
+		
+		// Goroutine to read stdout
+		go func() {
+			defer close(outputChan)
+			scanner := bufio.NewScanner(stdout)
+			for scanner.Scan() {
+				line := scanner.Text()
+				outputChan <- line
+			}
+		}()
+		
+		// Goroutine to read stderr  
+		go func() {
+			defer close(errorChan)
+			scanner := bufio.NewScanner(stderr)
+			for scanner.Scan() {
+				line := scanner.Text()
+				errorChan <- line
+			}
+		}()
+		
+		// Collect output from both channels
+		done := make(chan bool)
+		go func() {
+			defer close(done)
+			for outputChan != nil || errorChan != nil {
+				select {
+				case line, ok := <-outputChan:
+					if !ok {
+						outputChan = nil
+					} else {
+						outputLines = append(outputLines, line)
+						// Process line for real-time display
+						processor.ProcessLine(line)
+					}
+				case line, ok := <-errorChan:
+					if !ok {
+						errorChan = nil
+					} else {
+						outputLines = append(outputLines, line)
+					}
+				}
+			}
+			cmd.Wait()
+		}()
+		
+		// Wait for either completion or context cancellation
+		select {
+		case <-ctx.Done():
+			// Mark processor as failed
+			processor.Fail("command cancelled")
+			
+			// Kill the process
 			if cmd.Process != nil {
+				cmd.Process.Kill()
+				time.Sleep(100 * time.Millisecond)
 				syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 			}
-		}
-		return nil, fmt.Errorf("command cancelled: %w", ctx.Err())
-	case err := <-done:
-		// Command completed normally
-		if err != nil {
-			// Enhanced error reporting
-			var errorMessage strings.Builder
-			errorMessage.WriteString(fmt.Sprintf("failed to execute %s", tool))
-			
-			if len(output) > 0 {
-				errorMessage.WriteString(fmt.Sprintf("\nOutput:\n%s", string(output)))
+			return nil, fmt.Errorf("command cancelled: %w", ctx.Err())
+		case <-done:
+			// Command completed normally
+			if cmd.ProcessState != nil && !cmd.ProcessState.Success() {
+				processor.Fail("command execution failed")
+				return nil, fmt.Errorf("failed to execute %s", tool)
 			}
-			
-			// Show command that failed
-			errorMessage.WriteString(fmt.Sprintf("\nCommand: %s", fullCmd))
-			
-			return nil, fmt.Errorf("%s: %w", errorMessage.String(), err)
 		}
+	} else {
+		// Use CombinedOutput for debug mode (original behavior)
+		done := make(chan error, 1)
+		
+		go func() {
+			var execErr error
+			output, execErr = cmd.CombinedOutput()
+			done <- execErr
+		}()
+		
+		// Wait for either command completion or context cancellation
+		select {
+		case <-ctx.Done():
+			if cmd.Process != nil {
+				cmd.Process.Kill()
+				time.Sleep(100 * time.Millisecond)
+				syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
+			return nil, fmt.Errorf("command cancelled: %w", ctx.Err())
+		case err := <-done:
+			if err != nil {
+				var errorMessage strings.Builder
+				errorMessage.WriteString(fmt.Sprintf("failed to execute %s", tool))
+				
+				if len(output) > 0 {
+					errorMessage.WriteString(fmt.Sprintf("\nOutput:\n%s", string(output)))
+				}
+				
+				errorMessage.WriteString(fmt.Sprintf("\nCommand: %s", fullCmd))
+				return nil, fmt.Errorf("%s: %w", errorMessage.String(), err)
+			}
+		}
+		
+		// Convert output to lines for parsing
+		outputLines = strings.Split(string(output), "\n")
 	}
-	
-	// Convert output to lines for parsing
-	outputLines := strings.Split(string(output), "\n")
 	
 	// Parse the output based on tool
 	if tool == "naabu" {
@@ -549,41 +648,52 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
+// extractTargetFromArgs extracts the target from command arguments
+func extractTargetFromArgs(args []string) string {
+	// For most tools, the target is usually the last argument
+	// or after specific flags like -host
+	for i, arg := range args {
+		if arg == "-host" && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	
+	// If no -host flag found, check for the last non-flag argument
+	for i := len(args) - 1; i >= 0; i-- {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "-") && 
+		   !strings.Contains(arg, ".xml") && 
+		   !strings.Contains(arg, ".json") &&
+		   !strings.Contains(arg, "=") {
+			return arg
+		}
+	}
+	
+	return "unknown"
+}
+
 // ShowPortDiscoveryResults displays the results of port discovery scan
 func ShowPortDiscoveryResults(results *ScanResults) {
 	if results == nil || len(results.Ports) == 0 {
 		return
 	}
 	
-	var openPorts []PortInfo
+	var openPorts []ui.PortInfo
 	for _, port := range results.Ports {
 		if port.State == "open" {
-			openPorts = append(openPorts, port)
+			openPorts = append(openPorts, ui.PortInfo{
+				Number:  port.Number,
+				State:   port.State,
+				Service: port.Service,
+				Version: port.Version,
+			})
 		}
 	}
 	
 	if len(openPorts) > 0 {
-		// Create table data
-		tableData := [][]string{
-			{"Port", "Protocol", "State"},
-		}
-		
-		for _, port := range openPorts {
-			protocol := port.Service
-			if protocol == "" {
-				protocol = "tcp" // Default protocol for naabu
-			}
-			tableData = append(tableData, []string{
-				strconv.Itoa(port.Number),
-				protocol,
-				"open",
-			})
-		}
-		
-		// Display header and table
-		pterm.Info.Printf("🔍 Found %d open ports:\n", len(openPorts))
-		pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-		fmt.Println()
+		ui.Global.Messages.FoundOpenPorts(len(openPorts))
+		ui.Global.Tables.RenderPortDiscoveryTable(openPorts)
+		ui.Global.Messages.EmptyLine()
 	}
 }
 
@@ -594,28 +704,19 @@ func ShowDeepScanResults(results *ScanResults) {
 	}
 	
 	var services []string
-	var tableData [][]string
-	tableData = append(tableData, []string{"Port", "Service", "Version"})
+	var openPorts []ui.PortInfo
 	
 	for _, port := range results.Ports {
 		if port.State == "open" {
-			service := port.Service
-			if service == "" {
-				service = "unknown"
-			}
-			
-			version := port.Version
-			if version == "" {
-				version = "-"
-			}
-			
-			tableData = append(tableData, []string{
-				strconv.Itoa(port.Number),
-				service,
-				version,
+			openPorts = append(openPorts, ui.PortInfo{
+				Number:  port.Number,
+				State:   port.State,
+				Service: port.Service,
+				Version: port.Version,
 			})
 			
-			if service != "unknown" && service != "" {
+			service := port.Service
+			if service != "" && service != "unknown" {
 				services = append(services, service)
 			}
 		}
@@ -623,11 +724,11 @@ func ShowDeepScanResults(results *ScanResults) {
 	
 	if len(services) > 0 {
 		uniqueServices := removeDuplicateStrings(services)
-		pterm.Info.Printf("🔎 Services detected: %s\n", strings.Join(uniqueServices, ", "))
+		ui.Global.Messages.ServicesDetected(uniqueServices)
 		
 		// Display detailed table
-		if len(tableData) > 1 {
-			pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		if len(openPorts) > 0 {
+			ui.Global.Tables.RenderServiceDetectionTable(openPorts)
 		}
 	}
 }
@@ -655,68 +756,43 @@ func ShowVulnerabilityResults(results *ScanResults) {
 	
 	// Count vulnerabilities by severity
 	severityCounts := make(map[string]int)
-	var criticalVulns, highVulns, mediumVulns []string
+	var criticalAndHighVulns []ui.VulnerabilityInfo
 	
 	for _, vuln := range results.Vulnerabilities {
 		severity := strings.ToLower(vuln.Severity)
 		severityCounts[severity]++
 		
-		switch severity {
-		case "critical":
-			criticalVulns = append(criticalVulns, vuln.Name)
-		case "high":
-			highVulns = append(highVulns, vuln.Name)
-		case "medium":
-			mediumVulns = append(mediumVulns, vuln.Name)
+		// Collect critical and high vulnerabilities for detailed display
+		if severity == "critical" || severity == "high" {
+			criticalAndHighVulns = append(criticalAndHighVulns, ui.VulnerabilityInfo{
+				TemplateID: vuln.TemplateID,
+				Name:       vuln.Name,
+				Severity:   strings.ToUpper(vuln.Severity),
+			})
 		}
 	}
 	
 	// Display summary
 	totalVulns := len(results.Vulnerabilities)
-	pterm.Info.Printf("🔒 Found %d vulnerabilities", totalVulns)
+	ui.Global.Messages.VulnerabilitiesFound(totalVulns)
 	
 	// Show severity breakdown
 	if severityCounts["critical"] > 0 {
-		pterm.Error.Printf("   Critical: %d", severityCounts["critical"])
+		ui.Global.Messages.CriticalVulnerabilities(severityCounts["critical"])
 	}
 	if severityCounts["high"] > 0 {
-		pterm.Warning.Printf("   High: %d", severityCounts["high"])
+		ui.Global.Messages.HighVulnerabilities(severityCounts["high"])
 	}
 	if severityCounts["medium"] > 0 {
-		pterm.Info.Printf("   Medium: %d", severityCounts["medium"])
+		ui.Global.Messages.MediumVulnerabilities(severityCounts["medium"])
 	}
 	if severityCounts["low"] > 0 {
-		pterm.Info.Printf("   Low: %d", severityCounts["low"])
+		ui.Global.Messages.LowVulnerabilities(severityCounts["low"])
 	}
 	
 	// Show detailed table for critical and high vulnerabilities
-	if len(criticalVulns) > 0 || len(highVulns) > 0 {
-		var tableData [][]string
-		tableData = append(tableData, []string{"Severity", "Vulnerability", "Template ID"})
-		
-		// Add critical vulnerabilities
-		for _, vuln := range results.Vulnerabilities {
-			if strings.ToLower(vuln.Severity) == "critical" || strings.ToLower(vuln.Severity) == "high" {
-				name := vuln.Name
-				if len(name) > 50 {
-					name = name[:47] + "..."
-				}
-				templateID := vuln.TemplateID
-				if len(templateID) > 25 {
-					templateID = templateID[:22] + "..."
-				}
-				
-				tableData = append(tableData, []string{
-					strings.ToUpper(vuln.Severity),
-					name,
-					templateID,
-				})
-			}
-		}
-		
-		if len(tableData) > 1 {
-			pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-		}
+	if len(criticalAndHighVulns) > 0 {
+		ui.Global.Tables.RenderVulnerabilityTable(criticalAndHighVulns)
 	}
 }
 
@@ -787,7 +863,7 @@ func ensureOutputDirectories(args []string, debugMode bool) error {
 			dir := filepath.Dir(outputPath)
 			if dir != "." && dir != "" {
 				if debugMode {
-					pterm.Info.Printf("Creating output directory: %s\n", dir)
+					ui.Global.Messages.CreatingOutputDirectory(dir)
 				}
 				
 				if err := os.MkdirAll(dir, 0755); err != nil {
@@ -819,22 +895,22 @@ func validateArgsSubstitution(args []string) error {
 // WaitForToolCompletion waits for expected output files to be created and completed
 func WaitForToolCompletion(reportDir string, workflows map[string]*Workflow, timeout time.Duration, debugMode bool) error {
 	if debugMode {
-		pterm.Info.Println("🔍 Waiting for tool outputs to complete...")
+		ui.Global.Messages.WaitingForToolOutputs()
 	}
 	
 	// Collect expected output files from all workflows
 	expectedFiles := collectExpectedOutputFiles(reportDir, workflows)
 	if len(expectedFiles) == 0 {
 		if debugMode {
-			pterm.Info.Println("No output files expected, continuing immediately")
+			ui.Global.Messages.NoOutputFilesExpected()
 		}
 		return nil
 	}
 	
 	if debugMode {
-		pterm.Info.Printf("Waiting for %d expected output files...\n", len(expectedFiles))
+		ui.Global.Messages.WaitingForFiles(len(expectedFiles))
 		for _, file := range expectedFiles {
-			pterm.Info.Printf("  - %s\n", file)
+			ui.Global.Messages.ExpectedFile(file)
 		}
 	}
 	
@@ -867,7 +943,7 @@ func WaitForToolCompletion(reportDir string, workflows map[string]*Workflow, tim
 			
 			if allComplete {
 				if debugMode {
-					pterm.Success.Printf("✅ All output files ready after %v\n", time.Since(start).Round(time.Millisecond))
+					ui.Global.Messages.AllOutputFilesReady(time.Since(start))
 				}
 				return nil
 			}
@@ -941,192 +1017,48 @@ func isFileCompletelyWritten(filePath string) bool {
 	return true
 }
 
-// DisplayRawResults shows raw tool outputs when reporting pipeline fails
-func DisplayRawResults(reportDir, target string, debugMode bool) {
-	pterm.Warning.Println("📄 Showing raw scan results since report generation failed:")
-	pterm.Println()
+// ExtractProvidedData extracts provided data from scan output files
+func ExtractProvidedData(reportDir string, provides []string) (map[string]string, error) {
+	extractedData := make(map[string]string)
 	
-	rawDir := filepath.Join(reportDir, "raw")
-	
-	// Check if raw directory exists
-	if _, err := os.Stat(rawDir); os.IsNotExist(err) {
-		pterm.Error.Printf("Raw results directory not found: %s\n", rawDir)
-		return
-	}
-	
-	// Look for common output files
-	filePatterns := []string{
-		"naabu_*.json",
-		"nmap_*.xml",
-		"nmap_*.txt", 
-		"*.json",
-		"*.xml",
-		"*.txt",
-	}
-	
-	foundFiles := false
-	
-	for _, pattern := range filePatterns {
-		files, err := filepath.Glob(filepath.Join(rawDir, pattern))
-		if err != nil {
-			continue
-		}
-		
-		for _, file := range files {
-			foundFiles = true
-			displayRawFile(file, debugMode)
-		}
-	}
-	
-	if !foundFiles {
-		pterm.Warning.Printf("No raw result files found in %s\n", rawDir)
-		
-		// Try to list what files are actually there
-		files, err := ioutil.ReadDir(rawDir)
-		if err == nil && len(files) > 0 {
-			pterm.Info.Println("Available files in raw directory:")
-			for _, file := range files {
-				pterm.Info.Printf("  - %s (%d bytes)\n", file.Name(), file.Size())
+	for _, provided := range provides {
+		switch provided {
+		case "discovered_ports":
+			ports, err := extractDiscoveredPortsFromFiles(".")
+			if err != nil {
+				return nil, fmt.Errorf("failed to extract discovered_ports: %w", err)
 			}
+			extractedData[provided] = ports
+		default:
+			return nil, fmt.Errorf("unsupported provided data type: %s", provided)
 		}
 	}
+	
+	return extractedData, nil
 }
 
-// displayRawFile shows the contents of a raw output file
-func displayRawFile(filePath string, debugMode bool) {
-	fileName := filepath.Base(filePath)
-	
-	// Determine file type and display accordingly
-	if strings.HasSuffix(fileName, ".json") {
-		displayJSONFile(filePath, fileName, debugMode)
-	} else if strings.HasSuffix(fileName, ".xml") {
-		displayXMLFile(filePath, fileName, debugMode)
-	} else {
-		displayTextFile(filePath, fileName, debugMode)
-	}
-}
-
-// displayJSONFile shows structured JSON output
-func displayJSONFile(filePath, fileName string, debugMode bool) {
-	pterm.Info.Printf("📋 %s:\n", fileName)
-	
-	data, err := ioutil.ReadFile(filePath)
+// extractDiscoveredPortsFromFiles extracts open ports from naabu JSON files in current directory
+func extractDiscoveredPortsFromFiles(dir string) (string, error) {
+	// Look for naabu JSON files in the current directory
+	files, err := filepath.Glob(filepath.Join(dir, "naabu_*.json"))
 	if err != nil {
-		pterm.Error.Printf("Failed to read %s: %v\n", fileName, err)
-		return
+		return "", fmt.Errorf("failed to search for naabu files: %w", err)
 	}
 	
-	content := string(data)
-	if content == "" {
-		pterm.Warning.Printf("File %s is empty\n", fileName)
-		return
+	if len(files) == 0 {
+		return "", fmt.Errorf("no naabu JSON files found in %s", dir)
 	}
 	
-	// Try to parse and display structured data for known tools
-	if strings.Contains(fileName, "naabu") {
-		displayNaabuResults(content)
-	} else {
-		// Display raw JSON with some formatting
-		lines := strings.Split(content, "\n")
-		displayed := 0
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line != "" {
-				fmt.Printf("  %s\n", line)
-				displayed++
-				if displayed >= 20 && !debugMode {
-					remaining := len(lines) - displayed
-					if remaining > 0 {
-						pterm.Info.Printf("  ... (%d more lines, use --debug to see all)\n", remaining)
-					}
-					break
-				}
-			}
-		}
-	}
-	pterm.Println()
-}
-
-// displayXMLFile shows XML output (typically from nmap)
-func displayXMLFile(filePath, fileName string, debugMode bool) {
-	pterm.Info.Printf("📋 %s:\n", fileName)
-	
-	data, err := ioutil.ReadFile(filePath)
+	// Read the first naabu file found
+	data, err := os.ReadFile(files[0])
 	if err != nil {
-		pterm.Error.Printf("Failed to read %s: %v\n", fileName, err)
-		return
+		return "", fmt.Errorf("failed to read naabu file: %w", err)
 	}
 	
+	// Parse naabu JSON output - each line is a separate JSON object
 	content := string(data)
-	if content == "" {
-		pterm.Warning.Printf("File %s is empty\n", fileName)
-		return
-	}
-	
-	// For XML files, show a summary instead of raw XML
-	if strings.Contains(fileName, "nmap") {
-		extractNmapSummaryFromXML(content)
-	} else {
-		// Show first few lines of XML
-		lines := strings.Split(content, "\n")
-		displayed := 0
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line != "" && !strings.HasPrefix(line, "<?xml") && !strings.HasPrefix(line, "<!DOCTYPE") {
-				fmt.Printf("  %s\n", line)
-				displayed++
-				if displayed >= 10 && !debugMode {
-					remaining := len(lines) - displayed
-					if remaining > 0 {
-						pterm.Info.Printf("  ... (%d more lines, use --debug to see all)\n", remaining)
-					}
-					break
-				}
-			}
-		}
-	}
-	pterm.Println()
-}
-
-// displayTextFile shows plain text output
-func displayTextFile(filePath, fileName string, debugMode bool) {
-	pterm.Info.Printf("📋 %s:\n", fileName)
-	
-	data, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		pterm.Error.Printf("Failed to read %s: %v\n", fileName, err)
-		return
-	}
-	
-	content := string(data)
-	if content == "" {
-		pterm.Warning.Printf("File %s is empty\n", fileName)
-		return
-	}
-	
 	lines := strings.Split(content, "\n")
-	displayed := 0
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			fmt.Printf("  %s\n", line)
-			displayed++
-			if displayed >= 20 && !debugMode {
-				remaining := len(lines) - displayed
-				if remaining > 0 {
-					pterm.Info.Printf("  ... (%d more lines, use --debug to see all)\n", remaining)
-				}
-				break
-			}
-		}
-	}
-	pterm.Println()
-}
-
-// displayNaabuResults shows structured naabu port discovery results
-func displayNaabuResults(content string) {
-	lines := strings.Split(content, "\n")
-	var ports []int
+	var openPorts []string
 	
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -1134,116 +1066,34 @@ func displayNaabuResults(content string) {
 			continue
 		}
 		
-		var result struct {
-			Port int    `json:"port"`
-			Host string `json:"host"`
+		var naabuResult struct {
+			Host     string `json:"host"`
+			IP       string `json:"ip"`
+			Port     int    `json:"port"`
+			Protocol string `json:"protocol"`
 		}
 		
-		if err := json.Unmarshal([]byte(line), &result); err == nil {
-			ports = append(ports, result.Port)
+		if err := json.Unmarshal([]byte(line), &naabuResult); err != nil {
+			continue // Skip malformed JSON lines
 		}
-	}
-	
-	if len(ports) > 0 {
-		pterm.Success.Printf("🔍 Found %d open ports: ", len(ports))
 		
-		// Group consecutive ports for better display
-		groups := groupConsecutivePorts(ports)
-		fmt.Printf("%s\n", strings.Join(groups, ", "))
-	} else {
-		pterm.Warning.Println("No open ports found in naabu output")
+		// Add port to list (naabu only reports open ports)
+		openPorts = append(openPorts, strconv.Itoa(naabuResult.Port))
 	}
+	
+	if len(openPorts) == 0 {
+		return "", fmt.Errorf("no open ports found in naabu JSON output")
+	}
+	
+	return strings.Join(openPorts, ","), nil
 }
 
-
-// extractNmapSummaryFromXML extracts key information from nmap XML output
-func extractNmapSummaryFromXML(content string) {
-	// Simple regex-based extraction for quick summary
-	hostRegex := regexp.MustCompile(`<host[^>]*>.*?</host>`)
-	portRegex := regexp.MustCompile(`<port protocol="([^"]*)" portid="([^"]*)"[^>]*>.*?<state state="([^"]*)"[^>]*/>.*?</port>`)
-	serviceRegex := regexp.MustCompile(`<service name="([^"]*)"[^>]*/>`)
-	
-	hosts := hostRegex.FindAllString(content, -1)
-	if len(hosts) == 0 {
-		pterm.Warning.Println("No host information found in nmap XML")
-		return
-	}
-	
-	var openPorts []string
-	var services []string
-	
-	for _, host := range hosts {
-		ports := portRegex.FindAllStringSubmatch(host, -1)
-		for _, port := range ports {
-			if len(port) >= 4 && port[3] == "open" {
-				portNum := port[2]
-				protocol := port[1]
-				openPorts = append(openPorts, fmt.Sprintf("%s/%s", portNum, protocol))
-				
-				// Extract service info
-				serviceMatches := serviceRegex.FindAllStringSubmatch(port[0], -1)
-				for _, service := range serviceMatches {
-					if len(service) >= 2 {
-						services = append(services, service[1])
-					}
-				}
-			}
-		}
-	}
-	
-	if len(openPorts) > 0 {
-		pterm.Success.Printf("🔍 Found %d open ports: %s\n", len(openPorts), strings.Join(openPorts, ", "))
-		
-		if len(services) > 0 {
-			uniqueServices := removeDuplicateStrings(services)
-			pterm.Info.Printf("🔎 Services detected: %s\n", strings.Join(uniqueServices, ", "))
-		}
-	} else {
-		pterm.Warning.Println("No open ports found in nmap XML")
-	}
+// ShowNaabuResults displays the results from naabu port discovery
+func ShowNaabuResults(results *ScanResults) {
+	ShowPortDiscoveryResults(results)
 }
 
-// groupConsecutivePorts groups consecutive port numbers for better display
-func groupConsecutivePorts(ports []int) []string {
-	if len(ports) == 0 {
-		return []string{}
-	}
-	
-	// Sort ports first
-	for i := 0; i < len(ports)-1; i++ {
-		for j := i + 1; j < len(ports); j++ {
-			if ports[i] > ports[j] {
-				ports[i], ports[j] = ports[j], ports[i]
-			}
-		}
-	}
-	
-	var groups []string
-	start := ports[0]
-	end := ports[0]
-	
-	for i := 1; i < len(ports); i++ {
-		if ports[i] == end+1 {
-			end = ports[i]
-		} else {
-			// Add current group
-			if start == end {
-				groups = append(groups, strconv.Itoa(start))
-			} else {
-				groups = append(groups, fmt.Sprintf("%d-%d", start, end))
-			}
-			start = ports[i]
-			end = ports[i]
-		}
-	}
-	
-	// Add final group
-	if start == end {
-		groups = append(groups, strconv.Itoa(start))
-	} else {
-		groups = append(groups, fmt.Sprintf("%d-%d", start, end))
-	}
-	
-	return groups
+// ShowNmapResults displays the results from nmap scans
+func ShowNmapResults(results *ScanResults) {
+	ShowDeepScanResults(results)
 }
-

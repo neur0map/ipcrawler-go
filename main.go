@@ -2,14 +2,13 @@ package main
 
 import (
 	"ipcrawler/cmd"
+	"ipcrawler/internal/ui"
 	"os"
-	
-	"github.com/pterm/pterm"
 )
 
 func main() {
 	if err := cmd.Execute(); err != nil {
-		pterm.Error.Println("Application failed:", err)
+		ui.Global.Messages.Printf(ui.ErrorStyle.Render(ui.ErrorPrefix+" Application failed: %v")+"\n", err)
 		os.Exit(1)
 	}
 }
