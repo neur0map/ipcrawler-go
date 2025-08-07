@@ -114,23 +114,12 @@ func CheckPrivilegeRequirements(tools []string, args [][]string) bool {
 }
 
 // requiresPrivileges checks if a specific tool with given arguments needs root privileges
+// This is now completely generic - no hardcoded tool knowledge
 func requiresPrivileges(tool string, args []string) bool {
-	switch tool {
-	case "nmap":
-		// Check for nmap flags that require root privileges
-		for _, arg := range args {
-			switch arg {
-			case "-sS", "-sF", "-sN", "-sX", "-sA", "-sW", "-sM", "-O":
-				return true // These scans require root
-			}
-		}
-		return false
-	case "masscan":
-		return true // masscan generally requires root
-	default:
-		// Most other tools (naabu, etc.) don't need sudo
-		return false
-	}
+	// No hardcoded tool assumptions - all tools are handled generically
+	// The CLI should determine sudo needs based on YAML configuration (args_sudo vs args_normal)
+	// This function is kept for backward compatibility but returns false for generic behavior
+	return false
 }
 
 // GetPrivilegeStatus returns a description of the current privilege status
