@@ -1,0 +1,50 @@
+# IPCrawler System Configuration Database
+# System-wide settings and operational parameters
+
+system:
+  # Default operational values
+  defaults:
+    max_concurrent_workflows: 3
+    output_directory: "out"
+    report_directory: "reports"
+    workflow_folders: ["workflows/basic", "workflows/dns"]
+    
+  # Directory permissions and structure
+  directories:
+    permissions: "0755"
+    file_permissions: "0644"
+    structure:
+      output: "{target}"
+      reports: "{target}"
+      
+  # Execution timeouts (in seconds)
+  timeouts:
+    tool_execution: 300      # 5 minutes per tool
+    workflow_execution: 1800 # 30 minutes per workflow
+    file_operations: 30      # 30 seconds for file ops
+    
+  # Resource limits
+  limits:
+    max_file_size_mb: 100
+    max_output_lines: 10000
+    max_memory_mb: 512
+    
+  # Logging and output configuration
+  logging:
+    level: "info"
+    format: "structured"
+    include_timestamps: true
+    colors:
+      info: "blue"
+      warning: "yellow"
+      error: "red"
+      success: "green"
+      
+  # Status messages and emojis
+  status_indicators:
+    starting: "🔨"
+    progress: "━"
+    success: "✓"
+    warning: "⚠️"
+    error: "✗"
+    completed: "🎉"

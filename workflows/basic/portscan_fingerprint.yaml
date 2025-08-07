@@ -1,0 +1,39 @@
+id: portscan_fingerprint
+description: Fast port scan + fingerprinting using naabu and nmap
+parallel: true
+steps:
+  - id: scan_low
+    tool: naabu
+    use_flags: fast
+    override_args:
+      - "{{target}}"
+    output: "out/{{target}}/naabu_low.json"
+  - id: scan_high
+    tool: naabu
+    use_flags: full
+    override_args:
+      - "{{target}}"
+    output: "out/{{target}}/naabu_high.json"
+  - id: merge_ports
+    type: merge_files
+    inputs:
+      - "{{scan_low.output}}"
+      - "{{scan_high.output}}"
+    output: "out/{{target}}/merged_ports.json"
+    depends_on: [scan_low, scan_high]
+  - id: convert_to_hostlist
+    type: json_to_hostlist
+    inputs:
+      - "{{merge_ports.output}}"
+    output: "out/{{target}}/hostlist.txt"
+    depends_on: [merge_ports]
+  - id: fingerprint
+    tool: nmap
+    use_flags: fingerprint
+    override_args:
+      - "-iL"
+      - "{{convert_to_hostlist.output}}"
+      - "-oX"
+      - "out/{{target}}/nmap_fingerprint.xml"
+    output: "out/{{target}}/nmap_fingerprint.xml"
+    depends_on: [convert_to_hostlist]

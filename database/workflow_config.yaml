@@ -1,0 +1,88 @@
+# IPCrawler Workflow Configuration Database
+# Configuration for workflow execution and management
+
+workflow:
+  # Step types and their configurations
+  step_types:
+    tool_execution:
+      description: "Execute an external tool"
+      required_fields: ["tool", "output"]
+      optional_fields: ["use_flags", "override_args", "depends_on"]
+      
+    merge_files:
+      description: "Merge multiple files into one"
+      required_fields: ["inputs", "output", "type"]
+      optional_fields: ["format", "depends_on"]
+      supported_formats: ["json", "jsonlines", "text", "csv"]
+      
+    data_transformation:
+      description: "Transform data between formats"
+      required_fields: ["input", "output", "transform_type"]
+      optional_fields: ["mapping", "filters"]
+      
+    json_to_hostlist:
+      description: "Convert JSON port scan results to plain text host list for nmap"
+      required_fields: ["input", "output"]
+      optional_fields: ["field_mapping"]
+      
+  # File format handlers
+  file_formats:
+    json:
+      extensions: [".json"]
+      merge_strategy: "array_concat"
+      validation: "strict_json"
+      
+    jsonlines:
+      extensions: [".jsonl", ".ndjson"]
+      merge_strategy: "line_concat"
+      validation: "per_line_json"
+      
+    xml:
+      extensions: [".xml"]
+      merge_strategy: "root_wrap"
+      validation: "well_formed_xml"
+      
+    text:
+      extensions: [".txt", ".log"]
+      merge_strategy: "line_concat"
+      validation: "none"
+      
+  # Error handling strategies
+  error_handling:
+    strategies:
+      continue_on_error:
+        description: "Continue workflow execution despite errors"
+        log_errors: true
+        
+      fail_fast:
+        description: "Stop workflow on first error"
+        log_errors: true
+        
+      retry_on_failure:
+        description: "Retry failed steps with backoff"
+        max_retries: 3
+        backoff_seconds: [1, 5, 15]
+        
+  # Workflow execution modes
+  execution_modes:
+    parallel:
+      description: "Execute workflows concurrently"
+      max_concurrent: "from_system_config"
+      
+    sequential:
+      description: "Execute workflows one after another"
+      respect_dependencies: true
+      
+    priority:
+      description: "Execute based on priority levels"
+      levels: ["critical", "high", "medium", "low"]
+      
+  # Status messages for workflow execution
+  status_messages:
+    starting_parallel: "Starting parallel workflow: {workflow_id} ({running}/{max_concurrent} running)"
+    starting_sequential: "Starting sequential workflow: {workflow_id}"
+    completed: "Completed workflow: {workflow_id} ({completed} completed)"
+    step_executing: "  Executing step: {step_id}"
+    tool_running: "    Running tool: {tool} -> {output}"
+    merge_operation: "    Merging files: {inputs} -> {output}"
+    dependency_wait: "    Waiting for dependencies: {dependencies}"

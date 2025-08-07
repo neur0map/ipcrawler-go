@@ -1,0 +1,29 @@
+id: dns_lookup
+description: Basic DNS resolution and record lookup
+parallel: true
+steps:
+  - id: resolve_a
+    tool: dig
+    override_args:
+      - "{{target}}"
+      - "A"
+      - "+short"
+    output: "out/{{target}}/dns_a.txt"
+  - id: resolve_ns
+    tool: nslookup
+    use_flags: ns_lookup
+    override_args:
+      - "{{target}}"
+    output: "out/{{target}}/dns_ns.txt"
+  - id: resolve_mx
+    tool: nslookup
+    use_flags: mx_lookup
+    override_args:
+      - "{{target}}"
+    output: "out/{{target}}/dns_mx.txt"
+  - id: resolve_txt
+    tool: nslookup
+    use_flags: txt_lookup
+    override_args:
+      - "{{target}}"
+    output: "out/{{target}}/dns_txt.txt"

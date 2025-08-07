@@ -1,0 +1,15 @@
+name: dig
+command: dig
+output: text
+args:
+  default: ["+short"]
+  flags:
+    short: ["+short"]
+    trace: ["+trace"]
+    verbose: ["+verbose"]
+    detailed: ["+answer", "+authority", "+additional"]
+    reverse: ["-x"]
+    any: ["ANY"]
+    tcp: ["+tcp"]
+    dnssec: ["+dnssec", "+multi"]
+mappings: []

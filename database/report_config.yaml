@@ -1,0 +1,51 @@
+# IPCrawler Report Configuration Database
+# Contains all configuration data for report generation
+
+# Risk level emojis and colors
+risk_emojis:
+  high: "🔴"
+  medium: "🟡"
+  low: "🟢"
+  unknown: "⚪"
+
+# Service categorization patterns for port analysis
+service_categories:
+  web:
+    patterns: ["HTTP", "HTTPS"]
+    description: "Web Services"
+    
+  secure:
+    patterns: ["HTTPS", "SSL", "TLS", "SSH"]
+    description: "Encrypted Services"
+    
+  database:
+    patterns: ["SQL", "Redis", "MongoDB", "Elasticsearch", "MySQL", "PostgreSQL"]
+    description: "Database Services"
+    warning: true
+    
+  remote:
+    patterns: ["SSH", "RDP", "Telnet", "VNC"]
+    description: "Remote Access"
+    warning: true
+
+# Risk assessment thresholds
+risk_thresholds:
+  high_risk_port_count: 10  # Show warning if more than 10 ports open
+  legacy_protocols: [21, 23]  # FTP, Telnet
+  
+# Report formatting
+report_format:
+  title_emoji: "🎯"
+  section_emojis:
+    executive_summary: "📊"
+    dns_discovery: "🌐"
+    port_scan: "🔍"
+    service_fingerprint: "🔬"
+    security_recommendations: "🛡️"
+    raw_files: "📁"
+    
+  subsection_emojis:
+    stats: "🎯"
+    analysis: "📈"
+    warnings: "⚠️"
+    general: "📝"

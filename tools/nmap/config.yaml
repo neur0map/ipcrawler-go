@@ -1,0 +1,19 @@
+name: nmap
+command: nmap
+output: xml
+args:
+  default: ["-oX", "-"]
+  flags:
+    fast: ["-F"]
+    intense: ["-T4", "-A", "-v"]
+    stealth: ["-sS", "-sV", "-T2"]
+    fingerprint: ["-T4", "-A", "-v", "-sV", "--script=default"]
+    service_scan: ["-sV", "-sC", "-T4"]
+    comprehensive: ["-T4", "-A", "-sV", "-sC", "--script=default,discovery"]
+mappings:
+  - type: host
+    query: "nmaprun.host"
+    fields:
+      address: "address.@addr"
+      hostname: "hostnames.hostname.@name"
+      status: "status.@state"

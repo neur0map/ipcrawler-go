@@ -1,0 +1,28 @@
+# Protocol Database
+# Network protocol information for reporting without hardcoding
+
+protocols:
+  tcp:
+    name: "Transmission Control Protocol"
+    description: "Reliable, connection-oriented protocol"
+    characteristics: ["connection-oriented", "reliable", "ordered"]
+    
+  udp:
+    name: "User Datagram Protocol" 
+    description: "Fast, connectionless protocol"
+    characteristics: ["connectionless", "fast", "unreliable"]
+    
+  icmp:
+    name: "Internet Control Message Protocol"
+    description: "Network diagnostic and error reporting"
+    characteristics: ["diagnostic", "error-reporting"]
+
+# Protocol-specific port preferences
+protocol_preferences:
+  tcp:
+    common_ports: [21, 22, 23, 25, 53, 80, 110, 143, 443, 993, 995, 3389]
+    description: "Services requiring reliable connections"
+    
+  udp:
+    common_ports: [53, 67, 68, 123, 161, 514]
+    description: "Services prioritizing speed over reliability"

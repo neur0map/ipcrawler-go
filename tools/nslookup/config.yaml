@@ -1,0 +1,23 @@
+name: nslookup
+command: nslookup
+output: text
+args:
+  default: []
+  flags:
+    debug: ["-debug"]
+    verbose: ["-v"]
+    recursive: ["-recurse"]
+    authoritative: ["-type=SOA"]
+    mx_lookup: ["-type=MX"]
+    ns_lookup: ["-type=NS"]
+    txt_lookup: ["-type=TXT"]
+    a_lookup: ["-type=A"]
+    aaaa_lookup: ["-type=AAAA"]
+    ptr_lookup: ["-type=PTR"]
+mappings:
+  - type: dns_record
+    query: "*"
+    fields:
+      record_type: "type"
+      value: "value"
+      name: "name"

@@ -1,0 +1,20 @@
+# IPCrawler Global Configuration
+
+# Directories to scan for workflow YAML files (supports nested folders)
+workflow_folders:
+  - "workflows/basic"
+  - "workflows/dns"
+
+# Default workflows to run when no specific workflow is specified
+default_workflows:
+  - "simple_scan"
+  - "dns_lookup"
+
+# Maximum number of parallel workflows that can run concurrently
+max_concurrent_workflows: 3
+
+# Directory where intermediate tool outputs are stored
+default_output_dir: "out"
+
+# Directory where final user-facing reports are generated
+default_report_dir: "reports"

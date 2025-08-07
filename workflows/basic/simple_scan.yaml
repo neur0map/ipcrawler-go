@@ -1,0 +1,10 @@
+id: simple_scan
+description: Basic port scan with naabu
+parallel: true
+steps:
+  - id: portscan
+    tool: naabu
+    use_flags: fast
+    override_args:
+      - "{{target}}"
+    output: "out/{{target}}/ports.json"
