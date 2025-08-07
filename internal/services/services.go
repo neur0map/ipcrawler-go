@@ -374,3 +374,52 @@ func (db *Database) GetExecutionDefaults() map[string]interface{} {
 	}
 	return make(map[string]interface{})
 }
+
+// GetWorkflowLegend returns the complete workflow and tool reference guide
+func (db *Database) GetWorkflowLegend() map[string]interface{} {
+	if legendData, ok := db.data["workflow_legend"].(map[string]interface{}); ok {
+		return legendData
+	}
+	return make(map[string]interface{})
+}
+
+// GetStepTypeInfo returns information about a specific workflow step type
+func (db *Database) GetStepTypeInfo(stepType string) map[string]interface{} {
+	legend := db.GetWorkflowLegend()
+	if workflowLegend, ok := legend["workflow_legend"].(map[string]interface{}); ok {
+		if stepTypes, ok := workflowLegend["step_types"].(map[string]interface{}); ok {
+			if stepInfo, ok := stepTypes[stepType].(map[string]interface{}); ok {
+				return stepInfo
+			}
+		}
+	}
+	return make(map[string]interface{})
+}
+
+// GetToolFlagInfo returns information about tool flags and their usage
+func (db *Database) GetToolFlagInfo(toolName, flagName string) map[string]interface{} {
+	legend := db.GetWorkflowLegend()
+	if workflowLegend, ok := legend["workflow_legend"].(map[string]interface{}); ok {
+		if toolFlags, ok := workflowLegend["tool_flags"].(map[string]interface{}); ok {
+			if toolInfo, ok := toolFlags[toolName].(map[string]interface{}); ok {
+				if flags, ok := toolInfo["flags"].(map[string]interface{}); ok {
+					if flagInfo, ok := flags[flagName].(map[string]interface{}); ok {
+						return flagInfo
+					}
+				}
+			}
+		}
+	}
+	return make(map[string]interface{})
+}
+
+// GetBestPractices returns workflow and tool best practices
+func (db *Database) GetBestPractices() map[string]interface{} {
+	legend := db.GetWorkflowLegend()
+	if workflowLegend, ok := legend["workflow_legend"].(map[string]interface{}); ok {
+		if practices, ok := workflowLegend["best_practices"].(map[string]interface{}); ok {
+				return practices
+		}
+	}
+	return make(map[string]interface{})
+}

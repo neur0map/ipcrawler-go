@@ -4,14 +4,14 @@ parallel: true
 steps:
   - id: scan_fast
     tool: naabu
-    use_flags: fast
+    use_flags: low1kcommon
     override_args:
       - "{{target}}"
     output: "out/{{target}}/naabu_fast.json"
     
   - id: scan_full
     tool: naabu
-    use_flags: full
+    use_flags: high1kcommon
     override_args:
       - "{{target}}"
     output: "out/{{target}}/naabu_full.json"
@@ -33,7 +33,7 @@ steps:
     
   - id: fingerprint
     tool: nmap
-    use_flags: comprehensive
+    use_flags: fingerprint
     override_args:
       - "-iL"
       - "{{convert_to_hostlist.output}}"

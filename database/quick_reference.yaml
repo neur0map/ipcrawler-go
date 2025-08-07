@@ -1,0 +1,99 @@
+# IPCrawler Quick Reference Guide
+# Essential commands and patterns for workflow development
+
+quick_reference:
+  # ===== ESSENTIAL STEP TYPES =====
+  step_types_summary:
+    tool_execution: "Run any tool with: tool + use_flags + override_args"
+    merge_files: "Combine multiple files: inputs + output + type"
+    json_to_hostlist: "Convert JSON to hostlist for nmap: inputs + output"
+    
+  # ===== COMMON WORKFLOW PATTERNS =====
+  common_patterns:
+    tool_execution: "Use tool + use_flags + override_args for dynamic values"
+    parallel_execution: "Set parallel: true for independent workflows"
+    sequential_steps: "Use depends_on: [step_name] for ordered execution"
+    output_templating: "Always use out/{{target}}/filename.ext pattern"
+    step_chaining: "Reference previous outputs with {{step_name.output}}"
+      
+  # ===== WORKFLOW TEMPLATES =====
+  templates:
+    simple_port_scan: |
+      steps:
+        - id: portscan
+          tool: naabu
+          use_flags: fast
+          override_args: ["{{target}}"]
+          output: "out/{{target}}/ports.json"
+          
+    comprehensive_scan: |
+      steps:
+        - id: scan_fast
+          tool: naabu
+          use_flags: fast
+          override_args: ["{{target}}"]
+          output: "out/{{target}}/naabu_fast.json"
+        - id: scan_full
+          tool: naabu
+          use_flags: full
+          override_args: ["{{target}}"]
+          output: "out/{{target}}/naabu_full.json"
+        - id: merge_ports
+          type: merge_files
+          inputs: ["{{scan_fast.output}}", "{{scan_full.output}}"]
+          output: "out/{{target}}/merged_ports.json"
+          depends_on: [scan_fast, scan_full]
+        - id: convert_to_hostlist
+          type: json_to_hostlist
+          inputs: ["{{merge_ports.output}}"]
+          output: "out/{{target}}/hostlist.txt"
+          depends_on: [merge_ports]
+        - id: fingerprint
+          tool: nmap
+          use_flags: fingerprint
+          override_args: ["-iL", "{{convert_to_hostlist.output}}", "-oX", "out/{{target}}/nmap.xml"]
+          output: "out/{{target}}/nmap.xml"
+          depends_on: [convert_to_hostlist]
+          
+    dns_enumeration: |
+      steps:
+        - id: resolve_a
+          tool: dig
+          use_flags: short
+          override_args: ["{{target}}", "A"]
+          output: "out/{{target}}/dns_a.txt"
+        - id: resolve_mx
+          tool: nslookup
+          use_flags: mx_lookup
+          override_args: ["{{target}}"]
+          output: "out/{{target}}/dns_mx.txt"
+        - id: resolve_ns
+          tool: nslookup
+          use_flags: ns_lookup
+          override_args: ["{{target}}"]
+          output: "out/{{target}}/dns_ns.txt"
+          
+  # ===== COMMON MISTAKES TO AVOID =====
+  anti_patterns:
+    - "NEVER hardcode tool arguments in workflows"
+    - "NEVER put flags directly in override_args"
+    - "NEVER skip use_flags when tool has configured flags"
+    - "NEVER hardcode file paths without {{target}} template"
+    - "NEVER bypass security whitelist validation"
+    - "NEVER use absolute paths in output specifications"
+    
+  # ===== CORRECT PATTERNS =====
+  correct_patterns:
+    tool_usage: "tool + use_flags + override_args (dynamic only)"
+    file_paths: "out/{{target}}/filename.ext"
+    dependencies: "depends_on: [step1, step2]"
+    parallel_execution: "parallel: true (for independent steps)"
+    step_chaining: "Use {{step_name.output}} for dependencies"
+    
+  # ===== DEBUGGING CHECKLIST =====
+  troubleshooting:
+    tool_not_found: "Check tool is in @database/tool_defaults.yaml whitelist"
+    flag_not_working: "Verify flag exists in @tools/[tool]/config.yaml"
+    step_fails: "Check depends_on references valid step IDs"
+    output_missing: "Verify output path uses {{target}} template"
+    permission_denied: "Check file permissions and output directory exists"

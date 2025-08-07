@@ -7,7 +7,7 @@ workflow_folders:
 
 # Default workflows to run when no specific workflow is specified
 default_workflows:
-  - "simple_scan"
+  - "portscan_fingerprint"
   - "dns_lookup"
 
 # Maximum number of parallel workflows that can run concurrently

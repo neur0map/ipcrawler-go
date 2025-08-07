@@ -74,7 +74,7 @@ tool_defaults:
       blacklist: ["rm", "del", "format", "mkfs", "dd", ">/dev/", "sudo", "su"]
       
     argument_validation:
-      max_length: 1000
+      max_length: 5000
       forbidden_chars: [";", "|", "&", "`", "$()"]
       
     file_operations:
