@@ -17,7 +17,7 @@ execution:
   max_memory_mb: 256
   allowed: true
   security:
-    max_arg_length: 2000  # Longer for port ranges
+    max_arg_length: 3000  # Longer for comprehensive port lists
     forbidden_patterns: [";", "|", "&", "`", "$(", "rm", "del"]
 mappings:
   - type: port

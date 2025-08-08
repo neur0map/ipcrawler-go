@@ -48,9 +48,11 @@ export GOBIN := $(BIN_PATH)
 
 # Tools to install with go install
 GO_TOOLS := \
-    github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
+    github.com/projectdiscovery/naabu/v2/cmd/naabu@latest \
+    github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
 
-# System packages to install (nmap)
+# System packages to install (nmap, dig, nslookup)
+# Note: dig and nslookup are part of bind-utils/dnsutils depending on OS
 SYSTEM_PACKAGES := nmap
 
 # Colors for output
@@ -81,7 +83,7 @@ install:
 	@echo "$(GREEN)✅ Installation Complete!$(NC)"
 	@echo "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
 	@echo "Installed tools are available at: $(BLUE)$(BIN_PATH)$(NC)"
-	@echo "You can now run: $(BLUE)ipcrawler$(NC), $(BLUE)naabu$(NC), $(BLUE)nmap$(NC)"
+	@echo "You can now run: $(BLUE)ipcrawler$(NC), $(BLUE)naabu$(NC), $(BLUE)subfinder$(NC), $(BLUE)nmap$(NC), $(BLUE)dig$(NC), $(BLUE)nslookup$(NC)"
 
 # Update target - pull latest code and rebuild
 .PHONY: update
@@ -344,41 +346,69 @@ install-tools:
 	@echo ""
 	@echo "$(YELLOW)📦 Installing system packages...$(NC)"
 	
-	@# Install system packages based on OS
-	@for pkg in $(SYSTEM_PACKAGES); do \
-		if command -v $$pkg >/dev/null 2>&1; then \
-			echo "$(GREEN)   ✓ $$pkg already installed$(NC)"; \
-		else \
-			echo "$(YELLOW)   • Installing $$pkg...$(NC)"; \
-			if [ "$(OS)" = "darwin" ]; then \
-				if command -v brew >/dev/null 2>&1; then \
-					brew install $$pkg || echo "$(YELLOW)   ⚠ Failed to install $$pkg - install manually$(NC)"; \
-				else \
-					echo "$(YELLOW)   ⚠ Homebrew not found - install $$pkg manually$(NC)"; \
-				fi; \
-			elif [ -f /etc/debian_version ]; then \
-				if $$NEED_SUDO apt-get install -y $$pkg 2>/dev/null; then \
-					echo "$(GREEN)   ✓ $$pkg installed$(NC)"; \
-				else \
-					echo "$(YELLOW)   ⚠ Failed to install $$pkg - install manually with: sudo apt-get install $$pkg$(NC)"; \
-				fi; \
-			elif [ -f /etc/redhat-release ]; then \
-				if $$NEED_SUDO yum install -y $$pkg 2>/dev/null; then \
-					echo "$(GREEN)   ✓ $$pkg installed$(NC)"; \
-				else \
-					echo "$(YELLOW)   ⚠ Failed to install $$pkg - install manually with: sudo yum install $$pkg$(NC)"; \
-				fi; \
-			elif [ -f /etc/arch-release ]; then \
-				if $$NEED_SUDO pacman -S --noconfirm $$pkg 2>/dev/null; then \
-					echo "$(GREEN)   ✓ $$pkg installed$(NC)"; \
-				else \
-					echo "$(YELLOW)   ⚠ Failed to install $$pkg - install manually with: sudo pacman -S $$pkg$(NC)"; \
-				fi; \
+	@# Check and install nmap
+	@if command -v nmap >/dev/null 2>&1; then \
+		echo "$(GREEN)   ✓ nmap already installed$(NC)"; \
+	else \
+		echo "$(YELLOW)   • Installing nmap...$(NC)"; \
+		if [ "$(OS)" = "darwin" ]; then \
+			if command -v brew >/dev/null 2>&1; then \
+				brew install nmap || echo "$(YELLOW)   ⚠ Failed to install nmap - install manually$(NC)"; \
 			else \
-				echo "$(YELLOW)   ⚠ Unknown OS - install $$pkg manually$(NC)"; \
+				echo "$(YELLOW)   ⚠ Homebrew not found - install nmap manually$(NC)"; \
 			fi; \
+		elif [ -f /etc/debian_version ]; then \
+			if sudo apt-get install -y nmap 2>/dev/null; then \
+				echo "$(GREEN)   ✓ nmap installed$(NC)"; \
+			else \
+				echo "$(YELLOW)   ⚠ Failed to install nmap - install manually with: sudo apt-get install nmap$(NC)"; \
+			fi; \
+		elif [ -f /etc/redhat-release ]; then \
+			if sudo yum install -y nmap 2>/dev/null; then \
+				echo "$(GREEN)   ✓ nmap installed$(NC)"; \
+			else \
+				echo "$(YELLOW)   ⚠ Failed to install nmap - install manually with: sudo yum install nmap$(NC)"; \
+			fi; \
+		elif [ -f /etc/arch-release ]; then \
+			if sudo pacman -S --noconfirm nmap 2>/dev/null; then \
+				echo "$(GREEN)   ✓ nmap installed$(NC)"; \
+			else \
+				echo "$(YELLOW)   ⚠ Failed to install nmap - install manually with: sudo pacman -S nmap$(NC)"; \
+			fi; \
+		else \
+			echo "$(YELLOW)   ⚠ Unknown OS - install nmap manually$(NC)"; \
 		fi; \
-	done
+	fi
+	
+	@# Check and install DNS tools (dig, nslookup)
+	@if command -v dig >/dev/null 2>&1 && command -v nslookup >/dev/null 2>&1; then \
+		echo "$(GREEN)   ✓ DNS tools (dig, nslookup) already installed$(NC)"; \
+	else \
+		echo "$(YELLOW)   • Installing DNS tools (dig, nslookup)...$(NC)"; \
+		if [ "$(OS)" = "darwin" ]; then \
+			echo "$(GREEN)   ✓ DNS tools included in macOS$(NC)"; \
+		elif [ -f /etc/debian_version ]; then \
+			if sudo apt-get install -y dnsutils 2>/dev/null; then \
+				echo "$(GREEN)   ✓ DNS tools installed$(NC)"; \
+			else \
+				echo "$(YELLOW)   ⚠ Failed to install DNS tools - install manually with: sudo apt-get install dnsutils$(NC)"; \
+			fi; \
+		elif [ -f /etc/redhat-release ]; then \
+			if sudo yum install -y bind-utils 2>/dev/null; then \
+				echo "$(GREEN)   ✓ DNS tools installed$(NC)"; \
+			else \
+				echo "$(YELLOW)   ⚠ Failed to install DNS tools - install manually with: sudo yum install bind-utils$(NC)"; \
+			fi; \
+		elif [ -f /etc/arch-release ]; then \
+			if sudo pacman -S --noconfirm bind-tools 2>/dev/null; then \
+				echo "$(GREEN)   ✓ DNS tools installed$(NC)"; \
+			else \
+				echo "$(YELLOW)   ⚠ Failed to install DNS tools - install manually with: sudo pacman -S bind-tools$(NC)"; \
+			fi; \
+		else \
+			echo "$(YELLOW)   ⚠ Unknown OS - install dig and nslookup manually$(NC)"; \
+		fi; \
+	fi
 	
 	
 	@echo ""
@@ -408,7 +438,7 @@ help:
 	@echo "  $(GREEN)make install$(NC)      - Complete installation (Go + IPCrawler + tools)"
 	@echo "  $(GREEN)make update$(NC)       - Update to latest code and rebuild"
 	@echo "  $(GREEN)make build$(NC)        - Build IPCrawler binary to build/ (cleans old builds)"
-	@echo "  $(GREEN)make install-tools$(NC) - Install/update naabu, nmap"
+	@echo "  $(GREEN)make install-tools$(NC) - Install/update naabu, subfinder, nmap, dig, nslookup"
 	@echo "  $(GREEN)make clean$(NC)        - Clean all build artifacts and outdated binaries"
 	@echo "  $(GREEN)make help$(NC)         - Show this help message"
 	@echo ""
@@ -417,8 +447,8 @@ help:
 	@echo "  $(BLUE)GOBIN$(NC)         - Binary installation path ($(GOBIN))"
 	@echo ""
 	@echo "$(YELLOW)Tools installed:$(NC)"
-	@echo "  • Go tools: naabu (via go install)"
-	@echo "  • System tools: nmap (via package manager)"
+	@echo "  • Go tools: naabu, subfinder (via go install)"
+	@echo "  • System tools: nmap, dig, nslookup (via package manager)"
 	@echo ""
 	@echo "$(YELLOW)Usage:$(NC)"
 	@echo "  make install                    # First-time setup with all tools"
