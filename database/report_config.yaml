@@ -23,6 +23,7 @@ file_patterns:
 
 # Risk level emojis and colors
 risk_emojis:
+  critical: "🔥"
   high: "🔴"
   medium: "🟡"
   low: "🟢"

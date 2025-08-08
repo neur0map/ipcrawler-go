@@ -191,8 +191,21 @@ func (db *Database) GetServiceCategories() map[string]interface{} {
 }
 
 // GetRiskLevel determines risk level for a port from database/service_categories.yaml
+// Returns the highest risk level if a port appears in multiple categories
 func (db *Database) GetRiskLevel(port int) string {
 	categories := db.GetServiceCategories()
+	
+	// Risk level priority: critical > high > medium > low > unknown
+	riskPriority := map[string]int{
+		"critical": 5,
+		"high":     4,
+		"medium":   3,
+		"low":      2,
+		"unknown":  1,
+	}
+	
+	highestRisk := "unknown"
+	highestPriority := 0
 	
 	for _, categoryData := range categories {
 		if catMap, ok := categoryData.(map[string]interface{}); ok {
@@ -200,14 +213,17 @@ func (db *Database) GetRiskLevel(port int) string {
 				for _, p := range ports {
 					if portInt, ok := p.(int); ok && portInt == port {
 						if riskLevel, ok := catMap["risk_level"].(string); ok {
-							return riskLevel
+							if priority, exists := riskPriority[riskLevel]; exists && priority > highestPriority {
+								highestRisk = riskLevel
+								highestPriority = priority
+							}
 						}
 					}
 				}
 			}
 		}
 	}
-	return "unknown"
+	return highestRisk
 }
 
 // IsToolAllowed checks if a tool is in the security whitelist

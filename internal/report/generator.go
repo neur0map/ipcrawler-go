@@ -179,7 +179,13 @@ func (r *ReportGenerator) generateSummaryReport() error {
 		content.WriteString(fmt.Sprintf("IP Addresses:   %d discovered\n", len(dnsResults["A"])))
 	}
 	if len(portResults) > 0 {
-		content.WriteString(fmt.Sprintf("Open Ports:     %d found\n", len(portResults)))
+		// Count unique ports consistently with Total Discoveries
+		uniquePortsQuick := make(map[string]bool)
+		for _, port := range portResults {
+			key := fmt.Sprintf("%s:%d", port.IP, port.Port)
+			uniquePortsQuick[key] = true
+		}
+		content.WriteString(fmt.Sprintf("Open Ports:     %d found\n", len(uniquePortsQuick)))
 	}
 	content.WriteString(fmt.Sprintf("Scan Date:      %s\n", time.Now().Format("2006-01-02")))
 	content.WriteString("```\n\n")
@@ -333,8 +339,17 @@ func (r *ReportGenerator) generateSummaryReport() error {
 		analysisEmoji := r.reportConfig.ReportFormat.SubsectionEmojis["analysis"]
 		content.WriteString(fmt.Sprintf("### %s Port Analysis\n\n", analysisEmoji))
 		
-		// Service categories from database
-		categoryCounts := r.categorizeServices(portResults, db)
+		// Service categories from database - use unique ports for accurate counting
+		uniquePortsList := make([]PortResult, 0, len(uniquePorts))
+		seen := make(map[string]bool)
+		for _, port := range portResults {
+			key := fmt.Sprintf("%s:%d", port.IP, port.Port)
+			if !seen[key] {
+				uniquePortsList = append(uniquePortsList, port)
+				seen[key] = true
+			}
+		}
+		categoryCounts := r.categorizeServices(uniquePortsList, db)
 		
 		// Display category counts with warnings from database config
 		for categoryName, count := range categoryCounts {
@@ -379,22 +394,31 @@ func (r *ReportGenerator) generateSummaryReport() error {
 		}
 		content.WriteString("\n")
 		
+		// Display raw nmap output in code blocks for better intelligence
 		for _, result := range nmapResults {
-			if result.Port > 0 {
-				content.WriteString(fmt.Sprintf("### %s:%d\n", result.Host, result.Port))
+			if result.Service == "Raw nmap scan results" && result.Version != "" {
+				content.WriteString(fmt.Sprintf("### Raw Nmap Results for %s\n\n", result.Host))
+				content.WriteString("```\n")
+				content.WriteString(result.Version)
+				content.WriteString("\n```\n\n")
 			} else {
-				content.WriteString(fmt.Sprintf("### %s\n", result.Host))
+				// Fallback for other result types
+				if result.Port > 0 {
+					content.WriteString(fmt.Sprintf("### %s:%d\n", result.Host, result.Port))
+				} else {
+					content.WriteString(fmt.Sprintf("### %s\n", result.Host))
+				}
+				if result.Service != "" {
+					content.WriteString(fmt.Sprintf("- **Service:** %s\n", result.Service))
+				}
+				if result.Version != "" {
+					content.WriteString(fmt.Sprintf("- **Version:** %s\n", result.Version))
+				}
+				if result.OS != "" {
+					content.WriteString(fmt.Sprintf("- **OS:** %s\n", result.OS))
+				}
+				content.WriteString("\n")
 			}
-			if result.Service != "" {
-				content.WriteString(fmt.Sprintf("- **Service:** %s\n", result.Service))
-			}
-			if result.Version != "" {
-				content.WriteString(fmt.Sprintf("- **Version:** %s\n", result.Version))
-			}
-			if result.OS != "" {
-				content.WriteString(fmt.Sprintf("- **OS:** %s\n", result.OS))
-			}
-			content.WriteString("\n")
 		}
 	}
 	
@@ -403,11 +427,28 @@ func (r *ReportGenerator) generateSummaryReport() error {
 	content.WriteString(fmt.Sprintf("## %s Security Recommendations\n\n", securityEmoji))
 	
 	hasHighRisk := false
+	hasCriticalRisk := false
 	for _, port := range portResults {
-		if db.GetRiskLevel(port.Port) == "high" {
+		riskLevel := db.GetRiskLevel(port.Port)
+		if riskLevel == "high" {
 			hasHighRisk = true
-			break
 		}
+		if riskLevel == "critical" {
+			hasCriticalRisk = true
+		}
+	}
+	
+	if hasCriticalRisk {
+		warningsEmoji := r.reportConfig.ReportFormat.SubsectionEmojis["warnings"]
+		content.WriteString(fmt.Sprintf("### %s Critical Risk Findings\n", warningsEmoji))
+		for _, port := range portResults {
+			if db.GetRiskLevel(port.Port) == "critical" {
+				serviceName := db.GetServiceName(port.Port)
+				content.WriteString(fmt.Sprintf("- **Port %d (%s):** Immediate security review required - verify access controls and encryption\n", 
+					port.Port, serviceName))
+			}
+		}
+		content.WriteString("\n")
 	}
 	
 	if hasHighRisk {
@@ -726,7 +767,7 @@ func (r *ReportGenerator) parseServiceFingerprints(outputPath string, availableF
 		filename := filepath.Base(filePath)
 		
 		if strings.HasSuffix(filename, ".txt") && strings.Contains(filename, "nmap") {
-			// Handle nmap text output files
+			// Handle nmap text output files - show raw output for better intelligence
 			data, err := os.ReadFile(filePath)
 			if err != nil {
 				continue
@@ -734,10 +775,16 @@ func (r *ReportGenerator) parseServiceFingerprints(outputPath string, availableF
 			
 			content := string(data)
 			
-			// Parse nmap text output for service information
 			if strings.Contains(content, "PORT") && strings.Contains(content, "STATE") && strings.Contains(content, "SERVICE") {
-				nmapResults := r.parseNmapTextOutput(content)
-				results = append(results, nmapResults...)
+				// Extract the raw nmap scan results (the important part)
+				rawOutput := r.extractNmapScanResults(content)
+				result := NmapResult{
+					Host:    r.target,
+					Port:    0, // Raw output covers multiple ports
+					Service: "Raw nmap scan results",
+					Version: rawOutput, // Store raw output in Version field
+				}
+				results = append(results, result)
 			} else if strings.Contains(content, "WARNING: No targets were specified") {
 				result := NmapResult{
 					Host:    r.target,
@@ -925,5 +972,40 @@ func (r *ReportGenerator) parseNmapTextOutput(content string) []NmapResult {
 	}
 	
 	return results
+}
+
+// extractNmapScanResults extracts the raw PORT/STATE/SERVICE/VERSION table and script results from nmap output
+func (r *ReportGenerator) extractNmapScanResults(content string) string {
+	lines := strings.Split(content, "\n")
+	var result strings.Builder
+	inScanResults := false
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		
+		// Start capturing when we see the PORT header
+		if strings.Contains(line, "PORT") && strings.Contains(line, "STATE") && strings.Contains(line, "SERVICE") {
+			inScanResults = true
+			result.WriteString(line + "\n")
+			continue
+		}
+		
+		if inScanResults {
+			// Stop capturing at empty lines that indicate end of scan results
+			if line == "" && result.Len() > 50 { // Only stop if we have substantial content
+				break
+			}
+			
+			// Include port lines, script output lines, and SSL certificate info
+			if strings.Contains(line, "/tcp") || 
+			   strings.HasPrefix(line, "|") || 
+			   strings.HasPrefix(line, "| ssl-cert:") ||
+			   strings.Contains(line, "Not valid") {
+				result.WriteString(line + "\n")
+			}
+		}
+	}
+	
+	return result.String()
 }
 
