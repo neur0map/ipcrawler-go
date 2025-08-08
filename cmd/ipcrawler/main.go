@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/carlosm/ipcrawler/internal/config"
 	"github.com/carlosm/ipcrawler/internal/registry"
@@ -29,7 +30,7 @@ external CLI tools like naabu, nmap, and others without hardcoding tool names.`,
 	}
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: .ipcrawlerrc.yaml)")
-	rootCmd.PersistentFlags().StringVarP(&workflowID, "workflow", "w", "", "specific workflow ID to run")
+	rootCmd.PersistentFlags().StringVarP(&workflowID, "workflow", "w", "", "specific workflow ID(s) to run (comma-separated: basic,dns)")
 	rootCmd.PersistentFlags().IntVarP(&parallel, "parallel", "p", 0, "max concurrent workflows (default from config)")
 
 	var listCmd = &cobra.Command{
@@ -60,7 +61,7 @@ func runIPCrawler(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Configuration:\n")
-	fmt.Printf("  Workflow folders: %v\n", cfg.WorkflowFolders)
+	fmt.Printf("  Auto-discover workflow folders: true\n")
 	fmt.Printf("  Max concurrent workflows: %d\n", cfg.MaxConcurrentWorkflows)
 	fmt.Printf("  Output directory: %s\n", cfg.DefaultOutputDir)
 	fmt.Printf("  Report directory: %s\n\n", cfg.DefaultReportDir)
@@ -82,27 +83,38 @@ func runIPCrawler(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println("Loading workflows...")
-	workflows, err := workflow.LoadWorkflowsFromFolders(cfg.WorkflowFolders, target)
+	workflows, err := workflow.LoadWorkflowsAutoDiscover(target)
 	if err != nil {
 		return fmt.Errorf("loading workflows: %w", err)
 	}
 
 	if len(workflows) == 0 {
-		return fmt.Errorf("no workflows found in folders: %v", cfg.WorkflowFolders)
+		return fmt.Errorf("no workflows found in auto-discovered folders")
 	}
 
 	var selectedWorkflows []workflow.Workflow
 	if workflowID != "" {
-		for _, wf := range workflows {
-			if wf.ID == workflowID {
-				selectedWorkflows = append(selectedWorkflows, wf)
-				break
+		// Support comma-separated workflow IDs
+		requestedIDs := strings.Split(strings.TrimSpace(workflowID), ",")
+		for i := range requestedIDs {
+			requestedIDs[i] = strings.TrimSpace(requestedIDs[i])
+		}
+		
+		for _, reqID := range requestedIDs {
+			found := false
+			for _, wf := range workflows {
+				if wf.ID == reqID {
+					selectedWorkflows = append(selectedWorkflows, wf)
+					found = true
+					break
+				}
+			}
+			if !found {
+				return fmt.Errorf("workflow not found: %s", reqID)
 			}
 		}
-		if len(selectedWorkflows) == 0 {
-			return fmt.Errorf("workflow not found: %s", workflowID)
-		}
 	} else {
+		// Auto-run all discovered workflows when no -w flag specified
 		selectedWorkflows = workflows
 	}
 
@@ -156,7 +168,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println("\nLoading workflows...")
-	workflows, err := workflow.LoadWorkflowsFromFolders(cfg.WorkflowFolders, "example.com")
+	workflows, err := workflow.LoadWorkflowsAutoDiscover("example.com")
 	if err != nil {
 		return fmt.Errorf("loading workflows: %w", err)
 	}

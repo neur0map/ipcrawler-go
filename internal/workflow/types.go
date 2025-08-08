@@ -32,6 +32,59 @@ type Step struct {
 	ExtraData    map[string]interface{} `yaml:",inline"`
 }
 
+// LoadWorkflowsAutoDiscover automatically discovers and loads all workflow folders
+func LoadWorkflowsAutoDiscover(target string) ([]Workflow, error) {
+	folders, err := discoverWorkflowFolders()
+	if err != nil {
+		return nil, err
+	}
+	return LoadWorkflowsFromFolders(folders, target)
+}
+
+// discoverWorkflowFolders finds all subdirectories in the workflows/ directory
+func discoverWorkflowFolders() ([]string, error) {
+	workflowsDir := "workflows"
+	if _, err := os.Stat(workflowsDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("workflows directory not found: %s", workflowsDir)
+	}
+
+	var folders []string
+	entries, err := os.ReadDir(workflowsDir)
+	if err != nil {
+		return nil, fmt.Errorf("reading workflows directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			folderPath := filepath.Join(workflowsDir, entry.Name())
+			// Check if this folder contains any .yaml files
+			if hasWorkflowFiles(folderPath) {
+				folders = append(folders, folderPath)
+			}
+		}
+	}
+
+	if len(folders) == 0 {
+		return nil, fmt.Errorf("no workflow folders found in %s", workflowsDir)
+	}
+
+	return folders, nil
+}
+
+// hasWorkflowFiles checks if a directory contains any .yaml workflow files
+func hasWorkflowFiles(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".yaml") {
+			return true
+		}
+	}
+	return false
+}
+
 func LoadWorkflowsFromFolders(folders []string, target string) ([]Workflow, error) {
 	var workflows []Workflow
 	templateData := map[string]string{"target": target}

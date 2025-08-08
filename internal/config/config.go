@@ -9,11 +9,10 @@ import (
 )
 
 type GlobalConfig struct {
-	WorkflowFolders        []string `yaml:"workflow_folders"`
-	DefaultWorkflows       []string `yaml:"default_workflows"`
-	MaxConcurrentWorkflows int      `yaml:"max_concurrent_workflows"`
-	DefaultOutputDir       string   `yaml:"default_output_dir"`
-	DefaultReportDir       string   `yaml:"default_report_dir"`
+	AutoRunAllWorkflows    bool   `yaml:"auto_run_all_workflows"`
+	MaxConcurrentWorkflows int    `yaml:"max_concurrent_workflows"`
+	DefaultOutputDir       string `yaml:"default_output_dir"`
+	DefaultReportDir       string `yaml:"default_report_dir"`
 }
 
 func LoadGlobalConfig(path string) (*GlobalConfig, error) {
@@ -22,8 +21,7 @@ func LoadGlobalConfig(path string) (*GlobalConfig, error) {
 	}
 	
 	cfg := &GlobalConfig{
-		WorkflowFolders:        []string{"workflows"},
-		DefaultWorkflows:       []string{"simple_scan"},
+		AutoRunAllWorkflows:    true,
 		MaxConcurrentWorkflows: 3,
 		DefaultOutputDir:       "out",
 		DefaultReportDir:       "reports",
@@ -57,9 +55,6 @@ func LoadGlobalConfig(path string) (*GlobalConfig, error) {
 		cfg.DefaultReportDir = "reports"
 	}
 	
-	if len(cfg.WorkflowFolders) == 0 {
-		cfg.WorkflowFolders = []string{"workflows"}
-	}
 	
 	return cfg, nil
 }
