@@ -40,6 +40,6 @@ steps:
       - "-p"
       - "{{@file:out/{{target}}/ports.txt}}"
       - "{{target}}"
-    output: "out/{{target}}/nmap_fingerprint.xml"
+    output: "out/{{target}}/nmap_fingerprint.txt"
     optional: true
     depends_on: [convert_to_hostlist]

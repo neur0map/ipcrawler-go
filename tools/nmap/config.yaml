@@ -1,8 +1,8 @@
 name: nmap
 command: nmap
-output: xml
+output: text
 args:
-  default: ["-oX", "-"]
+  default: ["-oN", "-"]
   flags:
     fast: ["-F"]
     intense: ["-T4", "-A", "-v"]

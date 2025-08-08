@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,10 +24,18 @@ type ReportGenerator struct {
 
 // Database structures
 type ReportConfig struct {
+	FilePatterns      map[string]FilePattern       `yaml:"file_patterns"`
 	RiskEmojis        map[string]string            `yaml:"risk_emojis"`
 	ServiceCategories map[string]ServiceCategory   `yaml:"service_categories"`
 	RiskThresholds    RiskThresholds              `yaml:"risk_thresholds"`
 	ReportFormat      ReportFormat                `yaml:"report_format"`
+}
+
+type FilePattern struct {
+	Patterns      []string `yaml:"patterns"`
+	SectionTitle  string   `yaml:"section_title"`
+	SectionEmoji  string   `yaml:"section_emoji"`
+	Description   string   `yaml:"description"`
 }
 
 type ServiceCategory struct {
@@ -143,19 +152,23 @@ func (r *ReportGenerator) generateSummaryReport() error {
 	titleEmoji := r.reportConfig.ReportFormat.TitleEmoji
 	content.WriteString(fmt.Sprintf("# %s IPCrawler Security Scan Report: %s\n\n", titleEmoji, r.target))
 	content.WriteString(fmt.Sprintf("**Generated:** %s\n", time.Now().Format("2006-01-02 15:04:05 MST")))
+	content.WriteString(fmt.Sprintf("**Scan Time:** %s\n", time.Now().Format("2006-01-02 15:04:05 MST")))
 	content.WriteString("---\n\n")
 	
 	// Load database for service lookups
 	db, _ := services.LoadDatabase()
 	
+	// Dynamically discover all available data files
+	availableFiles := r.discoverOutputFiles(outputPath)
+	
 	// Section 1: Executive Summary with all key discoveries
 	execEmoji := r.reportConfig.ReportFormat.SectionEmojis["executive_summary"]
 	content.WriteString(fmt.Sprintf("## %s Executive Summary\n\n", execEmoji))
 	
-	// Collect all findings first
-	portResults := r.parsePortScanResults(outputPath)
-	dnsResults := r.parseDNSResults(outputPath)
-	nmapResults := r.parseNmapResults(outputPath)
+	// Collect all findings dynamically
+	portResults := r.parsePortScanResults(outputPath, availableFiles)
+	dnsResults := r.parseDNSResults(outputPath, availableFiles)
+	nmapResults := r.parseServiceFingerprints(outputPath, availableFiles)
 	
 	// Quick stats box
 	statsEmoji := r.reportConfig.ReportFormat.SubsectionEmojis["stats"]
@@ -171,11 +184,31 @@ func (r *ReportGenerator) generateSummaryReport() error {
 	content.WriteString(fmt.Sprintf("Scan Date:      %s\n", time.Now().Format("2006-01-02")))
 	content.WriteString("```\n\n")
 	
-	// Section 2: DNS Discovery Results (Tool: dig)
+	// Section 2: DNS Discovery Results - Dynamic based on available files
 	if len(dnsResults) > 0 {
-		dnsEmoji := r.reportConfig.ReportFormat.SectionEmojis["dns_discovery"]
-		content.WriteString(fmt.Sprintf("## %s DNS Discovery\n", dnsEmoji))
-		content.WriteString("**Tool:** `dig`\n\n")
+		pattern := r.reportConfig.FilePatterns["dns_resolution"]
+		content.WriteString(fmt.Sprintf("## %s %s\n", pattern.SectionEmoji, pattern.SectionTitle))
+		content.WriteString(fmt.Sprintf("**Description:** %s\n", pattern.Description))
+		
+		// List actual tools used based on discovered files
+		dnsFiles := availableFiles["dns_resolution"]
+		if len(dnsFiles) > 0 {
+			var toolNames []string
+			for _, filePath := range dnsFiles {
+				filename := filepath.Base(filePath)
+				if strings.HasPrefix(filename, "dig_") {
+					toolNames = append(toolNames, "dig")
+				} else if strings.HasPrefix(filename, "nslookup_") {
+					toolNames = append(toolNames, "nslookup")
+				} else if strings.HasPrefix(filename, "dns_") {
+					toolNames = append(toolNames, "dns lookup tool")
+				}
+			}
+			if len(toolNames) > 0 {
+				content.WriteString(fmt.Sprintf("**Tools Used:** %s\n", strings.Join(r.uniqueStrings(toolNames), ", ")))
+			}
+		}
+		content.WriteString("\n")
 		
 		// A Records with IPs
 		if len(dnsResults["A"]) > 0 {
@@ -223,11 +256,36 @@ func (r *ReportGenerator) generateSummaryReport() error {
 		}
 	}
 	
-	// Section 3: Port Scan Results (Tool: naabu)
+	// Section 3: Port Scan Results - Dynamic based on available files
 	if len(portResults) > 0 {
-		content.WriteString("## 🔍 Port Scan Discovery\n")
-		content.WriteString("**Tool:** `naabu`\n")
-		content.WriteString("**Source Files:** `ports.json` (default scan), `naabu_fast.json`, `naabu_full.json` (workflow scans)\n\n")
+		pattern := r.reportConfig.FilePatterns["port_scan"]
+		content.WriteString(fmt.Sprintf("## %s %s\n", pattern.SectionEmoji, pattern.SectionTitle))
+		content.WriteString(fmt.Sprintf("**Description:** %s\n", pattern.Description))
+		
+		// List actual tools and files used
+		portFiles := availableFiles["port_scan"]
+		if len(portFiles) > 0 {
+			var toolNames []string
+			var sourceFiles []string
+			for _, filePath := range portFiles {
+				filename := filepath.Base(filePath)
+				sourceFiles = append(sourceFiles, filename)
+				if strings.Contains(filename, "naabu") {
+					toolNames = append(toolNames, "naabu")
+				} else if strings.Contains(filename, "nmap") {
+					toolNames = append(toolNames, "nmap")
+				} else if strings.Contains(filename, "ports") {
+					toolNames = append(toolNames, "port scanner")
+				}
+			}
+			if len(toolNames) > 0 {
+				content.WriteString(fmt.Sprintf("**Tools Used:** %s\n", strings.Join(r.uniqueStrings(toolNames), ", ")))
+			}
+			if len(sourceFiles) > 0 {
+				content.WriteString(fmt.Sprintf("**Source Files:** %s\n", strings.Join(sourceFiles, ", ")))
+			}
+		}
+		content.WriteString("\n")
 		
 		// Show total unique ports discovered
 		uniquePorts := make(map[string]bool)
@@ -292,14 +350,41 @@ func (r *ReportGenerator) generateSummaryReport() error {
 		content.WriteString("\n")
 	}
 	
-	// Section 4: Nmap Fingerprinting Results (if available)
+	// Section 4: Service Fingerprinting Results - Dynamic based on available files
 	if len(nmapResults) > 0 {
-		serviceFpEmoji := r.reportConfig.ReportFormat.SectionEmojis["service_fingerprint"]
-		content.WriteString(fmt.Sprintf("## %s Service Fingerprinting\n", serviceFpEmoji))
-		content.WriteString("**Tool:** `nmap`\n\n")
+		pattern := r.reportConfig.FilePatterns["service_fingerprint"]
+		content.WriteString(fmt.Sprintf("## %s %s\n", pattern.SectionEmoji, pattern.SectionTitle))
+		content.WriteString(fmt.Sprintf("**Description:** %s\n", pattern.Description))
+		
+		// List actual tools and files used
+		fingerprintFiles := availableFiles["service_fingerprint"]
+		if len(fingerprintFiles) > 0 {
+			var toolNames []string
+			var sourceFiles []string
+			for _, filePath := range fingerprintFiles {
+				filename := filepath.Base(filePath)
+				sourceFiles = append(sourceFiles, filename)
+				if strings.Contains(filename, "nmap") {
+					toolNames = append(toolNames, "nmap")
+				} else if strings.Contains(filename, "fingerprint") {
+					toolNames = append(toolNames, "fingerprint tool")
+				}
+			}
+			if len(toolNames) > 0 {
+				content.WriteString(fmt.Sprintf("**Tools Used:** %s\n", strings.Join(r.uniqueStrings(toolNames), ", ")))
+			}
+			if len(sourceFiles) > 0 {
+				content.WriteString(fmt.Sprintf("**Source Files:** %s\n", strings.Join(sourceFiles, ", ")))
+			}
+		}
+		content.WriteString("\n")
 		
 		for _, result := range nmapResults {
-			content.WriteString(fmt.Sprintf("### %s:%d\n", result.Host, result.Port))
+			if result.Port > 0 {
+				content.WriteString(fmt.Sprintf("### %s:%d\n", result.Host, result.Port))
+			} else {
+				content.WriteString(fmt.Sprintf("### %s\n", result.Host))
+			}
 			if result.Service != "" {
 				content.WriteString(fmt.Sprintf("- **Service:** %s\n", result.Service))
 			}
@@ -364,22 +449,62 @@ func (r *ReportGenerator) generateSummaryReport() error {
 	}
 	content.WriteString("\n")
 	
-	// Section 6: Raw Output Files
+	// Section 6: Raw Output Files - Dynamic listing of all discovered files
 	rawFilesEmoji := r.reportConfig.ReportFormat.SectionEmojis["raw_files"]
 	content.WriteString(fmt.Sprintf("## %s Raw Output Files\n\n", rawFilesEmoji))
 	content.WriteString("### Available Files\n")
-	content.WriteString(fmt.Sprintf("- **DNS Results:** `%s/%s/dns_*.txt`\n", r.outputDir, r.target))
-	content.WriteString(fmt.Sprintf("- **Port Scans:** `%s/%s/ports.json`, `naabu_*.json`\n", r.outputDir, r.target))
-	if len(nmapResults) > 0 || r.fileExists(filepath.Join(outputPath, "nmap_fingerprint.xml")) {
-		content.WriteString(fmt.Sprintf("- **Nmap Results:** `%s/%s/nmap_fingerprint.xml`\n", r.outputDir, r.target))
+	
+	// Dynamically list all discovered files by category
+	for categoryName, pattern := range r.reportConfig.FilePatterns {
+		files := availableFiles[categoryName]
+		if len(files) > 0 {
+			content.WriteString(fmt.Sprintf("- **%s:** ", pattern.SectionTitle))
+			var relativeFiles []string
+			for _, filePath := range files {
+				relativeFiles = append(relativeFiles, fmt.Sprintf("`%s/%s/%s`", r.outputDir, r.target, filepath.Base(filePath)))
+			}
+			content.WriteString(strings.Join(relativeFiles, ", "))
+			content.WriteString("\n")
+		}
 	}
-	if r.fileExists(filepath.Join(outputPath, "merged_ports.json")) {
-		content.WriteString(fmt.Sprintf("- **Merged Data:** `%s/%s/merged_ports.json`\n", r.outputDir, r.target))
-	}
+	
 	content.WriteString("\n---\n")
 	content.WriteString(fmt.Sprintf("*Report generated by IPCrawler at %s*\n", time.Now().Format("15:04:05 MST")))
 	
 	return os.WriteFile(reportPath, []byte(content.String()), 0644)
+}
+
+// discoverOutputFiles dynamically discovers all output files in the target directory
+func (r *ReportGenerator) discoverOutputFiles(outputPath string) map[string][]string {
+	files := make(map[string][]string)
+	
+	// Read all files in the output directory
+	entries, err := os.ReadDir(outputPath)
+	if err != nil {
+		return files
+	}
+	
+	// Group files by pattern type from database config
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		
+		filename := entry.Name()
+		filePath := filepath.Join(outputPath, filename)
+		
+		// Check against all pattern types from config
+		for patternType, pattern := range r.reportConfig.FilePatterns {
+			for _, glob := range pattern.Patterns {
+				if matched, _ := filepath.Match(glob, filename); matched {
+					files[patternType] = append(files[patternType], filePath)
+					break
+				}
+			}
+		}
+	}
+	
+	return files
 }
 
 func (r *ReportGenerator) summarizeJSONFile(filePath string) string {
@@ -434,40 +559,54 @@ type PortResult struct {
 	Host     string
 }
 
-func (r *ReportGenerator) parsePortScanResults(outputPath string) []PortResult {
+func (r *ReportGenerator) parsePortScanResults(outputPath string, availableFiles map[string][]string) []PortResult {
 	var results []PortResult
 	
-	// Try to parse ports.json (naabu JSON Lines format)
-	portsFile := filepath.Join(outputPath, "ports.json")
-	if data, err := os.ReadFile(portsFile); err == nil {
-		content := strings.TrimSpace(string(data))
-		lines := strings.Split(content, "\n")
+	// Use dynamically discovered port scan files
+	portFiles := availableFiles["port_scan"]
+	if len(portFiles) == 0 {
+		return results
+	}
+	
+	for _, filePath := range portFiles {
+		filename := filepath.Base(filePath)
 		
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" {
+		// Handle different file formats based on extension and content
+		if strings.HasSuffix(filename, ".json") {
+			data, err := os.ReadFile(filePath)
+			if err != nil {
 				continue
 			}
 			
-			var portData map[string]interface{}
-			if err := json.Unmarshal([]byte(line), &portData); err == nil {
-				result := PortResult{}
+			content := strings.TrimSpace(string(data))
+			if content == "" {
+				continue
+			}
+			
+			// Try as standard JSON array first
+			var ports []map[string]interface{}
+			if err := json.Unmarshal(data, &ports); err == nil {
+				for _, portData := range ports {
+					if result := r.parsePortData(portData); result.Port > 0 {
+						results = append(results, result)
+					}
+				}
+				continue
+			}
+			
+			// Try as JSON Lines (NDJSON) format
+			lines := strings.Split(content, "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
 				
-				if ip, ok := portData["ip"].(string); ok {
-					result.IP = ip
-				}
-				if host, ok := portData["host"].(string); ok {
-					result.Host = host
-				}
-				if port, ok := portData["port"].(float64); ok {
-					result.Port = int(port)
-				}
-				if protocol, ok := portData["protocol"].(string); ok {
-					result.Protocol = protocol
-				}
-				
-				if result.Port > 0 {
-					results = append(results, result)
+				var portData map[string]interface{}
+				if err := json.Unmarshal([]byte(line), &portData); err == nil {
+					if result := r.parsePortData(portData); result.Port > 0 {
+						results = append(results, result)
+					}
 				}
 			}
 		}
@@ -476,45 +615,91 @@ func (r *ReportGenerator) parsePortScanResults(outputPath string) []PortResult {
 	return results
 }
 
-func (r *ReportGenerator) parseDNSResults(outputPath string) map[string][]string {
-	dnsResults := make(map[string][]string)
+// parsePortData extracts PortResult from a map[string]interface{}
+func (r *ReportGenerator) parsePortData(portData map[string]interface{}) PortResult {
+	result := PortResult{}
 	
-	// Parse DNS A records
-	dnsFile := filepath.Join(outputPath, "dns_a.txt")
-	if data, err := os.ReadFile(dnsFile); err == nil {
-		content := strings.TrimSpace(string(data))
-		if content != "" {
-			lines := strings.Split(content, "\n")
-			for _, line := range lines {
-				line = strings.TrimSpace(line)
-				if line != "" && !strings.Contains(line, ";") { // Skip comments
-					dnsResults["A"] = append(dnsResults["A"], line)
-				}
-			}
-		}
+	if ip, ok := portData["ip"].(string); ok {
+		result.IP = ip
+	}
+	if host, ok := portData["host"].(string); ok {
+		result.Host = host
+	}
+	if port, ok := portData["port"].(float64); ok {
+		result.Port = int(port)
+	}
+	if protocol, ok := portData["protocol"].(string); ok {
+		result.Protocol = protocol
 	}
 	
-	// Parse other DNS record types from database config
-	for recordType, fileName := range r.dnsConfig.DNSRecordTypes {
-		if recordType == "A" {
-			continue // Already processed above
+	return result
+}
+
+func (r *ReportGenerator) parseDNSResults(outputPath string, availableFiles map[string][]string) map[string][]string {
+	dnsResults := make(map[string][]string)
+	
+	// Use dynamically discovered DNS files
+	dnsFiles := availableFiles["dns_resolution"]
+	if len(dnsFiles) == 0 {
+		return dnsResults
+	}
+	
+	for _, filePath := range dnsFiles {
+		filename := filepath.Base(filePath)
+		
+		// Extract record type from filename (e.g., dns_a.txt -> A)
+		recordType := r.extractDNSRecordType(filename)
+		if recordType == "" {
+			continue
 		}
-		filePath := filepath.Join(outputPath, fileName)
-		if data, err := os.ReadFile(filePath); err == nil {
-			content := strings.TrimSpace(string(data))
-			if content != "" {
-				lines := strings.Split(content, "\n")
-				for _, line := range lines {
-					line = strings.TrimSpace(line)
-					if line != "" && !strings.Contains(line, ";") {
-						dnsResults[recordType] = append(dnsResults[recordType], line)
-					}
-				}
+		
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			continue
+		}
+		
+		content := strings.TrimSpace(string(data))
+		if content == "" {
+			continue
+		}
+		
+		lines := strings.Split(content, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			// Skip empty lines and comments
+			if line != "" && !strings.Contains(line, ";") && !strings.HasPrefix(line, "#") {
+				dnsResults[recordType] = append(dnsResults[recordType], line)
 			}
 		}
 	}
 	
 	return dnsResults
+}
+
+// extractDNSRecordType extracts DNS record type from filename
+func (r *ReportGenerator) extractDNSRecordType(filename string) string {
+	// Extract from patterns like dns_a.txt, dns_mx.txt, etc.
+	if strings.HasPrefix(filename, "dns_") && strings.HasSuffix(filename, ".txt") {
+		recordType := strings.TrimPrefix(filename, "dns_")
+		recordType = strings.TrimSuffix(recordType, ".txt")
+		return strings.ToUpper(recordType)
+	}
+	return ""
+}
+
+// uniqueStrings returns unique strings from a slice
+func (r *ReportGenerator) uniqueStrings(slice []string) []string {
+	seen := make(map[string]bool)
+	var result []string
+	
+	for _, str := range slice {
+		if !seen[str] {
+			seen[str] = true
+			result = append(result, str)
+		}
+	}
+	
+	return result
 }
 
 // NmapResult holds parsed nmap scan results
@@ -526,77 +711,65 @@ type NmapResult struct {
 	OS      string
 }
 
-// parseNmapResults parses nmap XML output to extract basic information
-func (r *ReportGenerator) parseNmapResults(outputPath string) []NmapResult {
+// parseServiceFingerprints parses service fingerprinting results from various tools
+func (r *ReportGenerator) parseServiceFingerprints(outputPath string, availableFiles map[string][]string) []NmapResult {
 	var results []NmapResult
 	
-	// Check for nmap XML file
-	nmapFile := filepath.Join(outputPath, "nmap_fingerprint.xml")
-	data, err := os.ReadFile(nmapFile)
-	if err != nil {
+	// Use dynamically discovered service fingerprint files
+	fingerprintFiles := availableFiles["service_fingerprint"]
+	if len(fingerprintFiles) == 0 {
+		// No service fingerprint files found
 		return results
 	}
 	
-	// Since nmap currently fails due to input format issues,
-	// let's at least show that nmap was attempted
-	// In a production environment, we'd parse the XML properly
-	
-	// For now, create a placeholder result indicating nmap ran but had issues
-	if strings.Contains(string(data), "WARNING: No targets were specified") {
-		// Nmap ran but couldn't scan due to input format issue
-		result := NmapResult{
-			Host:    r.target,
-			Service: "Scan attempted but input format issue detected",
-			Version: "Nmap needs plain text host list, not JSON",
+	for _, filePath := range fingerprintFiles {
+		filename := filepath.Base(filePath)
+		
+		if strings.HasSuffix(filename, ".txt") && strings.Contains(filename, "nmap") {
+			// Handle nmap text output files
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				continue
+			}
+			
+			content := string(data)
+			
+			// Parse nmap text output for service information
+			if strings.Contains(content, "PORT") && strings.Contains(content, "STATE") && strings.Contains(content, "SERVICE") {
+				nmapResults := r.parseNmapTextOutput(content)
+				results = append(results, nmapResults...)
+			} else if strings.Contains(content, "WARNING: No targets were specified") {
+				result := NmapResult{
+					Host:    r.target,
+					Port:    0,
+					Service: "Scan attempted but input format issue detected",
+					Version: fmt.Sprintf("Tool output available in %s", filename),
+				}
+				results = append(results, result)
+			} else {
+				// General nmap results - just show it ran
+				result := NmapResult{
+					Host:    r.target,
+					Port:    0,
+					Service: "Service fingerprinting completed",
+					Version: fmt.Sprintf("See %s for detailed results", filename),
+				}
+				results = append(results, result)
+			}
+		} else if strings.HasSuffix(filename, ".json") {
+			// Handle JSON service fingerprint files
+			result := NmapResult{
+				Host:    r.target,
+				Service: "Service data available",
+				Version: fmt.Sprintf("JSON results in %s", filename),
+			}
+			results = append(results, result)
 		}
-		results = append(results, result)
-	} else if strings.Contains(string(data), "<host>") {
-		// If we find actual host data in the XML, we could parse it
-		// This would require proper XML parsing library
-		result := NmapResult{
-			Host:    r.target,
-			Service: "Service detection available in XML",
-			Version: "See nmap_fingerprint.xml for details",
-		}
-		results = append(results, result)
 	}
 	
 	return results
 }
 
-// parseMergedPorts parses the merged ports JSON file
-func (r *ReportGenerator) parseMergedPorts(outputPath string) []PortResult {
-	var results []PortResult
-	
-	mergedFile := filepath.Join(outputPath, "merged_ports.json")
-	if data, err := os.ReadFile(mergedFile); err == nil {
-		var ports []map[string]interface{}
-		if err := json.Unmarshal(data, &ports); err == nil {
-			for _, portData := range ports {
-				result := PortResult{}
-				
-				if ip, ok := portData["ip"].(string); ok {
-					result.IP = ip
-				}
-				if host, ok := portData["host"].(string); ok {
-					result.Host = host
-				}
-				if port, ok := portData["port"].(float64); ok {
-					result.Port = int(port)
-				}
-				if protocol, ok := portData["protocol"].(string); ok {
-					result.Protocol = protocol
-				}
-				
-				if result.Port > 0 {
-					results = append(results, result)
-				}
-			}
-		}
-	}
-	
-	return results
-}
 
 // fileExists checks if a file exists
 func (r *ReportGenerator) fileExists(path string) bool {
@@ -700,5 +873,57 @@ func (r *ReportGenerator) getDefaultDNSConfig() *DNSConfig {
 			"NS": "dns_ns.txt",
 		},
 	}
+}
+
+// parseNmapTextOutput parses nmap text output to extract service details
+func (r *ReportGenerator) parseNmapTextOutput(content string) []NmapResult {
+	var results []NmapResult
+	
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		
+		// Look for port lines like "80/tcp   open  http     nginx 1.25.1"
+		if strings.Contains(line, "/tcp") && (strings.Contains(line, "open") || strings.Contains(line, "filtered")) {
+			parts := strings.Fields(line)
+			if len(parts) >= 3 {
+				portProto := parts[0]
+				state := parts[1]
+				
+				if state != "open" {
+					continue // Skip non-open ports
+				}
+				
+				// Extract port number
+				portStr := strings.Split(portProto, "/")[0]
+				port := 0
+				if p, err := strconv.Atoi(portStr); err == nil {
+					port = p
+				}
+				
+				service := ""
+				version := ""
+				
+				if len(parts) >= 3 {
+					service = parts[2]
+				}
+				
+				// Combine remaining parts as version info
+				if len(parts) > 3 {
+					version = strings.Join(parts[3:], " ")
+				}
+				
+				result := NmapResult{
+					Host:    r.target,
+					Port:    port,
+					Service: service,
+					Version: version,
+				}
+				results = append(results, result)
+			}
+		}
+	}
+	
+	return results
 }
 

@@ -1,6 +1,26 @@
 # IPCrawler Report Configuration Database
 # Contains all configuration data for report generation
 
+# File pattern detection for dynamic report generation
+file_patterns:
+  port_scan:
+    patterns: ["*ports*.json", "naabu_*.json", "ports.txt", "merged_ports.json"]
+    section_title: "Port Scan Discovery"
+    section_emoji: "🔍"
+    description: "Port scanning results from various tools"
+    
+  dns_resolution:
+    patterns: ["dns_*.txt", "*dns*.json"]
+    section_title: "DNS Discovery"  
+    section_emoji: "🌐"
+    description: "DNS resolution and record lookup results"
+    
+  service_fingerprint:
+    patterns: ["nmap_*.txt", "*fingerprint*", "*service*"]
+    section_title: "Service Fingerprinting"
+    section_emoji: "🔬" 
+    description: "Service version and OS detection results"
+
 # Risk level emojis and colors
 risk_emojis:
   high: "🔴"
