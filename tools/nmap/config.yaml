@@ -7,9 +7,10 @@ args:
     fast: ["-F"]
     intense: ["-T4", "-A", "-v"]
     stealth: ["-sS", "-sV", "-T2"]
-    fingerprint: ["-T4", "-v", "-sV", "-sC"]
+    fingerprint: ["-T4", "-v", "-sV", "-sC", "--open"]
     service_scan: ["-sV", "-sC", "-T4"]
     comprehensive: ["-T4", "-A", "-sV", "-sC", "--script=default,discovery"]
+    target_only: ["-T4", "-sV", "--open"]
 mappings:
   - type: host
     query: "nmaprun.host"

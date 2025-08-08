@@ -305,6 +305,9 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 					result.Error = fmt.Errorf("writing empty host list file: %w", err)
 					return result, result.Error
 				}
+				// Also create an empty ports file for nmap
+				portsFile := strings.Replace(step.Output, "hostlist.txt", "ports.txt", 1)
+				os.WriteFile(portsFile, []byte(""), 0644)
 				result.Success = true
 				result.Data = make(map[string]bool)
 				return result, nil
@@ -320,6 +323,9 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 				result.Error = fmt.Errorf("writing empty host list file: %w", err)
 				return result, result.Error
 			}
+			// Also create an empty ports file for nmap
+			portsFile := strings.Replace(step.Output, "hostlist.txt", "ports.txt", 1)
+			os.WriteFile(portsFile, []byte(""), 0644)
 			result.Success = true
 			result.Data = make(map[string]bool)
 			return result, nil
@@ -344,10 +350,11 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 			}
 		}
 		
-		// Extract unique IP addresses (without ports for nmap compatibility)
+		// Extract unique IP addresses and collect ports
 		uniqueHosts := make(map[string]bool)
+		uniquePorts := make(map[int]bool)
 		for _, item := range jsonData {
-			// Get IP address only (nmap will scan the ports itself)
+			// Get IP address
 			if ip, ok := item["ip"].(string); ok && ip != "" {
 				uniqueHosts[ip] = true
 			}
@@ -355,12 +362,31 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 			if host, ok := item["host"].(string); ok && host != "" {
 				uniqueHosts[host] = true
 			}
+			// Collect ports
+			if port, ok := item["port"].(float64); ok {
+				uniquePorts[int(port)] = true
+			} else if port, ok := item["port"].(int); ok {
+				uniquePorts[port] = true
+			}
 		}
 		
-		// Write to plain text file (one host per line)
+		// Write hosts to file (one host per line)
 		var hostList strings.Builder
 		for host := range uniqueHosts {
 			hostList.WriteString(host + "\n")
+		}
+		
+		// Write ports to separate file
+		var portsList []string
+		for port := range uniquePorts {
+			portsList = append(portsList, fmt.Sprintf("%d", port))
+		}
+		portsFile := strings.Replace(step.Output, "hostlist.txt", "ports.txt", 1)
+		portsContent := strings.Join(portsList, ",")
+		if err := os.WriteFile(portsFile, []byte(portsContent), 0644); err != nil {
+			fmt.Printf("    Warning: Failed to write ports file: %v\n", err)
+		} else if len(portsList) > 0 {
+			fmt.Printf("    Found %d unique ports: %s\n", len(portsList), portsContent)
 		}
 		
 		// Handle case where no hosts were found
@@ -374,7 +400,10 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 		}
 		
 		result.Success = true
-		result.Data = uniqueHosts
+		result.Data = map[string]interface{}{
+			"hosts": uniqueHosts,
+			"ports": uniquePorts,
+		}
 		
 	} else if step.Type == "merge_files" {
 		mergeMsg := e.db.GetStatusMessage("merge_operation", map[string]string{

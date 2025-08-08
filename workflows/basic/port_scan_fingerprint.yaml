@@ -37,7 +37,7 @@ steps:
     tool: nmap
     use_flags: fingerprint
     override_args:
-      - "-iL"
-      - "{{convert_to_hostlist.output}}"
+      - "{{target}}"
     output: "out/{{target}}/nmap_fingerprint.xml"
+    optional: true
     depends_on: [convert_to_hostlist]
