@@ -7,11 +7,11 @@ workflow_folders:
 
 # Default workflows to run when no specific workflow is specified
 default_workflows:
-  - "portscan_fingerprint"
-  - "dns_lookup"
+  - "basic"
+  - "dns"
 
 # Maximum number of parallel workflows that can run concurrently
-max_concurrent_workflows: 3
+max_concurrent_workflows: 5
 
 # Directory where intermediate tool outputs are stored
 default_output_dir: "out"

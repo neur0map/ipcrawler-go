@@ -7,7 +7,7 @@ args:
     fast: ["-F"]
     intense: ["-T4", "-A", "-v"]
     stealth: ["-sS", "-sV", "-T2"]
-    fingerprint: ["-T4", "-A", "-v", "-sV", "--script=default"]
+    fingerprint: ["-T4", "-v", "-sV", "-sC"]
     service_scan: ["-sV", "-sC", "-T4"]
     comprehensive: ["-T4", "-A", "-sV", "-sC", "--script=default,discovery"]
 mappings:

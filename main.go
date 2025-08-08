@@ -98,13 +98,31 @@ func runIPCrawler(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("workflow not found: %s", workflowID)
 		}
 	} else {
-		// Use default workflows from config
+		// Use default workflows from config (supports both workflow IDs and folder names)
 		if len(cfg.DefaultWorkflows) > 0 {
 			for _, defaultID := range cfg.DefaultWorkflows {
+				// First try to match as workflow ID
+				foundByID := false
 				for _, wf := range workflows {
 					if wf.ID == defaultID {
 						selectedWorkflows = append(selectedWorkflows, wf)
+						foundByID = true
 						break
+					}
+				}
+				
+				// If not found by ID, check if it matches any configured workflow folder
+				if !foundByID {
+					for _, folder := range cfg.WorkflowFolders {
+						if strings.HasSuffix(folder, "/"+defaultID) || folder == defaultID {
+							// Add all workflows from this folder
+							for _, wf := range workflows {
+								if wf.FolderPath == folder {
+									selectedWorkflows = append(selectedWorkflows, wf)
+								}
+							}
+							break
+						}
 					}
 				}
 			}

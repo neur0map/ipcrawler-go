@@ -1,44 +1,42 @@
-id: portscan_fingerprint
-description: Fast port scan + fingerprinting using naabu and nmap
+id: port_scan_fingerprint
+description: Complete port scanning and service fingerprinting pipeline
 parallel: true
-
 steps:
-  - id: scan_low
+  - id: scan_low1k
     tool: naabu
-    use_flags: fast
+    use_flags: low1kcommon
     override_args:
       - "{{target}}"
-    output: "out/{{target}}/naabu_low.json"
-
-  - id: scan_high
+    output: "out/{{target}}/naabu_low1kcommon.json"
+    
+  - id: scan_high1k
     tool: naabu
-    use_flags: full
+    use_flags: high1kcommon
+  
     override_args:
       - "{{target}}"
-    output: "out/{{target}}/naabu_high.json"
-
+    output: "out/{{target}}/naabu_high1kcommon.json"
+    
   - id: merge_ports
     type: merge_files
     inputs:
-      - "{{scan_low.output}}"
-      - "{{scan_high.output}}"
+      - "out/{{target}}/naabu_low1kcommon.json"
+      - "out/{{target}}/naabu_high1kcommon.json"
     output: "out/{{target}}/merged_ports.json"
-    depends_on: [scan_low, scan_high]
-
+    depends_on: [scan_low1k, scan_high1k]
+    
   - id: convert_to_hostlist
     type: json_to_hostlist
     inputs:
-      - "{{merge_ports.output}}"
+      - "out/{{target}}/merged_ports.json"
     output: "out/{{target}}/hostlist.txt"
     depends_on: [merge_ports]
-
+    
   - id: fingerprint
     tool: nmap
     use_flags: fingerprint
     override_args:
       - "-iL"
       - "{{convert_to_hostlist.output}}"
-      - "-oX"
-      - "out/{{target}}/nmap_fingerprint.xml"
     output: "out/{{target}}/nmap_fingerprint.xml"
     depends_on: [convert_to_hostlist]

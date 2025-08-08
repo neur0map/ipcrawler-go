@@ -147,32 +147,40 @@ func (e *Executor) executeWorkflow(ctx context.Context, wf Workflow, target stri
 	
 	stepResults := make(map[string]StepResult)
 	completed := make(map[string]bool)
+	inProgress := make(map[string]bool)
 	var mu sync.Mutex
 	
-	var executeStep func(step Step) error
-	executeStep = func(step Step) error {
-		mu.Lock()
-		if completed[step.ID] {
-			mu.Unlock()
-			return nil
-		}
-		mu.Unlock()
+	// Channel to signal step completion
+	stepDone := make(chan string, len(wf.Steps))
+	errChan := make(chan error, len(wf.Steps))
+	var wg sync.WaitGroup
+	
+	var executeStep func(step Step)
+	executeStep = func(step Step) {
+		defer wg.Done()
 		
+		// Wait for dependencies to complete
 		for _, dep := range step.DependsOn {
-			depStep := findStep(wf.Steps, dep)
-			if depStep != nil {
-				if err := executeStep(*depStep); err != nil {
-					return err
+			for {
+				mu.Lock()
+				depCompleted := completed[dep]
+				mu.Unlock()
+				
+				if depCompleted {
+					break
 				}
+				
+				// Wait a bit before checking again
+				time.Sleep(100 * time.Millisecond)
 			}
 		}
 		
 		mu.Lock()
-		if completed[step.ID] {
+		if completed[step.ID] || inProgress[step.ID] {
 			mu.Unlock()
-			return nil
+			return
 		}
-		completed[step.ID] = true
+		inProgress[step.ID] = true
 		mu.Unlock()
 		
 		stepMsg := e.db.GetStatusMessage("step_executing", map[string]string{
@@ -182,29 +190,55 @@ func (e *Executor) executeWorkflow(ctx context.Context, wf Workflow, target stri
 		
 		result, err := e.runStep(ctx, step, stepResults, target)
 		if err != nil {
-			return fmt.Errorf("step %s failed: %w", step.ID, err)
+			errChan <- fmt.Errorf("step %s failed: %w", step.ID, err)
+			return
 		}
 		
 		mu.Lock()
 		stepResults[step.ID] = result
+		completed[step.ID] = true
+		inProgress[step.ID] = false
 		mu.Unlock()
 		
-		return nil
+		stepDone <- step.ID
 	}
 	
+	// Start all steps as goroutines
 	for _, step := range wf.Steps {
-		if len(step.DependsOn) == 0 {
-			if err := executeStep(step); err != nil {
+		wg.Add(1)
+		go executeStep(step)
+	}
+	
+	// Wait for all steps to complete
+	go func() {
+		wg.Wait()
+		close(stepDone)
+		close(errChan)
+	}()
+	
+	// Monitor for completion or errors
+	completedSteps := 0
+	totalSteps := len(wf.Steps)
+	
+	for {
+		select {
+		case stepID := <-stepDone:
+			if stepID != "" {
+				completedSteps++
+				if completedSteps >= totalSteps {
+					return nil
+				}
+			}
+		case err := <-errChan:
+			if err != nil {
 				return err
 			}
+		case <-ctx.Done():
+			return fmt.Errorf("workflow cancelled: %w", ctx.Err())
 		}
-	}
-	
-	for _, step := range wf.Steps {
-		if !completed[step.ID] {
-			if err := executeStep(step); err != nil {
-				return err
-			}
+		
+		if completedSteps >= totalSteps {
+			break
 		}
 	}
 	

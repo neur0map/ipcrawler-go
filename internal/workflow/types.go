@@ -15,6 +15,7 @@ type Workflow struct {
 	Description string `yaml:"description"`
 	Parallel    bool   `yaml:"parallel"`
 	Steps       []Step `yaml:"steps"`
+	FolderPath  string `yaml:"-"` // Not serialized, set during loading
 }
 
 type Step struct {
@@ -62,6 +63,8 @@ func LoadWorkflowsFromFolders(folders []string, target string) ([]Workflow, erro
 			}
 			
 			applyTemplateToWorkflow(&wf, templateData)
+			// Set the folder path for this workflow
+			wf.FolderPath = folder
 			workflows = append(workflows, wf)
 			
 			return nil
