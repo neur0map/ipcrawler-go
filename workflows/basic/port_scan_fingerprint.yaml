@@ -37,6 +37,8 @@ steps:
     tool: nmap
     use_flags: fingerprint
     override_args:
+      - "-p"
+      - "{{@file:out/{{target}}/ports.txt}}"
       - "{{target}}"
     output: "out/{{target}}/nmap_fingerprint.xml"
     optional: true

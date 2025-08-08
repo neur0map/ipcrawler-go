@@ -4,4 +4,4 @@ local_files
 .claude-flow
 out
 reports
-build/ipcrawler
+build

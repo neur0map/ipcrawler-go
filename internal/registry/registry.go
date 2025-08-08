@@ -66,10 +66,12 @@ func LoadAllTools() error {
 			continue
 		}
 		
-		finalPath := configPath
-		Register(cfg.Name, func() (tool.Tool, error) {
-			return tool.NewGenericAdapter(finalPath)
-		})
+		// Create closure with proper variable capture to avoid closure bug
+		Register(cfg.Name, func(path string) func() (tool.Tool, error) {
+			return func() (tool.Tool, error) {
+				return tool.NewGenericAdapter(path)
+			}
+		}(configPath))
 		
 		fmt.Printf("Registered tool: %s\n", cfg.Name)
 	}

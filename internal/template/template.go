@@ -1,6 +1,7 @@
 package template
 
 import (
+	"os"
 	"regexp"
 	"strings"
 )
@@ -10,6 +11,16 @@ var templateRegex = regexp.MustCompile(`\{\{([^}]+)\}\}`)
 func ApplyTemplate(template string, data map[string]string) string {
 	return templateRegex.ReplaceAllStringFunc(template, func(match string) string {
 		key := strings.TrimSpace(match[2 : len(match)-2])
+		
+		// Handle file reading: {{@file:path}}
+		if strings.HasPrefix(key, "@file:") {
+			filePath := strings.TrimPrefix(key, "@file:")
+			filePath = ApplyTemplate(filePath, data) // Apply templates to the file path first
+			if fileContent, err := os.ReadFile(filePath); err == nil {
+				return strings.TrimSpace(string(fileContent))
+			}
+			return "" // Return empty string if file doesn't exist or can't be read
+		}
 		
 		if strings.Contains(key, ".") {
 			parts := strings.Split(key, ".")

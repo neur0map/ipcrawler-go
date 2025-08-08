@@ -25,6 +25,11 @@ workflow:
       required_fields: ["input", "output"]
       optional_fields: ["field_mapping"]
       
+    port_fingerprint:
+      description: "Run nmap fingerprinting on discovered ports only"
+      required_fields: ["ports_file", "target", "output"]
+      optional_fields: ["tool_flags", "depends_on"]
+      
   # File format handlers
   file_formats:
     json:

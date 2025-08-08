@@ -376,7 +376,7 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 			hostList.WriteString(host + "\n")
 		}
 		
-		// Write ports to separate file
+		// Write ports to separate file for nmap argument
 		var portsList []string
 		for port := range uniquePorts {
 			portsList = append(portsList, fmt.Sprintf("%d", port))
@@ -388,6 +388,7 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 		} else if len(portsList) > 0 {
 			fmt.Printf("    Found %d unique ports: %s\n", len(portsList), portsContent)
 		}
+		
 		
 		// Handle case where no hosts were found
 		if len(uniqueHosts) == 0 {
