@@ -6,10 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/carlosm/ipcrawler/internal/config"
+	"github.com/carlosm/ipcrawler/internal/logger"
 	"github.com/carlosm/ipcrawler/internal/registry"
 	"github.com/carlosm/ipcrawler/internal/report"
+	"github.com/carlosm/ipcrawler/internal/tui"
 	"github.com/carlosm/ipcrawler/internal/workflow"
 	"github.com/spf13/cobra"
 )
@@ -18,6 +21,7 @@ var (
 	cfgFile    string
 	workflowID string
 	parallel   int
+	noTUI      bool
 )
 
 func main() {
@@ -33,6 +37,7 @@ external CLI tools like naabu, nmap, and others without hardcoding tool names.`,
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: global.yaml)")
 	rootCmd.PersistentFlags().StringVarP(&workflowID, "workflow", "w", "", "specific workflow ID to run")
 	rootCmd.PersistentFlags().IntVarP(&parallel, "parallel", "p", 0, "max concurrent workflows (default from config)")
+	rootCmd.PersistentFlags().BoolVar(&noTUI, "no-tui", false, "disable TUI monitoring and use plain output")
 
 	var listCmd = &cobra.Command{
 		Use:   "list",
@@ -51,6 +56,7 @@ external CLI tools like naabu, nmap, and others without hardcoding tool names.`,
 func runIPCrawler(cmd *cobra.Command, args []string) error {
 	target := args[0]
 	
+	// Always show startup message to console first
 	fmt.Printf("IPCrawler starting for target: %s\n\n", target)
 
 	cfg, err := config.LoadGlobalConfig(cfgFile)
@@ -137,9 +143,40 @@ func runIPCrawler(cmd *cobra.Command, args []string) error {
 	fmt.Println(strings.Repeat("━", 51))
 	
 	executor := workflow.NewExecutor(cfg.MaxConcurrentWorkflows)
+	executor.SetTarget(target) // Set the target on the executor
 	ctx := context.Background()
 	
-	if err := executor.RunWorkflows(ctx, selectedWorkflows, target); err != nil {
+	// Initialize TUI monitoring if not disabled
+	var monitor *tui.Monitor
+	if !noTUI {
+		monitor = tui.NewMonitor(target)
+		cancelCtx, err := monitor.Start(ctx)
+		if err != nil {
+			fmt.Printf("Warning: Failed to start TUI monitoring: %v\n", err)
+			fmt.Println("Continuing with plain output...")
+			logger.SetConsoleLogger() // Use console logger if TUI fails
+		} else {
+			// Use the cancellable context for workflow execution
+			ctx = cancelCtx
+			// Set the monitor on the executor
+			executor.SetMonitor(monitor)
+			// Set logger to use TUI
+			logger.SetTUILogger(monitor)
+			fmt.Println("🎯 TUI monitoring started - enjoy the beautiful interface!")
+			time.Sleep(time.Millisecond * 500) // Brief pause to show message
+		}
+		
+		defer func() {
+			if monitor != nil {
+				monitor.Stop()
+			}
+		}()
+	} else {
+		// Explicitly use console logger when TUI is disabled
+		logger.SetConsoleLogger()
+	}
+	
+	if err := executor.RunWorkflows(ctx, selectedWorkflows); err != nil {
 		return fmt.Errorf("executing workflows: %w", err)
 	}
 

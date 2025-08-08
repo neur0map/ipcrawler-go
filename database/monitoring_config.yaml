@@ -1,0 +1,128 @@
+# IPCrawler Monitoring Configuration Database
+# Configuration for monitoring system settings and thresholds
+
+monitoring:
+  # Default monitoring settings
+  defaults:
+    enable_metrics: true
+    enable_events: true
+    enable_health: true
+    enable_alerts: true
+    metrics_interval_seconds: 10
+    health_interval_seconds: 30
+    retention_days: 7
+    
+  # Alert thresholds configuration
+  alert_thresholds:
+    error_rate_threshold: 0.1        # 10% error rate triggers alert
+    response_time_threshold_seconds: 30  # 30 seconds response time threshold
+    memory_threshold: 0.8            # 80% memory usage triggers alert
+    cpu_threshold: 0.9               # 90% CPU usage triggers alert
+    goroutine_threshold: 1000        # 1000 goroutines triggers warning
+    goroutine_critical: 5000         # 5000 goroutines triggers critical alert
+    
+  # Dashboard configuration
+  dashboard:
+    default_port: 8080
+    auto_refresh_seconds: 5
+    max_events_display: 100
+    max_alerts_display: 50
+    
+  # Event logging configuration
+  events:
+    buffer_size: 100
+    immediate_flush_levels: ["ERROR", "FATAL"]
+    retention_days: 30
+    max_file_size_mb: 100
+    
+  # Metrics collection configuration
+  metrics:
+    collection_interval_seconds: 10
+    retention_hours: 168  # 7 days
+    system_metrics_enabled: true
+    workflow_metrics_enabled: true
+    tool_metrics_enabled: true
+    
+    # Metric categories
+    categories:
+      workflows:
+        - "workflows.started"
+        - "workflows.completed"  
+        - "workflows.errors"
+        - "workflows.duration"
+        
+      tools:
+        - "tools.executions"
+        - "tools.errors"
+        - "tools.duration"
+        
+      steps:
+        - "steps.executed"
+        - "steps.duration"
+        
+      system:
+        - "system.memory.alloc"
+        - "system.memory.heap_alloc"
+        - "system.memory.sys"
+        - "system.goroutines"
+        - "system.cpu.num"
+        
+  # Health check configuration
+  health_checks:
+    memory:
+      enabled: true
+      warning_threshold: 0.8
+      critical_threshold: 0.95
+      
+    disk:
+      enabled: true
+      check_directories:
+        - "out"
+        - "reports"
+        - "monitoring"
+        
+    goroutines:
+      enabled: true
+      warning_threshold: 1000
+      critical_threshold: 5000
+      
+    system:
+      enabled: true
+      min_cpu_count: 1
+      
+  # Report generation settings
+  reports:
+    auto_generate: true
+    generation_interval_minutes: 30
+    retention_days: 30
+    include_sections:
+      - "metrics_summary"
+      - "health_status"
+      - "active_alerts"
+      - "recent_events"
+      - "system_resources"
+      
+  # Alert notification settings
+  notifications:
+    console:
+      enabled: true
+      levels: ["WARNING", "CRITICAL"]
+      
+    file:
+      enabled: true
+      file_path: "monitoring/alerts.log"
+      levels: ["WARNING", "CRITICAL", "INFO"]
+      
+    # Future: email, webhook, etc.
+    email:
+      enabled: false
+      
+    webhook:
+      enabled: false
+      
+  # Performance tuning
+  performance:
+    max_concurrent_checks: 10
+    check_timeout_seconds: 30
+    metrics_buffer_size: 1000
+    event_processing_workers: 2

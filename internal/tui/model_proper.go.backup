@@ -1,0 +1,424 @@
+package tui
+
+import (
+	"context"
+	"fmt"
+	"runtime"
+	"sync"
+	"time"
+
+	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+)
+
+// ProperMonitorModel using actual Bubbles components
+type ProperMonitorModel struct {
+	mu           sync.RWMutex
+	target       string
+	
+	// Bubbles components
+	workflowTable  table.Model
+	toolsTable     table.Model
+	activityList   list.Model
+	workflowList   list.Model
+	logsViewport   viewport.Model
+	spinner        spinner.Model
+	
+	// State
+	workflows      []WorkflowStatus
+	tools          []ToolStatus 
+	logs           []LogEntry
+	systemStats    SystemStats
+	startTime      time.Time
+	activeTab      int
+	width          int
+	height         int
+	terminated     bool
+	showHelp       bool
+	cancelFunc     context.CancelFunc // Add cancel function
+}
+
+// NewProperMonitorModel creates a proper TUI using Bubbles components
+func NewProperMonitorModel(target string) ProperMonitorModel {
+	// Initialize spinner
+	spin := spinner.New()
+	spin.Spinner = spinner.Dot
+	spin.Style = lipgloss.NewStyle().Foreground(primaryColor)
+
+	// Initial dimensions
+	width, height := 80, 24
+
+	model := ProperMonitorModel{
+		target:         target,
+		workflowTable:  createWorkflowTable(),
+		toolsTable:     createToolsTable(),
+		activityList:   createActivityList(width-4, 8),
+		workflowList:   createWorkflowList(width-4, 6),
+		logsViewport:   createLogsViewport(width-4, height-10),
+		spinner:        spin,
+		workflows:      []WorkflowStatus{},
+		tools:          []ToolStatus{},
+		logs:           []LogEntry{},
+		startTime:      time.Now(),
+		activeTab:      0,
+		width:          width,
+		height:         height,
+		systemStats: SystemStats{
+			CPUCores: runtime.NumCPU(),
+		},
+	}
+	
+	// Set initial table widths
+	updateWorkflowTableWidth(&model.workflowTable, width)
+	updateToolsTableWidth(&model.toolsTable, width)
+	
+	return model
+}
+
+// Init initializes the proper model
+func (m ProperMonitorModel) Init() tea.Cmd {
+	return tea.Batch(
+		m.spinner.Tick,
+		tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return TickMsg(t)
+		}),
+		tea.Tick(time.Millisecond*500, func(t time.Time) tea.Msg {
+			return SystemStatsMsg(getSystemStats())
+		}),
+	)
+}
+
+// Update handles messages using proper Bubbles component updates
+func (m ProperMonitorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	var cmds []tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		
+		// Resize all components properly
+		m.activityList.SetSize(msg.Width-4, 8)
+		m.workflowList.SetSize(msg.Width-4, 6)
+		m.logsViewport.Width = msg.Width - 4
+		m.logsViewport.Height = msg.Height - 10
+		
+		// Update table column widths to use full terminal width
+		updateWorkflowTableWidth(&m.workflowTable, msg.Width)
+		updateToolsTableWidth(&m.toolsTable, msg.Width)
+
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			m.terminated = true
+			// Cancel running scans
+			if m.cancelFunc != nil {
+				m.cancelFunc()
+			}
+			return m, tea.Quit
+		case "tab", "right", "l":
+			m.activeTab = (m.activeTab + 1) % 4
+			m.updateComponentFocus()
+		case "shift+tab", "left":
+			m.activeTab = (m.activeTab - 1 + 4) % 4
+			m.updateComponentFocus()
+		case "1":
+			m.activeTab = 0
+			m.updateComponentFocus()
+		case "2":
+			m.activeTab = 1
+			m.updateComponentFocus()
+		case "3":
+			m.activeTab = 2
+			m.updateComponentFocus()
+		case "4":
+			m.activeTab = 3
+			m.updateComponentFocus()
+		case "h":
+			m.showHelp = !m.showHelp
+		case "up", "k":
+			// Navigate up in the current component
+			m.handleUpNavigation()
+		case "down", "j":
+			// Navigate down in the current component
+			m.handleDownNavigation()
+		case "pgup":
+			// Page up in logs viewport
+			if m.activeTab == 3 { // Logs tab
+				m.logsViewport.ViewUp()
+			}
+		case "pgdown":
+			// Page down in logs viewport
+			if m.activeTab == 3 { // Logs tab
+				m.logsViewport.ViewDown()
+			}
+		}
+
+	case WorkflowStartMsg:
+		m.mu.Lock()
+		m.workflows = append(m.workflows, WorkflowStatus{
+			ID:          msg.ID,
+			Description: msg.Description,
+			Status:      "running",
+			Progress:    0.0,
+			StartTime:   time.Now(),
+		})
+		m.updateComponents()
+		m.mu.Unlock()
+
+	case WorkflowCompleteMsg:
+		m.mu.Lock()
+		for i := range m.workflows {
+			if m.workflows[i].ID == msg.ID {
+				m.workflows[i].Status = "completed"
+				if msg.Error != nil {
+					m.workflows[i].Status = "failed"
+					m.workflows[i].Error = msg.Error
+				}
+				m.workflows[i].Duration = msg.Duration
+				m.workflows[i].Progress = 1.0
+				break
+			}
+		}
+		m.updateComponents()
+		m.mu.Unlock()
+
+	case ToolExecutionMsg:
+		m.mu.Lock()
+		status := "completed"
+		if msg.Error != nil {
+			status = "failed"
+		}
+		m.tools = append(m.tools, ToolStatus{
+			Name:     msg.Tool,
+			Workflow: msg.Workflow,
+			Status:   status,
+			Duration: msg.Duration,
+			Error:    msg.Error,
+			Args:     msg.Args,
+			Output:   msg.Output,
+		})
+		m.updateComponents()
+		m.mu.Unlock()
+
+	case SystemStatsMsg:
+		m.mu.Lock()
+		m.systemStats = SystemStats(msg)
+		m.systemStats.Uptime = time.Since(m.startTime)
+		m.mu.Unlock()
+
+	case LogMsg:
+		m.mu.Lock()
+		m.logs = append(m.logs, LogEntry(msg))
+		// Keep only last 100 log entries
+		if len(m.logs) > 100 {
+			m.logs = m.logs[len(m.logs)-100:]
+		}
+		m.updateActivityList()
+		m.updateLogsViewport()
+		m.mu.Unlock()
+
+	case TickMsg:
+		// Update system stats and other time-based updates
+		cmd = tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return TickMsg(t)
+		})
+		cmds = append(cmds, cmd)
+	}
+
+	// Update all Bubbles components
+	m.spinner, cmd = m.spinner.Update(msg)
+	cmds = append(cmds, cmd)
+
+	m.workflowTable, cmd = m.workflowTable.Update(msg)
+	cmds = append(cmds, cmd)
+
+	m.toolsTable, cmd = m.toolsTable.Update(msg)
+	cmds = append(cmds, cmd)
+
+	m.activityList, cmd = m.activityList.Update(msg)
+	cmds = append(cmds, cmd)
+
+	m.workflowList, cmd = m.workflowList.Update(msg)
+	cmds = append(cmds, cmd)
+
+	m.logsViewport, cmd = m.logsViewport.Update(msg)
+	cmds = append(cmds, cmd)
+
+	return m, tea.Batch(cmds...)
+}
+
+// updateComponents updates all Bubbles components with current data
+func (m *ProperMonitorModel) updateComponents() {
+	m.updateWorkflowTable()
+	m.updateToolsTable()
+	m.updateWorkflowList()
+	m.updateActivityList()
+	m.updateLogsViewport()
+}
+
+// updateWorkflowTable updates the workflow table data
+func (m *ProperMonitorModel) updateWorkflowTable() {
+	rows := make([]table.Row, len(m.workflows))
+	for i, wf := range m.workflows {
+		status := getStatusIcon(wf.Status)
+		duration := formatDuration(wf.Duration)
+		if wf.Status == "running" {
+			duration = formatDuration(time.Since(wf.StartTime))
+		}
+
+		rows[i] = table.Row{
+			wf.ID,
+			status,
+			duration,
+			wf.Description,
+		}
+	}
+	m.workflowTable.SetRows(rows)
+}
+
+// updateToolsTable updates the tools table data
+func (m *ProperMonitorModel) updateToolsTable() {
+	// Show only last 10 tool executions
+	start := 0
+	if len(m.tools) > 10 {
+		start = len(m.tools) - 10
+	}
+
+	rows := make([]table.Row, len(m.tools)-start)
+	for i, tool := range m.tools[start:] {
+		status := getStatusIcon(tool.Status)
+		duration := formatDuration(tool.Duration)
+		args := fmt.Sprintf("%v", tool.Args)
+		if len(args) > 20 {
+			args = args[:17] + "..."
+		}
+
+		rows[i] = table.Row{
+			tool.Name,
+			tool.Workflow,
+			status,
+			duration,
+			args,
+		}
+	}
+	m.toolsTable.SetRows(rows)
+}
+
+// updateWorkflowList updates the workflow list with current workflows
+func (m *ProperMonitorModel) updateWorkflowList() {
+	var items []list.Item
+	for _, wf := range m.workflows {
+		if wf.Status == "running" {
+			items = append(items, WorkflowItem{
+				id:          wf.ID,
+				description: wf.Description,
+				status:      wf.Status,
+				startTime:   wf.StartTime,
+				duration:    wf.Duration,
+			})
+		}
+	}
+	m.workflowList.SetItems(items)
+}
+
+// updateActivityList updates the activity list with recent logs
+func (m *ProperMonitorModel) updateActivityList() {
+	var items []list.Item
+	// Show last 10 log entries
+	start := len(m.logs) - 10
+	if start < 0 {
+		start = 0
+	}
+	
+	for _, log := range m.logs[start:] {
+		items = append(items, LogItem{
+			timestamp: log.Timestamp,
+			level:     log.Level,
+			category:  log.Category,
+			message:   log.Message,
+		})
+	}
+	m.activityList.SetItems(items)
+}
+
+// updateLogsViewport updates the logs viewport content
+func (m *ProperMonitorModel) updateLogsViewport() {
+	var content string
+	for _, log := range m.logs {
+		timestamp := log.Timestamp.Format("15:04:05")
+		icon := getLevelIcon(log.Level)
+		logLine := fmt.Sprintf("%s %s [%s] %s\n", 
+			icon, timestamp, log.Category, log.Message)
+		content += logLine
+	}
+	m.logsViewport.SetContent(content)
+	m.logsViewport.GotoBottom()
+}
+
+// Update component focus based on active tab
+func (m *ProperMonitorModel) updateComponentFocus() {
+	// Reset all focus
+	m.workflowTable.Focus()
+	m.workflowTable.Blur()
+	m.toolsTable.Focus()
+	m.toolsTable.Blur()
+	
+	// Set focus based on active tab
+	switch m.activeTab {
+	case 0: // Overview
+		// Lists handle their own focus
+	case 1: // Workflows
+		m.workflowTable.Focus()
+	case 2: // Tools
+		m.toolsTable.Focus()
+	case 3: // Logs
+		// Viewport doesn't need focus flag
+	}
+}
+
+// Navigation helper functions
+func (m *ProperMonitorModel) handleUpNavigation() {
+	switch m.activeTab {
+	case 0: // Overview tab
+		// Navigate in workflow list if visible
+		if len(m.workflows) > 0 {
+			m.workflowList.CursorUp()
+		}
+	case 1: // Workflows tab
+		// Navigate in workflow table
+		m.workflowTable.MoveUp(1)
+	case 2: // Tools tab
+		// Navigate in tools table
+		m.toolsTable.MoveUp(1)
+	case 3: // Logs tab
+		// Scroll up in viewport
+		m.logsViewport.LineUp(1)
+	}
+}
+
+func (m *ProperMonitorModel) handleDownNavigation() {
+	switch m.activeTab {
+	case 0: // Overview tab
+		// Navigate in workflow list if visible
+		if len(m.workflows) > 0 {
+			m.workflowList.CursorDown()
+		}
+	case 1: // Workflows tab
+		// Navigate in workflow table
+		m.workflowTable.MoveDown(1)
+	case 2: // Tools tab
+		// Navigate in tools table
+		m.toolsTable.MoveDown(1)
+	case 3: // Logs tab
+		// Scroll down in viewport
+		m.logsViewport.LineDown(1)
+	}
+}
+
+// Helper functions moved to components.go to avoid duplication

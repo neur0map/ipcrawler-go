@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/carlosm/ipcrawler/internal/logger"
 	"github.com/carlosm/ipcrawler/internal/registry"
 	"github.com/carlosm/ipcrawler/internal/services"
 	"github.com/carlosm/ipcrawler/internal/template"
@@ -18,11 +19,21 @@ import (
 type Executor struct {
 	maxConcurrent int
 	semaphore     chan struct{}
-	mu            sync.Mutex
+	mu            sync.RWMutex // Change to RWMutex for RLock/RUnlock
 	running       int
 	completed     int
 	errors        []error
 	db            *services.Database
+	monitor       Monitor
+	target        string // Add target to executor
+}
+
+// Monitor interface for monitoring workflow execution
+type Monitor interface {
+	RecordWorkflowStart(workflowID string, target string)
+	RecordWorkflowComplete(workflowID string, target string, duration time.Duration, err error)
+	RecordStepExecution(workflowID, stepID string, stepType string, duration time.Duration, err error)
+	RecordToolExecution(tool string, args []string, duration time.Duration, err error)
 }
 
 func NewExecutor(maxConcurrent int) *Executor {
@@ -40,7 +51,21 @@ func NewExecutor(maxConcurrent int) *Executor {
 	}
 }
 
-func (e *Executor) RunWorkflows(ctx context.Context, workflows []Workflow, target string) error {
+// SetTarget sets the target for this executor
+func (e *Executor) SetTarget(target string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.target = target
+}
+
+// SetMonitor sets the monitoring interface
+func (e *Executor) SetMonitor(monitor Monitor) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.monitor = monitor
+}
+
+func (e *Executor) RunWorkflows(ctx context.Context, workflows []Workflow) error {
 	var (
 		wg           sync.WaitGroup
 		parallelWfs  []Workflow
@@ -68,17 +93,17 @@ func (e *Executor) RunWorkflows(ctx context.Context, workflows []Workflow, targe
 				
 				e.mu.Lock()
 				e.running++
-				fmt.Printf("Starting parallel workflow: %s (%d/%d running)\n", workflow.ID, e.running, e.maxConcurrent)
+				logger.Printf("Starting parallel workflow: %s (%d/%d running)\n", workflow.ID, e.running, e.maxConcurrent)
 				e.mu.Unlock()
 				
-				if err := e.executeWorkflow(ctx, workflow, target); err != nil {
+				if err := e.executeWorkflow(ctx, workflow); err != nil {
 					errChan <- fmt.Errorf("workflow %s failed: %w", workflow.ID, err)
 				}
 				
 				e.mu.Lock()
 				e.running--
 				e.completed++
-				fmt.Printf("Completed workflow: %s (%d completed)\n", workflow.ID, e.completed)
+				logger.Printf("Completed workflow: %s (%d completed)\n", workflow.ID, e.completed)
 				e.mu.Unlock()
 				
 			case <-ctx.Done():
@@ -95,16 +120,16 @@ func (e *Executor) RunWorkflows(ctx context.Context, workflows []Workflow, targe
 	
 	for _, wf := range sequentialWfs {
 		e.mu.Lock()
-		fmt.Printf("Starting sequential workflow: %s\n", wf.ID)
+		logger.Printf("Starting sequential workflow: %s\n", wf.ID)
 		e.mu.Unlock()
 		
-		if err := e.executeWorkflow(ctx, wf, target); err != nil {
+		if err := e.executeWorkflow(ctx, wf); err != nil {
 			errChan <- fmt.Errorf("workflow %s failed: %w", wf.ID, err)
 		}
 		
 		e.mu.Lock()
 		e.completed++
-		fmt.Printf("Completed workflow: %s (%d completed)\n", wf.ID, e.completed)
+		logger.Printf("Completed workflow: %s (%d completed)\n", wf.ID, e.completed)
 		e.mu.Unlock()
 	}
 	
@@ -126,11 +151,27 @@ func (e *Executor) RunWorkflows(ctx context.Context, workflows []Workflow, targe
 	return nil
 }
 
-func (e *Executor) executeWorkflow(ctx context.Context, wf Workflow, target string) error {
+func (e *Executor) executeWorkflow(ctx context.Context, wf Workflow) error {
+	// Get target from executor
+	e.mu.RLock()
+	target := e.target
+	e.mu.RUnlock()
+	
+	if target == "" {
+		target = "unknown" // Fallback if target not set
+	}
+	
+	startTime := time.Now()
+	
+	// Record workflow start
+	if e.monitor != nil {
+		e.monitor.RecordWorkflowStart(wf.ID, target)
+	}
+	
 	// Analyze the target type
 	targetInfo := AnalyzeTarget(target)
-	fmt.Printf("Executing workflow: %s - %s\n", wf.ID, wf.Description)
-	fmt.Printf("  Target: %s (Type: %s, Private: %v, Local: %v)\n", 
+	logger.Printf("Executing workflow: %s - %s\n", wf.ID, wf.Description)
+	logger.Printf("  Target: %s (Type: %s, Private: %v, Local: %v)\n", 
 		target, targetInfo.Type.String(), targetInfo.IsPrivate, targetInfo.IsLocal)
 	
 	stepResults := make(map[string]StepResult)
@@ -173,7 +214,7 @@ func (e *Executor) executeWorkflow(ctx context.Context, wf Workflow, target stri
 		
 		// Check if step should be skipped based on target type
 		if skip, reason := ShouldSkipStep(step, targetInfo); skip {
-			fmt.Printf("    Skipping step %s: %s\n", step.ID, reason)
+			logger.Printf("    Skipping step %s: %s\n", step.ID, reason)
 			mu.Lock()
 			stepResults[step.ID] = StepResult{
 				StepID:  step.ID,
@@ -188,13 +229,24 @@ func (e *Executor) executeWorkflow(ctx context.Context, wf Workflow, target stri
 			return
 		}
 		
-		fmt.Printf("  Executing step: %s\n", step.ID)
+		logger.Printf("  Executing step: %s\n", step.ID)
 		
-		result, err := e.runStep(ctx, step, stepResults, target, targetInfo)
+		stepStartTime := time.Now()
+		result, err := e.runStep(ctx, step, stepResults, target, targetInfo, wf.ID)
+		stepDuration := time.Since(stepStartTime)
+		
+		// Record step execution
+		if e.monitor != nil {
+			stepType := step.Type
+			if stepType == "" && step.Tool != "" {
+				stepType = "tool_execution"
+			}
+			e.monitor.RecordStepExecution(wf.ID, step.ID, stepType, stepDuration, err)
+		}
 		if err != nil {
 			// Check if step is optional or workflow continues on error
 			if step.Optional || wf.ContinueOnError {
-				fmt.Printf("    Warning: Step %s failed (optional/continuing): %v\n", step.ID, err)
+				logger.Printf("    Warning: Step %s failed (optional/continuing): %v\n", step.ID, err)
 				result.Success = false
 				result.Error = err
 			} else {
@@ -228,6 +280,7 @@ func (e *Executor) executeWorkflow(ctx context.Context, wf Workflow, target stri
 	// Monitor for completion or errors
 	completedSteps := 0
 	totalSteps := len(wf.Steps)
+	var workflowErr error
 	
 	for {
 		select {
@@ -235,15 +288,17 @@ func (e *Executor) executeWorkflow(ctx context.Context, wf Workflow, target stri
 			if stepID != "" {
 				completedSteps++
 				if completedSteps >= totalSteps {
-					return nil
+					goto complete
 				}
 			}
 		case err := <-errChan:
 			if err != nil {
-				return err
+				workflowErr = err
+				goto complete
 			}
 		case <-ctx.Done():
-			return fmt.Errorf("workflow cancelled: %w", ctx.Err())
+			workflowErr = fmt.Errorf("workflow cancelled: %w", ctx.Err())
+			goto complete
 		}
 		
 		if completedSteps >= totalSteps {
@@ -251,10 +306,17 @@ func (e *Executor) executeWorkflow(ctx context.Context, wf Workflow, target stri
 		}
 	}
 	
-	return nil
+complete:
+	// Record workflow completion
+	if e.monitor != nil {
+		duration := time.Since(startTime)
+		e.monitor.RecordWorkflowComplete(wf.ID, target, duration, workflowErr)
+	}
+	
+	return workflowErr
 }
 
-func (e *Executor) runStep(ctx context.Context, step Step, results map[string]StepResult, target string, targetInfo *TargetInfo) (StepResult, error) {
+func (e *Executor) runStep(ctx context.Context, step Step, results map[string]StepResult, target string, targetInfo *TargetInfo, workflowID string) (StepResult, error) {
 	result := StepResult{
 		StepID:    step.ID,
 		Output:    step.Output,
@@ -273,7 +335,7 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 	}
 	
 	if step.Type == "json_to_hostlist" {
-		fmt.Printf("    Converting JSON to host list: %s -> %s\n", step.Inputs[0], step.Output)
+		logger.Printf("    Converting JSON to host list: %s -> %s\n", step.Inputs[0], step.Output)
 		
 		// Read the JSON input file
 		inputFile := template.ApplyTemplate(step.Inputs[0], templateData)
@@ -281,7 +343,7 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 		if err != nil {
 			// If file doesn't exist, create empty hostlist
 			if os.IsNotExist(err) {
-				fmt.Printf("    Warning: Input file does not exist, creating empty hostlist: %s\n", inputFile)
+				logger.Printf("    Warning: Input file does not exist, creating empty hostlist: %s\n", inputFile)
 				if err := os.WriteFile(step.Output, []byte(""), 0644); err != nil {
 					result.Error = fmt.Errorf("writing empty host list file: %w", err)
 					return result, result.Error
@@ -299,7 +361,7 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 		
 		// Handle empty file
 		if len(strings.TrimSpace(string(data))) == 0 {
-			fmt.Printf("    Warning: Input file is empty, creating empty hostlist\n")
+			logger.Printf("    Warning: Input file is empty, creating empty hostlist\n")
 			if err := os.WriteFile(step.Output, []byte(""), 0644); err != nil {
 				result.Error = fmt.Errorf("writing empty host list file: %w", err)
 				return result, result.Error
@@ -365,15 +427,15 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 		portsFile := strings.Replace(step.Output, "hostlist.txt", "ports.txt", 1)
 		portsContent := strings.Join(portsList, ",")
 		if err := os.WriteFile(portsFile, []byte(portsContent), 0644); err != nil {
-			fmt.Printf("    Warning: Failed to write ports file: %v\n", err)
+			logger.Printf("    Warning: Failed to write ports file: %v\n", err)
 		} else if len(portsList) > 0 {
-			fmt.Printf("    Found %d unique ports: %s\n", len(portsList), portsContent)
+			logger.Printf("    Found %d unique ports: %s\n", len(portsList), portsContent)
 		}
 		
 		
 		// Handle case where no hosts were found
 		if len(uniqueHosts) == 0 {
-			fmt.Printf("    Warning: No hosts found in JSON data, creating empty hostlist\n")
+			logger.Printf("    Warning: No hosts found in JSON data, creating empty hostlist\n")
 		}
 		
 		if err := os.WriteFile(step.Output, []byte(hostList.String()), 0644); err != nil {
@@ -388,20 +450,20 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 		}
 		
 	} else if step.Type == "merge_files" {
-		fmt.Printf("    Merging files: %v -> %s\n", step.Inputs, step.Output)
+		logger.Printf("    Merging files: %v -> %s\n", step.Inputs, step.Output)
 		
 		var allData []interface{}
 		for _, inputFile := range step.Inputs {
 			inputFile = template.ApplyTemplate(inputFile, templateData)
 			
 			if _, err := os.Stat(inputFile); os.IsNotExist(err) {
-				fmt.Printf("    Warning: Input file does not exist: %s\n", inputFile)
+				logger.Printf("    Warning: Input file does not exist: %s\n", inputFile)
 				continue
 			}
 			
 			data, err := os.ReadFile(inputFile)
 			if err != nil {
-				fmt.Printf("    Warning: Failed to read %s: %v\n", inputFile, err)
+				logger.Printf("    Warning: Failed to read %s: %v\n", inputFile, err)
 				continue
 			}
 			
@@ -454,7 +516,7 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 		result.Data = allData
 		
 	} else if step.Tool != "" {
-		fmt.Printf("    Running tool: %s -> %s\n", step.Tool, step.Output)
+		logger.Printf("    Running tool: %s -> %s\n", step.Tool, step.Output)
 		
 		tool, err := registry.Get(step.Tool)
 		if err != nil {
@@ -475,7 +537,30 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 		
 		args = append(args, step.OverrideArgs...)
 		
+		// Record tool start for TUI monitoring
+		if e.monitor != nil {
+			if enhancedMonitor, ok := e.monitor.(interface {
+				RecordToolStart(tool, workflow string, args []string)
+			}); ok {
+				enhancedMonitor.RecordToolStart(step.Tool, workflowID, args)
+			}
+		}
+		
+		toolStartTime := time.Now()
 		toolResult, err := tool.Execute(ctx, args, target)
+		toolDuration := time.Since(toolStartTime)
+		
+		// Record tool execution with workflow context
+		if e.monitor != nil {
+			// Use enhanced monitoring interface if available
+			if enhancedMonitor, ok := e.monitor.(interface {
+				RecordToolExecutionWithWorkflow(tool, workflow string, args []string, duration time.Duration, err error)
+			}); ok {
+				enhancedMonitor.RecordToolExecutionWithWorkflow(step.Tool, workflowID, args, toolDuration, err)
+			} else {
+				e.monitor.RecordToolExecution(step.Tool, args, toolDuration, err)
+			}
+		}
 		if err != nil {
 			result.Error = fmt.Errorf("executing tool %s: %w", step.Tool, err)
 			return result, result.Error
@@ -494,7 +579,7 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 						}
 						if data, err := os.ReadFile(hostlistPath); err == nil {
 							if len(strings.TrimSpace(string(data))) == 0 {
-								fmt.Printf("    Warning: Skipping nmap fingerprint - no hosts to scan\n")
+								logger.Printf("    Warning: Skipping nmap fingerprint - no hosts to scan\n")
 								result.Success = true
 								result.Data = nil
 								// Write empty XML output
