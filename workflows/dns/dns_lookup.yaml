@@ -1,6 +1,7 @@
 id: dns_lookup
 description: Basic DNS resolution and record lookup
 parallel: true
+continue_on_error: true
 steps:
   - id: resolve_a
     tool: dig
@@ -12,6 +13,7 @@ steps:
   - id: resolve_ns
     tool: nslookup
     use_flags: ns_lookup
+    optional: true
     override_args:
       - "{{target}}"
     output: "out/{{target}}/dns_ns.txt"

@@ -123,9 +123,9 @@ func isAlphaNum(b byte) bool {
 func ShouldSkipStep(step Step, targetInfo *TargetInfo) (bool, string) {
 	// DNS-specific checks
 	if step.Tool == "nslookup" || step.Tool == "dig" {
-		// MX and TXT records don't make sense for IP addresses
+		// MX, TXT, and NS records don't make sense for IP addresses
 		if targetInfo.Type == TargetTypeIPv4 || targetInfo.Type == TargetTypeIPv6 {
-			if step.UseFlags == "mx_lookup" || step.UseFlags == "txt_lookup" {
+			if step.UseFlags == "mx_lookup" || step.UseFlags == "txt_lookup" || step.UseFlags == "ns_lookup" {
 				return true, "DNS record type not applicable for IP addresses"
 			}
 			
