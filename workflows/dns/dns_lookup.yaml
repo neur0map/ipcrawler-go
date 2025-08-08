@@ -18,12 +18,14 @@ steps:
   - id: resolve_mx
     tool: nslookup
     use_flags: mx_lookup
+    optional: true
     override_args:
       - "{{target}}"
     output: "out/{{target}}/dns_mx.txt"
   - id: resolve_txt
     tool: nslookup
     use_flags: txt_lookup
+    optional: true
     override_args:
       - "{{target}}"
     output: "out/{{target}}/dns_txt.txt"

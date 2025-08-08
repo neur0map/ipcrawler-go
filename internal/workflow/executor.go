@@ -143,7 +143,11 @@ func (e *Executor) RunWorkflows(ctx context.Context, workflows []Workflow, targe
 }
 
 func (e *Executor) executeWorkflow(ctx context.Context, wf Workflow, target string) error {
+	// Analyze the target type
+	targetInfo := AnalyzeTarget(target)
 	fmt.Printf("Executing workflow: %s - %s\n", wf.ID, wf.Description)
+	fmt.Printf("  Target: %s (Type: %s, Private: %v, Local: %v)\n", 
+		target, targetInfo.Type.String(), targetInfo.IsPrivate, targetInfo.IsLocal)
 	
 	stepResults := make(map[string]StepResult)
 	completed := make(map[string]bool)
@@ -183,15 +187,39 @@ func (e *Executor) executeWorkflow(ctx context.Context, wf Workflow, target stri
 		inProgress[step.ID] = true
 		mu.Unlock()
 		
+		// Check if step should be skipped based on target type
+		if skip, reason := ShouldSkipStep(step, targetInfo); skip {
+			fmt.Printf("    Skipping step %s: %s\n", step.ID, reason)
+			mu.Lock()
+			stepResults[step.ID] = StepResult{
+				StepID:  step.ID,
+				Output:  step.Output,
+				Success: true,
+				Data:    nil,
+			}
+			completed[step.ID] = true
+			inProgress[step.ID] = false
+			mu.Unlock()
+			stepDone <- step.ID
+			return
+		}
+		
 		stepMsg := e.db.GetStatusMessage("step_executing", map[string]string{
 			"step_id": step.ID,
 		})
 		fmt.Println(stepMsg)
 		
-		result, err := e.runStep(ctx, step, stepResults, target)
+		result, err := e.runStep(ctx, step, stepResults, target, targetInfo)
 		if err != nil {
-			errChan <- fmt.Errorf("step %s failed: %w", step.ID, err)
-			return
+			// Check if step is optional or workflow continues on error
+			if step.Optional || wf.ContinueOnError {
+				fmt.Printf("    Warning: Step %s failed (optional/continuing): %v\n", step.ID, err)
+				result.Success = false
+				result.Error = err
+			} else {
+				errChan <- fmt.Errorf("step %s failed: %w", step.ID, err)
+				return
+			}
 		}
 		
 		mu.Lock()
@@ -245,7 +273,7 @@ func (e *Executor) executeWorkflow(ctx context.Context, wf Workflow, target stri
 	return nil
 }
 
-func (e *Executor) runStep(ctx context.Context, step Step, results map[string]StepResult, target string) (StepResult, error) {
+func (e *Executor) runStep(ctx context.Context, step Step, results map[string]StepResult, target string, targetInfo *TargetInfo) (StepResult, error) {
 	result := StepResult{
 		StepID:    step.ID,
 		Output:    step.Output,
@@ -270,8 +298,31 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 		inputFile := template.ApplyTemplate(step.Inputs[0], templateData)
 		data, err := os.ReadFile(inputFile)
 		if err != nil {
+			// If file doesn't exist, create empty hostlist
+			if os.IsNotExist(err) {
+				fmt.Printf("    Warning: Input file does not exist, creating empty hostlist: %s\n", inputFile)
+				if err := os.WriteFile(step.Output, []byte(""), 0644); err != nil {
+					result.Error = fmt.Errorf("writing empty host list file: %w", err)
+					return result, result.Error
+				}
+				result.Success = true
+				result.Data = make(map[string]bool)
+				return result, nil
+			}
 			result.Error = fmt.Errorf("reading input file: %w", err)
 			return result, result.Error
+		}
+		
+		// Handle empty file
+		if len(strings.TrimSpace(string(data))) == 0 {
+			fmt.Printf("    Warning: Input file is empty, creating empty hostlist\n")
+			if err := os.WriteFile(step.Output, []byte(""), 0644); err != nil {
+				result.Error = fmt.Errorf("writing empty host list file: %w", err)
+				return result, result.Error
+			}
+			result.Success = true
+			result.Data = make(map[string]bool)
+			return result, nil
 		}
 		
 		// Parse JSON data
@@ -293,12 +344,14 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 			}
 		}
 		
-		// Extract unique IP addresses
+		// Extract unique IP addresses (without ports for nmap compatibility)
 		uniqueHosts := make(map[string]bool)
 		for _, item := range jsonData {
+			// Get IP address only (nmap will scan the ports itself)
 			if ip, ok := item["ip"].(string); ok && ip != "" {
 				uniqueHosts[ip] = true
 			}
+			// Also check for host field
 			if host, ok := item["host"].(string); ok && host != "" {
 				uniqueHosts[host] = true
 			}
@@ -308,6 +361,11 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 		var hostList strings.Builder
 		for host := range uniqueHosts {
 			hostList.WriteString(host + "\n")
+		}
+		
+		// Handle case where no hosts were found
+		if len(uniqueHosts) == 0 {
+			fmt.Printf("    Warning: No hosts found in JSON data, creating empty hostlist\n")
 		}
 		
 		if err := os.WriteFile(step.Output, []byte(hostList.String()), 0644); err != nil {
@@ -421,6 +479,39 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 		}
 		
 		if toolResult.Error != nil {
+			// Handle specific nmap errors when hostlist is empty
+			if step.Tool == "nmap" && strings.Contains(toolResult.Error.Error(), "exit status 1") {
+				// Check if the input hostlist is empty
+				if step.UseFlags == "fingerprint" && len(step.OverrideArgs) >= 2 {
+					if step.OverrideArgs[0] == "-iL" {
+						hostlistPath := step.OverrideArgs[1]
+						// Apply template if needed
+						if strings.Contains(hostlistPath, "{{") {
+							hostlistPath = template.ApplyTemplate(hostlistPath, map[string]string{"target": target})
+						}
+						if data, err := os.ReadFile(hostlistPath); err == nil {
+							if len(strings.TrimSpace(string(data))) == 0 {
+								fmt.Printf("    Warning: Skipping nmap fingerprint - no hosts to scan\n")
+								result.Success = true
+								result.Data = nil
+								// Write empty XML output
+								emptyXML := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<nmaprun scanner="nmap" args="" start="0" version="7.94">
+<verbose level="0"/>
+<debug level="0"/>
+<runstats><finished time="0" timestr=""/><hosts up="0" down="0" total="0"/></runstats>
+</nmaprun>`
+								if err := os.WriteFile(step.Output, []byte(emptyXML), 0644); err != nil {
+									result.Error = fmt.Errorf("writing output file: %w", err)
+									return result, result.Error
+								}
+								return result, nil
+							}
+						}
+					}
+				}
+			}
 			result.Error = fmt.Errorf("tool %s failed: %w", step.Tool, toolResult.Error)
 			return result, result.Error
 		}

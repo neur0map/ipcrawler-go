@@ -1,6 +1,7 @@
 id: port_scan_fingerprint
 description: Complete port scanning and service fingerprinting pipeline
 parallel: true
+continue_on_error: true
 steps:
   - id: scan_low1k
     tool: naabu

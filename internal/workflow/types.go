@@ -11,11 +11,12 @@ import (
 )
 
 type Workflow struct {
-	ID          string `yaml:"id"`
-	Description string `yaml:"description"`
-	Parallel    bool   `yaml:"parallel"`
-	Steps       []Step `yaml:"steps"`
-	FolderPath  string `yaml:"-"` // Not serialized, set during loading
+	ID               string `yaml:"id"`
+	Description      string `yaml:"description"`
+	Parallel         bool   `yaml:"parallel"`
+	ContinueOnError  bool   `yaml:"continue_on_error,omitempty"` // Continue workflow even if steps fail
+	Steps            []Step `yaml:"steps"`
+	FolderPath       string `yaml:"-"` // Not serialized, set during loading
 }
 
 type Step struct {
@@ -27,6 +28,7 @@ type Step struct {
 	Output       string                 `yaml:"output"`
 	Inputs       []string               `yaml:"inputs,omitempty"`
 	DependsOn    []string               `yaml:"depends_on,omitempty"`
+	Optional     bool                   `yaml:"optional,omitempty"` // Step failure won't fail workflow
 	ExtraData    map[string]interface{} `yaml:",inline"`
 }
 
