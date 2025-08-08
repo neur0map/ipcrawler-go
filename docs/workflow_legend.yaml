@@ -1,0 +1,198 @@
+# IPCrawler Workflow & Tool Legend Database
+# Comprehensive reference for building workflows and understanding system capabilities
+
+workflow_legend:
+  # ===== WORKFLOW STEP TYPES =====
+  step_types:
+    tool_execution:
+      description: "Execute an external security tool"
+      usage: "Run any tool from @tools/ directory with configured flags"
+      reusability: "universal"
+      required_fields: ["tool", "output"]
+      optional_fields: ["use_flags", "override_args", "depends_on"]
+      examples:
+        - id: "portscan"
+          tool: "naabu"
+          use_flags: "fast"
+          override_args: ["{{target}}"]
+        - id: "dns_lookup"
+          tool: "dig"
+          use_flags: "short"
+          override_args: ["{{target}}", "A"]
+      when_to_use: "Anytime you need to execute a security tool"
+      notes: "Most common step type - use for all tool executions"
+      
+    merge_files:
+      description: "Combine multiple files into a single consolidated file"
+      usage: "Merge outputs from parallel tool executions"
+      reusability: "universal"
+      required_fields: ["inputs", "output", "type"]
+      optional_fields: ["format", "depends_on"]
+      supported_formats: ["json", "jsonlines", "text", "csv"]
+      examples:
+        - id: "merge_ports"
+          type: "merge_files"
+          inputs: ["{{scan_fast.output}}", "{{scan_full.output}}"]
+          output: "out/{{target}}/merged_ports.json"
+      when_to_use: "After parallel scans to consolidate results"
+      notes: "Handles JSON, JSON Lines, and text formats automatically"
+      
+    json_to_hostlist:
+      description: "Convert JSON port scan results to plain text host list for nmap"
+      usage: "Transform naabu JSON output to nmap-compatible format"
+      reusability: "nmap-specific"
+      required_fields: ["inputs", "output"]
+      optional_fields: ["field_mapping", "depends_on"]
+      examples:
+        - id: "convert_to_hostlist"
+          type: "json_to_hostlist"
+          inputs: ["{{merge_ports.output}}"]
+          output: "out/{{target}}/hostlist.txt"
+      when_to_use: "Before nmap fingerprinting to fix input format"
+      notes: "Extracts unique IPs and hostnames from JSON to plain text"
+      
+    data_transformation:
+      description: "Transform data between different formats"
+      usage: "Convert between JSON, XML, CSV, text formats"
+      reusability: "universal"
+      required_fields: ["input", "output", "transform_type"]
+      optional_fields: ["mapping", "filters", "depends_on"]
+      examples:
+        - id: "xml_to_json"
+          type: "data_transformation"
+          input: "{{nmap_scan.output}}"
+          output: "out/{{target}}/nmap_results.json"
+          transform_type: "xml_to_json"
+      when_to_use: "When tools output different formats than needed"
+      notes: "Future expansion - not fully implemented yet"
+
+  # ===== WORKFLOW STEP PATTERNS =====
+  step_patterns:
+    tool_execution_pattern:
+      description: "Standard pattern for executing external tools"
+      required_fields: ["tool", "use_flags", "output"]
+      template: "tool: {{tool_name}}, use_flags: {{flag_name}}, output: out/{{target}}/{{output_file}}"
+      
+    merge_pattern:
+      description: "Pattern for combining multiple outputs"
+      required_fields: ["inputs", "output", "depends_on"]
+      template: "type: merge_files, inputs: [{{step1.output}}, {{step2.output}}]"
+      
+    conversion_pattern:
+      description: "Pattern for transforming data formats"
+      required_fields: ["inputs", "output", "depends_on"]
+      template: "type: json_to_hostlist, inputs: [{{input_file}}]"
+
+  # ===== WORKFLOW PATTERNS =====
+  workflow_patterns:
+    port_discovery:
+      description: "Basic port scanning workflow"
+      steps: ["tool_execution(naabu)"]
+      example_workflow: "simple_scan"
+      use_case: "Quick port discovery"
+      
+    comprehensive_scan:
+      description: "Multi-stage scanning with fingerprinting"
+      steps: ["tool_execution(naabu_fast)", "tool_execution(naabu_full)", "merge_files", "json_to_hostlist", "tool_execution(nmap)"]
+      example_workflow: "portscan_fingerprint"
+      use_case: "Complete reconnaissance"
+      
+    dns_enumeration:
+      description: "DNS record discovery"
+      steps: ["tool_execution(dig)", "tool_execution(nslookup_multiple)"]
+      example_workflow: "dns_lookup"
+      use_case: "Domain intelligence gathering"
+      
+    parallel_scanning:
+      description: "Concurrent tool execution"
+      pattern: "parallel: true"
+      benefits: ["Faster execution", "Resource optimization"]
+      use_case: "Independent operations that can run simultaneously"
+      
+    sequential_scanning:
+      description: "Step-by-step execution with dependencies"
+      pattern: "depends_on: [previous_step]"
+      benefits: ["Data flow control", "Input validation"]
+      use_case: "When steps require output from previous steps"
+
+  # ===== TEMPLATE VARIABLES =====
+  template_variables:
+    target_related:
+      "{{target}}":
+        description: "Primary scan target (domain or IP)"
+        usage: "Main target parameter for tools"
+        examples: ["example.com", "192.168.1.1"]
+        
+      "{{target_ip}}":
+        description: "IP address of target (if resolved)"
+        usage: "When IP-specific operations needed"
+        examples: ["192.168.1.100"]
+        
+    step_references:
+      "{{step_name.output}}":
+        description: "Output file from named step"
+        usage: "Chain steps together, use previous results"
+        examples: ["{{portscan.output}}", "{{dns_resolve.output}}"]
+        
+      "{{step_name_output}}":
+        description: "Alternative step output reference"
+        usage: "Template data from results map"
+        examples: ["{{scan_fast_output}}"]
+        
+    output_paths:
+      "out/{{target}}/filename":
+        description: "Standard output path pattern"
+        usage: "All tool outputs should follow this pattern"
+        examples: ["out/example.com/ports.json", "out/192.168.1.1/nmap.xml"]
+
+  # ===== BEST PRACTICES =====
+  best_practices:
+    workflow_design:
+      - "Use descriptive step IDs that explain the operation"
+      - "Always specify output paths with {{target}} template"
+      - "Use depends_on for proper step ordering"
+      - "Choose appropriate tool flags for the use case"
+      - "Group related operations in single workflow"
+      
+    tool_usage:
+      - "Always use use_flags from tool configs, never hardcode args"
+      - "Only use override_args for dynamic values like {{target}}"
+      - "Check tool is in security whitelist before adding"
+      - "Test flag combinations work with actual tools"
+      - "Document expected runtime in workflow descriptions"
+      
+    performance:
+      - "Use parallel: true for independent operations"
+      - "Use fast flags for initial reconnaissance"
+      - "Use comprehensive flags only when detailed data needed"
+      - "Consider target resources when choosing scan intensity"
+      - "Balance speed vs completeness based on use case"
+      
+    security:
+      - "All tools must be whitelisted in tool_defaults.yaml"
+      - "Never bypass argument validation"
+      - "Use template variables for all dynamic content"
+      - "Restrict outputs to designated directories"
+      - "Validate tool configurations before deployment"
+
+  # ===== COMMON COMBINATIONS =====
+  common_combinations:
+    web_reconnaissance:
+      tools: ["naabu(fast)", "nmap(fingerprint)"]
+      pattern: "port_discovery -> service_fingerprinting"
+      use_case: "Web application testing preparation"
+      
+    infrastructure_mapping:
+      tools: ["dig(detailed)", "nslookup(ns_lookup)", "naabu(basic)", "nmap(comprehensive)"]
+      pattern: "dns_enumeration -> port_discovery -> service_fingerprinting"
+      use_case: "Network infrastructure assessment"
+      
+    stealth_reconnaissance:
+      tools: ["naabu(common)", "nmap(stealth)"]
+      pattern: "minimal_ports -> stealth_fingerprinting"
+      use_case: "Avoiding detection during reconnaissance"
+      
+    comprehensive_assessment:
+      tools: ["dig(multiple_types)", "nslookup(multiple_types)", "naabu(full)", "nmap(comprehensive)"]
+      pattern: "full_dns_enum -> full_port_scan -> detailed_fingerprinting"
+      use_case: "Complete target assessment"

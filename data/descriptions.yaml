@@ -1,0 +1,71 @@
+# IPCrawler Service Descriptions Database
+# Detailed descriptions for each service type
+
+service_descriptions:
+  # Web Services
+  HTTP: "Web Server"
+  HTTPS: "Secure Web Server"
+  HTTP-Alt: "Alternative Web Server"
+  HTTPS-Alt: "Alternative Secure Web"
+  HTTP-Dev: "Development Web Server"
+  
+  # Remote Access
+  SSH: "Secure Shell Access"
+  RDP: "Remote Desktop Protocol"
+  VNC: "Virtual Network Computing"
+  Telnet: "Unencrypted Remote Access"
+  
+  # File Transfer
+  FTP: "File Transfer Protocol"
+  SMB: "Server Message Block"
+  NFS: "Network File System"
+  NetBIOS: "Network Basic Input/Output System"
+  
+  # Email Services
+  SMTP: "Email Server"
+  SMTP-Submission: "Email Submission Service"
+  SMTPS: "Secure Email Server"
+  POP3: "Post Office Protocol"
+  POP3S: "Secure Post Office Protocol"
+  IMAP: "Internet Message Access Protocol"
+  IMAPS: "Secure Internet Message Access Protocol"
+  
+  # Database Services
+  MySQL: "MySQL Database"
+  PostgreSQL: "PostgreSQL Database"
+  MSSQL: "Microsoft SQL Server"
+  Redis: "Redis Cache/Database"
+  MongoDB: "MongoDB NoSQL Database"
+  Elasticsearch: "Search & Analytics Engine"
+  
+  # Network Services
+  DNS: "Domain Name Service"
+  DHCP-Server: "Dynamic Host Configuration Server"
+  DHCP-Client: "Dynamic Host Configuration Client"
+  NTP: "Network Time Protocol"
+  SNMP: "Simple Network Management Protocol"
+  
+  # Default
+  Unknown: "Unidentified Service"
+  
+# Extended descriptions with security context
+service_security_context:
+  Telnet:
+    risk_level: "high"
+    security_note: "Transmits data in plain text"
+    recommendation: "Replace with SSH"
+    
+  FTP:
+    risk_level: "high" 
+    security_note: "Transfers credentials in clear text"
+    recommendation: "Use SFTP or FTPS"
+    
+  HTTP:
+    risk_level: "medium"
+    security_note: "Unencrypted web traffic"
+    recommendation: "Implement HTTPS"
+    
+  MySQL:
+    risk_level: "medium"
+    security_note: "Database service exposed"
+    recommendation: "Restrict network access"

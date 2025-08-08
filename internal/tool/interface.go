@@ -34,11 +34,24 @@ type GenericResult struct {
 }
 
 type Config struct {
-	Name     string                 `yaml:"name"`
-	Command  string                 `yaml:"command"`
-	Output   string                 `yaml:"output"`
-	Args     ArgsConfig             `yaml:"args"`
-	Mappings []MappingConfig        `yaml:"mappings"`
+	Name      string                 `yaml:"name"`
+	Command   string                 `yaml:"command"`
+	Output    string                 `yaml:"output"`
+	Args      ArgsConfig             `yaml:"args"`
+	Execution ExecutionConfig        `yaml:"execution"`
+	Mappings  []MappingConfig        `yaml:"mappings"`
+}
+
+type ExecutionConfig struct {
+	TimeoutSeconds  int      `yaml:"timeout_seconds"`
+	MaxMemoryMB     int      `yaml:"max_memory_mb"`
+	Allowed         bool     `yaml:"allowed"`
+	Security        SecurityConfig `yaml:"security"`
+}
+
+type SecurityConfig struct {
+	MaxArgLength       int      `yaml:"max_arg_length"`
+	ForbiddenPatterns  []string `yaml:"forbidden_patterns"`
 }
 
 type ArgsConfig struct {
@@ -84,15 +97,14 @@ func (g *GenericAdapter) Name() string {
 }
 
 func (g *GenericAdapter) Execute(ctx context.Context, args []string, target string) (*Result, error) {
-	// Validate tool execution against database security policies
-	if g.db != nil {
-		if !g.db.IsToolAllowed(g.config.Name) {
-			return nil, fmt.Errorf("tool '%s' not allowed by security policy", g.config.Name)
-		}
-		
-		if err := g.db.ValidateArguments(args); err != nil {
-			return nil, fmt.Errorf("argument validation failed: %w", err)
-		}
+	// Validate tool execution using tool's own configuration (Zero Hardcoding Policy)
+	if !g.config.Execution.Allowed {
+		return nil, fmt.Errorf("tool '%s' is disabled in its configuration", g.config.Name)
+	}
+	
+	// Validate arguments using tool's own security config
+	if err := g.validateArguments(args); err != nil {
+		return nil, fmt.Errorf("argument validation failed: %w", err)
 	}
 	
 	finalArgs := make([]string, 0)
@@ -203,4 +215,25 @@ func LoadToolConfig(path string) (*Config, error) {
 	}
 	
 	return &config, nil
+}
+
+// validateArguments validates arguments using tool's own security configuration
+func (g *GenericAdapter) validateArguments(args []string) error {
+	security := g.config.Execution.Security
+	
+	// Check forbidden patterns
+	for _, arg := range args {
+		for _, forbidden := range security.ForbiddenPatterns {
+			if strings.Contains(arg, forbidden) {
+				return fmt.Errorf("forbidden pattern '%s' in argument: %s", forbidden, arg)
+			}
+		}
+		
+		// Check maximum length
+		if security.MaxArgLength > 0 && len(arg) > security.MaxArgLength {
+			return fmt.Errorf("argument too long (%d > %d): %s", len(arg), security.MaxArgLength, arg)
+		}
+	}
+	
+	return nil
 }

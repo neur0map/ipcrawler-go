@@ -1,0 +1,32 @@
+id: vhost_discovery
+description: Basic virtual host discovery using certificate transparency (no wordlists)
+parallel: true
+continue_on_error: true
+execution:
+  timeout_seconds: 300  # 5 minutes total workflow timeout
+  max_concurrent_steps: 2
+  retry_count: 1
+  failure_strategy: "continue"  # continue, fail_fast, retry
+steps:
+  - id: discover_vhosts
+    tool: subfinder
+    use_flags: passive_only
+    override_args:
+      - "-d"
+      - "{{target}}"
+    output: "out/{{target}}/vhosts.json"
+    
+  - id: dns_resolution
+    tool: dig
+    use_flags: short
+    override_args:
+      - "{{target}}"
+      - "A"
+    output: "out/{{target}}/target_ip.txt"
+    
+  - id: extract_vhost_list
+    type: json_to_hostlist
+    inputs:
+      - "out/{{target}}/vhosts.json"
+    output: "out/{{target}}/vhost_list.txt"
+    depends_on: [discover_vhosts]

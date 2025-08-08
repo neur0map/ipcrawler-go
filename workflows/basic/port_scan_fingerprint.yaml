@@ -2,6 +2,11 @@ id: port_scan_fingerprint
 description: Complete port scanning and service fingerprinting pipeline
 parallel: true
 continue_on_error: true
+execution:
+  timeout_seconds: 1200  # 20 minutes for comprehensive port scan
+  max_concurrent_steps: 2
+  retry_count: 1
+  failure_strategy: "continue"
 steps:
   - id: scan_low1k
     tool: naabu

@@ -2,6 +2,11 @@ id: dns_lookup
 description: Basic DNS resolution and record lookup
 parallel: true
 continue_on_error: true
+execution:
+  timeout_seconds: 120  # 2 minutes for DNS resolution
+  max_concurrent_steps: 4
+  retry_count: 1
+  failure_strategy: "continue"
 steps:
   - id: resolve_a
     tool: dig

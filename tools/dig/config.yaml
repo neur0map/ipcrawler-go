@@ -12,4 +12,11 @@ args:
     any: ["ANY"]
     tcp: ["+tcp"]
     dnssec: ["+dnssec", "+multi"]
+execution:
+  timeout_seconds: 30  # 30 seconds for DNS lookups
+  max_memory_mb: 64
+  allowed: true
+  security:
+    max_arg_length: 200
+    forbidden_patterns: [";", "|", "&", "`", "$(", "rm", "del"]
 mappings: []

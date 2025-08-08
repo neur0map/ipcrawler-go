@@ -1,0 +1,72 @@
+# IPCrawler Service Database
+# Master service-to-port mappings loaded dynamically
+
+# Primary service mappings (referenced by port number)
+services:
+  # Web Services
+  80: "HTTP"
+  443: "HTTPS" 
+  8080: "HTTP-Alt"
+  8443: "HTTPS-Alt"
+  8000: "HTTP-Dev"
+  
+  # Database Services  
+  3306: "MySQL"
+  5432: "PostgreSQL"
+  6379: "Redis"
+  9200: "Elasticsearch"
+  1433: "MSSQL"
+  27017: "MongoDB"
+  
+  # Remote Access
+  22: "SSH"
+  3389: "RDP"
+  5900: "VNC"
+  23: "Telnet"
+  
+  # Email Services
+  25: "SMTP"
+  110: "POP3"
+  143: "IMAP"
+  465: "SMTPS"
+  587: "SMTP-Submission"
+  993: "IMAPS"
+  995: "POP3S"
+  
+  # File Services
+  21: "FTP"
+  139: "NetBIOS"
+  445: "SMB"
+  2049: "NFS"
+  
+  # Network Infrastructure
+  53: "DNS"
+  67: "DHCP-Server"
+  68: "DHCP-Client"
+  123: "NTP"
+  161: "SNMP"
+
+# Default service when no match found
+default_service: "Unknown"
+
+# Service metadata for enhanced reporting
+service_metadata:
+  HTTP:
+    category: "web"
+    encryption: false
+    common_vulnerabilities: ["XSS", "CSRF", "Injection"]
+    
+  HTTPS:
+    category: "web" 
+    encryption: true
+    common_vulnerabilities: ["Certificate issues", "Weak ciphers"]
+    
+  SSH:
+    category: "remote_access"
+    encryption: true
+    common_vulnerabilities: ["Weak passwords", "Key management"]
+    
+  MySQL:
+    category: "database"
+    encryption: false
+    common_vulnerabilities: ["Injection", "Weak authentication"]

@@ -10,7 +10,6 @@ import (
 	"github.com/carlosm/ipcrawler/internal/config"
 	"github.com/carlosm/ipcrawler/internal/registry"
 	"github.com/carlosm/ipcrawler/internal/report"
-	"github.com/carlosm/ipcrawler/internal/services"
 	"github.com/carlosm/ipcrawler/internal/workflow"
 	"github.com/spf13/cobra"
 )
@@ -51,9 +50,6 @@ external CLI tools like naabu, nmap, and others without hardcoding tool names.`,
 
 func runIPCrawler(cmd *cobra.Command, args []string) error {
 	target := args[0]
-	
-	// Load database for enhanced messaging
-	db, _ := services.LoadDatabase()
 	
 	fmt.Printf("IPCrawler starting for target: %s\n\n", target)
 
@@ -138,8 +134,7 @@ func runIPCrawler(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	fmt.Println("Starting workflow execution...")
-	progressIcon := db.GetStatusIndicator("progress")
-	fmt.Println(strings.Repeat(progressIcon, 51))
+	fmt.Println(strings.Repeat("━", 51))
 	
 	executor := workflow.NewExecutor(cfg.MaxConcurrentWorkflows)
 	ctx := context.Background()
@@ -148,10 +143,8 @@ func runIPCrawler(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("executing workflows: %w", err)
 	}
 
-	fmt.Println(strings.Repeat(progressIcon, 51))
-	// Use status indicator from database
-	successIcon := db.GetStatusIndicator("completed")
-	fmt.Printf("\n%s All workflows completed successfully!\n", successIcon)
+	fmt.Println(strings.Repeat("━", 51))
+	fmt.Printf("\n🎉 All workflows completed successfully!\n")
 	
 	fmt.Println("Generating reports...")
 	reportGen := report.NewReportGenerator(target, cfg.DefaultOutputDir, cfg.DefaultReportDir)

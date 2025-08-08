@@ -1,0 +1,32 @@
+[
+  {
+    "host": "www.example.com",
+    "ip": "93.184.216.34",
+    "source": "crtsh"
+  },
+  {
+    "host": "mail.example.com",
+    "ip": "93.184.216.35",
+    "source": "censys"
+  },
+  {
+    "host": "api.example.com",
+    "ip": "93.184.216.36",
+    "source": "crtsh"
+  },
+  {
+    "host": "admin.example.com",
+    "ip": "93.184.216.37",
+    "source": "certspotter"
+  },
+  {
+    "host": "dev.example.com",
+    "ip": "93.184.216.38",
+    "source": "crtsh"
+  },
+  {
+    "host": "staging.example.com",
+    "ip": "93.184.216.39",
+    "source": "censys"
+  }
+]

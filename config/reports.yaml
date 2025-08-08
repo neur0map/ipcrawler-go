@@ -1,0 +1,40 @@
+# IPCrawler Report Configuration  
+# Report formatting and display settings (NO EXECUTION CONTROL)
+
+report_formatting:
+  # File pattern detection for dynamic report generation
+  file_patterns:
+    port_scan:
+      patterns: ["*ports*.json", "naabu_*.json", "ports.txt", "merged_ports.json"]
+      section_title: "Port Scan Discovery"
+      section_emoji: "🔍"
+      description: "Port scanning results from various tools"
+      
+    dns_resolution:
+      patterns: ["dns_*.txt", "*dns*.json"]
+      section_title: "DNS Discovery"  
+      section_emoji: "🌐"
+      description: "DNS record resolution and lookup results"
+      
+    subdomain_enum:
+      patterns: ["*subdomain*.json", "*vhost*.json", "subdomains_*.json"]
+      section_title: "Subdomain Enumeration"
+      section_emoji: "🔎"
+      description: "Virtual host and subdomain discovery results"
+      
+  # Risk level emojis for display
+  risk_emojis:
+    critical: "🚨"
+    high: "⚠️"
+    medium: "📊"  
+    low: "ℹ️"
+    unknown: "❓"
+    
+  # Report format configuration
+  format:
+    title_emoji: "📋"
+    section_emojis:
+      overview: "📊"
+      details: "🔍"  
+      recommendations: "💡"
+    markdown_style: "github"

@@ -68,12 +68,7 @@ func (e *Executor) RunWorkflows(ctx context.Context, workflows []Workflow, targe
 				
 				e.mu.Lock()
 				e.running++
-				msg := e.db.GetStatusMessage("starting_parallel", map[string]string{
-					"workflow_id": workflow.ID,
-					"running": fmt.Sprintf("%d", e.running),
-					"max_concurrent": fmt.Sprintf("%d", e.maxConcurrent),
-				})
-				fmt.Println(msg)
+				fmt.Printf("Starting parallel workflow: %s (%d/%d running)\n", workflow.ID, e.running, e.maxConcurrent)
 				e.mu.Unlock()
 				
 				if err := e.executeWorkflow(ctx, workflow, target); err != nil {
@@ -83,11 +78,7 @@ func (e *Executor) RunWorkflows(ctx context.Context, workflows []Workflow, targe
 				e.mu.Lock()
 				e.running--
 				e.completed++
-				msg = e.db.GetStatusMessage("completed", map[string]string{
-					"workflow_id": workflow.ID,
-					"completed": fmt.Sprintf("%d", e.completed),
-				})
-				fmt.Println(msg)
+				fmt.Printf("Completed workflow: %s (%d completed)\n", workflow.ID, e.completed)
 				e.mu.Unlock()
 				
 			case <-ctx.Done():
@@ -104,10 +95,7 @@ func (e *Executor) RunWorkflows(ctx context.Context, workflows []Workflow, targe
 	
 	for _, wf := range sequentialWfs {
 		e.mu.Lock()
-		seqMsg := e.db.GetStatusMessage("starting_sequential", map[string]string{
-			"workflow_id": wf.ID,
-		})
-		fmt.Println(seqMsg)
+		fmt.Printf("Starting sequential workflow: %s\n", wf.ID)
 		e.mu.Unlock()
 		
 		if err := e.executeWorkflow(ctx, wf, target); err != nil {
@@ -116,11 +104,7 @@ func (e *Executor) RunWorkflows(ctx context.Context, workflows []Workflow, targe
 		
 		e.mu.Lock()
 		e.completed++
-		compMsg := e.db.GetStatusMessage("completed", map[string]string{
-			"workflow_id": wf.ID,
-			"completed": fmt.Sprintf("%d", e.completed),
-		})
-		fmt.Println(compMsg)
+		fmt.Printf("Completed workflow: %s (%d completed)\n", wf.ID, e.completed)
 		e.mu.Unlock()
 	}
 	
@@ -204,10 +188,7 @@ func (e *Executor) executeWorkflow(ctx context.Context, wf Workflow, target stri
 			return
 		}
 		
-		stepMsg := e.db.GetStatusMessage("step_executing", map[string]string{
-			"step_id": step.ID,
-		})
-		fmt.Println(stepMsg)
+		fmt.Printf("  Executing step: %s\n", step.ID)
 		
 		result, err := e.runStep(ctx, step, stepResults, target, targetInfo)
 		if err != nil {
@@ -407,11 +388,7 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 		}
 		
 	} else if step.Type == "merge_files" {
-		mergeMsg := e.db.GetStatusMessage("merge_operation", map[string]string{
-			"inputs": fmt.Sprintf("%v", step.Inputs),
-			"output": step.Output,
-		})
-		fmt.Println(mergeMsg)
+		fmt.Printf("    Merging files: %v -> %s\n", step.Inputs, step.Output)
 		
 		var allData []interface{}
 		for _, inputFile := range step.Inputs {
@@ -477,11 +454,7 @@ func (e *Executor) runStep(ctx context.Context, step Step, results map[string]St
 		result.Data = allData
 		
 	} else if step.Tool != "" {
-		toolMsg := e.db.GetStatusMessage("tool_running", map[string]string{
-			"tool": step.Tool,
-			"output": step.Output,
-		})
-		fmt.Println(toolMsg)
+		fmt.Printf("    Running tool: %s -> %s\n", step.Tool, step.Output)
 		
 		tool, err := registry.Get(step.Tool)
 		if err != nil {

@@ -1,0 +1,37 @@
+# IPCrawler User Messages
+# User-facing messages, warnings, and feedback (NO EXECUTION CONTROL)
+
+user_messages:
+  # Informational messages
+  info:
+    loading_tools: "Loading tools..."
+    loading_workflows: "Loading workflows..."
+    workflow_starting: "Starting workflow: {workflow_name}"
+    workflow_completed: "Completed workflow: {workflow_name}"
+    
+  # Warning messages  
+  warnings:
+    tool_not_found: "Tool '{tool_name}' not found in PATH"
+    workflow_timeout: "Workflow '{workflow_name}' timed out"
+    file_not_found: "Output file not found: {file_path}"
+    
+  # Error messages
+  errors:
+    invalid_target: "Invalid target format: {target}"
+    permission_denied: "Permission denied: {resource}"
+    disk_space: "Insufficient disk space for operation"
+    
+  # Success messages
+  success:
+    scan_complete: "Scan completed successfully"
+    report_generated: "Report generated: {report_path}"
+    workflow_success: "All workflows completed successfully"
+    
+# Status emojis for display
+status_emojis:
+  starting: "🔨"
+  progress: "━"
+  success: "✓"
+  warning: "⚠️"
+  error: "✗"
+  completed: "🎉"

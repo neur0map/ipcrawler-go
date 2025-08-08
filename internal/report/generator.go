@@ -115,19 +115,19 @@ func (r *ReportGenerator) GenerateReports() error {
 // loadDatabaseConfigs loads all database configuration files
 func (r *ReportGenerator) loadDatabaseConfigs() {
 	// Load report configuration
-	if data, err := os.ReadFile("database/report_config.yaml"); err == nil {
+	if data, err := os.ReadFile("config/reports.yaml"); err == nil {
 		r.reportConfig = &ReportConfig{}
 		yaml.Unmarshal(data, r.reportConfig)
 	}
 	
 	// Load service descriptions
-	if data, err := os.ReadFile("database/service_descriptions.yaml"); err == nil {
+	if data, err := os.ReadFile("data/descriptions.yaml"); err == nil {
 		r.serviceDescs = &ServiceDescriptions{}
 		yaml.Unmarshal(data, r.serviceDescs)
 	}
 	
 	// Load DNS configuration
-	if data, err := os.ReadFile("database/dns_types.yaml"); err == nil {
+	if data, err := os.ReadFile("data/dns.yaml"); err == nil {
 		r.dnsConfig = &DNSConfig{}
 		yaml.Unmarshal(data, r.dnsConfig)
 	}
