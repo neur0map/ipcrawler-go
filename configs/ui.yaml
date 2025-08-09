@@ -1,0 +1,176 @@
+# IPCrawler TUI Configuration
+ui:
+  # Layout settings
+  layout:
+    breakpoints:
+      small: 80    # Switch to stacked layout
+      medium: 120  # Switch to three-column
+    
+    # Panel sizing (percentages)
+    panels:
+      list:
+        width_large: 0.25   # 25% in large layout
+        width_medium: 0.30  # 30% in medium layout
+      main:
+        width_large: 0.55   # 55% in large layout  
+        width_medium: 0.70  # 70% in medium layout
+      status:
+        width_large: 0.20   # 20% in large layout
+        height_footer: 4    # Footer height in medium/small
+  
+  # Theme configuration
+  theme:
+    # Color palette
+    colors:
+      primary: "#FAFAFA"
+      secondary: "#3C3C3C" 
+      accent: "#7D56F4"
+      success: "#04B575"
+      warning: "#F59E0B"
+      error: "#EF4444"
+      border: "#E5E5E5"
+      
+    # Adaptive colors for light/dark terminals
+    adaptive:
+      text_primary:
+        light: "236"
+        dark: "248"
+      border:
+        light: "240" 
+        dark: "238"
+        
+  # Component settings
+  components:
+    list:
+      title: "Workflows & Tools"
+      show_status_bar: false
+      filtering_enabled: true
+      item_height: 3
+      
+    viewport:
+      high_performance: true
+      auto_scroll: true
+      line_numbers: false
+      
+    status:
+      spinner: "dot"
+      show_stats: true
+      update_interval: 100ms
+      
+  # Keyboard bindings
+  keys:
+    quit: ["q", "ctrl+c"]
+    tab: ["tab"]
+    focus_list: ["1"]
+    focus_main: ["2"] 
+    focus_status: ["3"]
+    
+    # List navigation
+    list_up: ["k", "up"]
+    list_down: ["j", "down"]
+    list_select: ["enter", "space"]
+    list_filter: ["/"]
+    
+    # Viewport navigation  
+    viewport_up: ["k", "up"]
+    viewport_down: ["j", "down"]
+    viewport_page_up: ["ctrl+b", "page_up"]
+    viewport_page_down: ["ctrl+f", "page_down"]
+    viewport_home: ["g"]
+    viewport_end: ["G"]
+    
+  # Performance settings
+  performance:
+    alt_screen: true
+    framerate_cap: 60
+    batch_updates: true
+    lazy_rendering: true
+
+# Simulator settings for demo content
+simulator:
+  # Mock workflows for demonstration
+  workflows:
+    - id: "port-scan-basic"
+      title: "Basic Port Scan"
+      description: "Standard TCP port enumeration"
+      status: "Ready"
+      tools: ["nmap", "masscan"]
+      
+    - id: "subdomain-discovery"
+      title: "Subdomain Discovery" 
+      description: "Comprehensive subdomain enumeration"
+      status: "Running"
+      tools: ["subfinder", "amass", "dnsgen"]
+      
+    - id: "web-app-scan"
+      title: "Web Application Scan"
+      description: "Automated web app security testing"
+      status: "Pending"
+      tools: ["gobuster", "feroxbuster", "nuclei"]
+      
+    - id: "network-discovery"
+      title: "Network Discovery"
+      description: "Host discovery and network mapping"
+      status: "Ready"
+      tools: ["nmap", "masscan", "zmap"]
+      
+    - id: "vulnerability-scan"
+      title: "Vulnerability Assessment"
+      description: "Comprehensive vulnerability scanning"
+      status: "Ready"
+      tools: ["nuclei", "nessus", "openvas"]
+  
+  # Mock tools for demonstration
+  tools:
+    - id: "nmap"
+      name: "Nmap"
+      description: "Network exploration and port scanner"
+      category: "Port Scanning"
+      status: "Available"
+      
+    - id: "subfinder"
+      name: "Subfinder"
+      description: "Passive subdomain discovery"
+      category: "Reconnaissance" 
+      status: "Running"
+      
+    - id: "masscan"
+      name: "Masscan"
+      description: "High-speed port scanner"
+      category: "Port Scanning"
+      status: "Available"
+      
+    - id: "nuclei"
+      name: "Nuclei"
+      description: "Vulnerability scanner with templates"
+      category: "Vulnerability Scanning"
+      status: "Available"
+      
+    - id: "gobuster"
+      name: "Gobuster"
+      description: "Directory and file brute-forcer"
+      category: "Web Scanning"
+      status: "Available"
+  
+  # Log generation settings
+  logs:
+    update_interval: 500ms
+    max_entries: 1000
+    sample_messages:
+      - "Initializing port scan on target network"
+      - "Found open port 22/tcp (SSH) on 192.168.1.100"
+      - "Found open port 80/tcp (HTTP) on 192.168.1.100"
+      - "Found open port 443/tcp (HTTPS) on 192.168.1.100"
+      - "Subdomain discovery completed: 15 subdomains found"
+      - "Running nuclei security checks..."
+      - "Vulnerability scan completed with 3 findings"
+      - "Web application scan finished"
+      - "Host discovery found 25 active hosts"
+      - "DNS enumeration completed successfully"
+  
+  # System status simulation
+  status:
+    active_tasks: 2
+    completed: 15
+    failed: 1
+    uptime_start: "2024-01-15T10:00:00Z"
