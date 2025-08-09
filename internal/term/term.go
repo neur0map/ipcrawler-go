@@ -523,8 +523,18 @@ func checkUnicodeSupport() bool {
 func ShouldUseTUI() bool {
 	caps := GetTerminalCapabilities()
 	
-	// Must have TTY
-	if !caps.IsTTY {
+	// Check for explicit plain mode request first
+	if os.Getenv("IPCRAWLER_PLAIN") != "" || os.Getenv("NO_TUI") != "" {
+		return false
+	}
+	
+	// Allow forcing TUI mode
+	if os.Getenv("FORCE_TUI") != "" {
+		return true
+	}
+	
+	// Don't use TUI in CI environments unless explicitly requested
+	if caps.IsCI {
 		return false
 	}
 	
@@ -533,13 +543,34 @@ func ShouldUseTUI() bool {
 		return false
 	}
 	
-	// Don't use TUI in CI environments unless explicitly requested
-	if caps.IsCI && os.Getenv("FORCE_TUI") == "" {
-		return false
-	}
-	
-	// Check for explicit plain mode request
-	if os.Getenv("IPCRAWLER_PLAIN") != "" || os.Getenv("NO_TUI") != "" {
+	// Check if we have a terminal-like environment even without strict TTY
+	// This handles cases where terminal emulators don't provide full TTY access
+	// but still support TUI features
+	if !caps.IsTTY {
+		// Allow TUI if we have terminal environment variables suggesting capability
+		term := os.Getenv("TERM")
+		termProgram := os.Getenv("TERM_PROGRAM")
+		
+		// Known terminal programs that support TUI
+		supportedTerminals := []string{
+			"iTerm.app", "Apple_Terminal", "WarpTerminal", "Alacritty", 
+			"kitty", "WezTerm", "Hyper", "Terminal.app", "VSCode",
+		}
+		
+		// Check for supported terminal programs
+		for _, supported := range supportedTerminals {
+			if termProgram == supported {
+				return true
+			}
+		}
+		
+		// Check for capable TERM values
+		if term != "" && (contains(term, "xterm") || contains(term, "screen") || 
+			contains(term, "tmux") || term == "alacritty" || term == "kitty") {
+			return true
+		}
+		
+		// If no TTY and no recognizable terminal, don't use TUI
 		return false
 	}
 	

@@ -98,7 +98,18 @@ func NewAppModel(target string) AppModel {
 		ColorDisabled:    false,
 	}
 	
-	return AppModel{
+	// Add some initial workflow entries to test display
+	initialWorkflows := []WorkflowStatus{
+		{
+			ID:          "loading",
+			Description: "Loading workflows...",
+			Status:      "pending",
+			Progress:    0,
+			StartTime:   time.Now(),
+		},
+	}
+	
+	model := AppModel{
 		ctx:          ctx,
 		cancelFunc:   cancel,
 		layout:       layout,
@@ -111,7 +122,7 @@ func NewAppModel(target string) AppModel {
 		target:       target,
 		config:       config,
 		components:   components,
-		workflows:    []WorkflowStatus{},
+		workflows:    initialWorkflows,
 		tools:        []ToolStatus{},
 		logs:         []LogEntry{},
 		notifications: []Notification{},
@@ -120,16 +131,22 @@ func NewAppModel(target string) AppModel {
 		currentView:  "workflows",
 		lastUpdate:   time.Now(),
 	}
+	
+	// Update the workflow list with initial data
+	model = model.updateWorkflowList()
+	
+	return model
 }
 
 // Init implements tea.Model interface
 func (m AppModel) Init() tea.Cmd {
 	return tea.Batch(
-		m.components.Spinner.Tick,
-		tea.EnterAltScreen,
 		func() tea.Msg {
 			return InitCompleteMsg{}
 		},
+		tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return TickMsg{Time: t}
+		}),
 	)
 }
 
@@ -137,6 +154,7 @@ func (m AppModel) Init() tea.Cmd {
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	
 	
 	// Handle global messages first
 	switch msg := msg.(type) {
@@ -531,11 +549,12 @@ func (m AppModel) handleWorkflowUpdate(msg WorkflowUpdateMsg) (tea.Model, tea.Cm
 			StartTime:   msg.StartTime,
 		}
 		m.workflows = append(m.workflows, workflow)
+		fmt.Printf("TUI: Added workflow %s, total count: %d\n", msg.WorkflowID, len(m.workflows))
 	}
 	
-	// Update components
-	m.updateWorkflowList()
-	m.updateWorkflowTable()
+	// Update components and chain the state updates
+	m = m.updateWorkflowList()
+	m = m.updateWorkflowTable()
 	
 	return m, nil
 }
@@ -1035,16 +1054,17 @@ func (m *AppModel) updateComponentSizes() {
 }
 
 // updateWorkflowList updates the workflow list component
-func (m *AppModel) updateWorkflowList() {
+func (m AppModel) updateWorkflowList() AppModel {
 	items := make([]list.Item, len(m.workflows))
 	for i, workflow := range m.workflows {
 		items[i] = WorkflowListItem{Workflow: workflow}
 	}
 	m.components.WorkflowList.SetItems(items)
+	return m
 }
 
 // updateWorkflowTable updates the workflow table component
-func (m *AppModel) updateWorkflowTable() {
+func (m AppModel) updateWorkflowTable() AppModel {
 	// Get recent tool executions
 	start := 0
 	if len(m.tools) > 50 {
@@ -1057,6 +1077,7 @@ func (m *AppModel) updateWorkflowTable() {
 	}
 	
 	m.components.WorkflowTable.SetRows(rows)
+	return m
 }
 
 // updateToolTable updates the tool table component (alias for updateWorkflowTable)

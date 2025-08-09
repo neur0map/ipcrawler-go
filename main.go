@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/carlosm/ipcrawler/internal/config"
 	"github.com/carlosm/ipcrawler/internal/logger"
@@ -23,6 +22,7 @@ var (
 	workflowID string
 	parallel   int
 	noTUI      bool
+	forceTUI   bool
 )
 
 func main() {
@@ -39,6 +39,7 @@ external CLI tools like naabu, nmap, and others without hardcoding tool names.`,
 	rootCmd.PersistentFlags().StringVarP(&workflowID, "workflow", "w", "", "specific workflow ID to run")
 	rootCmd.PersistentFlags().IntVarP(&parallel, "parallel", "p", 0, "max concurrent workflows (default from config)")
 	rootCmd.PersistentFlags().BoolVar(&noTUI, "no-tui", false, "disable TUI monitoring and use plain output")
+	rootCmd.PersistentFlags().BoolVar(&forceTUI, "force-tui", false, "force TUI mode even if terminal detection fails")
 
 	var listCmd = &cobra.Command{
 		Use:   "list",
@@ -152,7 +153,7 @@ func runIPCrawler(cmd *cobra.Command, args []string) error {
 	if !noTUI {
 		// Import term package for terminal capability checking
 		// Check if terminal supports TUI before attempting to start
-		if term.ShouldUseTUI() {
+		if forceTUI || term.ShouldUseTUI() {
 			monitor = ui.NewMonitor(target)
 			cancelCtx, err := monitor.Start(ctx)
 			if err != nil {
@@ -167,7 +168,9 @@ func runIPCrawler(cmd *cobra.Command, args []string) error {
 				// Set logger to use TUI
 				logger.SetTUILogger(monitor)
 				fmt.Println("🎯 TUI monitoring started - enjoy the beautiful interface!")
-				time.Sleep(time.Millisecond * 500) // Brief pause to show message
+				
+				// Wait for TUI to be ready before starting workflows
+				monitor.WaitForReady()
 			}
 			
 			defer func() {

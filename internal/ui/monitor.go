@@ -16,21 +16,28 @@ type Monitor struct {
 	program    *tea.Program
 	appModel   *model.AppModel
 	cancelFunc context.CancelFunc
+	readyChan  chan bool
 }
 
 // NewMonitor creates a new TUI monitor compatible with the workflow executor interface
 func NewMonitor(target string) *Monitor {
 	appModel := model.NewAppModel(target)
 	
-	program := tea.NewProgram(
+	// Create program with options based on terminal capabilities
+	var program *tea.Program
+	
+	// Create program with options for non-interactive mode
+	program = tea.NewProgram(
 		appModel,
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
+		tea.WithOutput(os.Stderr),
+		tea.WithInput(nil), // No input needed for monitoring
+		tea.WithoutSignalHandler(), // We handle our own cancellation
 	)
 	
 	return &Monitor{
-		program:  program,
-		appModel: &appModel,
+		program:   program,
+		appModel:  &appModel,
+		readyChan: make(chan bool, 1),
 	}
 }
 
@@ -48,7 +55,7 @@ func (m *Monitor) Start(ctx context.Context) (context.Context, error) {
 		m.startWithDemo()
 	}
 	
-	// Start the TUI in a goroutine but don't return immediately
+	// Start the TUI in a goroutine with better error handling
 	go func() {
 		if _, err := m.program.Run(); err != nil {
 			fmt.Printf("TUI error: %v\n", err)
@@ -56,9 +63,26 @@ func (m *Monitor) Start(ctx context.Context) (context.Context, error) {
 	}()
 	
 	// Give the TUI time to initialize
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(1 * time.Second)
+	
+	// Signal that TUI is ready (after delay)
+	select {
+	case m.readyChan <- true:
+	default:
+	}
+	
 	
 	return cancelCtx, nil
+}
+
+// WaitForReady waits for the TUI to be ready to receive messages
+func (m *Monitor) WaitForReady() {
+	select {
+	case <-m.readyChan:
+		// TUI is ready
+	case <-time.After(5 * time.Second):
+		// Timeout, proceed anyway
+	}
 }
 
 // Stop stops the TUI monitoring
