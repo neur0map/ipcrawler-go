@@ -1,14 +1,33 @@
+# IDE and editor files
 .claude
 CLAUDE.md
 local_files
 .claude-flow
-out
-reports
-build
-.hive-mind
-.external
-bin
 .vscode
+.idea/
+*.swp
+*.swo
+*~
+
+# Build outputs and binaries
+bin/
+build/
+out/
+reports/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go specific
+*.test
+*.out
+vendor/
+*.cover
+profile.out
+coverage.txt
 
 # Claude Flow generated files
 .claude/settings.local.json
