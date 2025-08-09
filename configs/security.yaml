@@ -1,0 +1,39 @@
+# IPCrawler Security Configuration
+security:
+  scanning:
+    max_threads: 10          # Maximum concurrent scanning threads
+    timeout_seconds: 30      # Timeout per request
+    retry_attempts: 3        # Number of retry attempts on failure
+    rate_limiting: true      # Enable rate limiting
+    user_agents:             # Rotate user agents
+      - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+      - "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+      - "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+    skip_ssl_verify: false   # Skip SSL certificate verification (dangerous)
+    
+  detection:
+    severity_levels:         # Active severity levels
+      - "critical"
+      - "high"
+      - "medium"
+      - "low"
+      - "info"
+    ignore_patterns:         # Patterns to ignore
+      - "*.test.com"
+      - "localhost"
+      - "127.0.0.1"
+    custom_signatures:       # Custom vulnerability signatures
+      - "pattern: admin/config.php"
+      - "pattern: .git/config"
+      - "pattern: wp-config.php.bak"
+    enable_heuristics: true  # Enable heuristic detection
+    
+  reporting:
+    auto_generate: true      # Auto-generate reports after scan
+    formats:                 # Report output formats
+      - "json"
+      - "html"
+      - "csv"
+      - "pdf"
+    include_raw: false       # Include raw scan data
+    redaction: true          # Redact sensitive information

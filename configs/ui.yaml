@@ -24,11 +24,12 @@ ui:
     colors:
       primary: "#FAFAFA"
       secondary: "#3C3C3C" 
-      accent: "#7D56F4"
+      accent: "86"          # Bright cyan for focused elements
       success: "#04B575"
       warning: "#F59E0B"
       error: "#EF4444"
-      border: "#E5E5E5"
+      border: "240"         # Gray for unfocused borders
+      focused: "86"         # Cyan for focused borders
       
     # Adaptive colors for light/dark terminals
     adaptive:
@@ -44,13 +45,16 @@ ui:
     list:
       title: "Workflows & Tools"
       show_status_bar: false
-      filtering_enabled: true
+      filtering_enabled: false    # Disabled due to key conflicts
       item_height: 3
+      max_visible: 20             # Max items visible in list
       
     viewport:
       high_performance: true
       auto_scroll: true
       line_numbers: false
+      scroll_speed: 3             # Lines to scroll per key press
+      page_size: 10               # Lines for page up/down
       
     status:
       spinner: "dot"
@@ -85,92 +89,21 @@ ui:
     framerate_cap: 60
     batch_updates: true
     lazy_rendering: true
+    max_concurrent: 5        # Max concurrent workflow executions
+    buffer_size: 1000        # Output buffer size in lines
+    
+  # Display settings
+  display:
+    show_timestamps: true    # Show timestamps in logs
+    show_progress: true      # Show progress bars
+    show_spinner: true       # Show activity spinner
+    word_wrap: true          # Word wrap long lines
+    syntax_highlight: true   # Syntax highlighting for code
+    
+  # Workflow settings
+  workflow:
+    auto_queue: false        # Auto-add to queue on selection
+    confirm_execute: true    # Confirm before execution
+    stop_on_error: false     # Stop workflow on first error
+    parallel_tools: 3        # Max parallel tool executions
 
-# Simulator settings for demo content
-simulator:
-  # Mock workflows for demonstration
-  workflows:
-    - id: "port-scan-basic"
-      title: "Basic Port Scan"
-      description: "Standard TCP port enumeration"
-      status: "Ready"
-      tools: ["nmap", "masscan"]
-      
-    - id: "subdomain-discovery"
-      title: "Subdomain Discovery" 
-      description: "Comprehensive subdomain enumeration"
-      status: "Running"
-      tools: ["subfinder", "amass", "dnsgen"]
-      
-    - id: "web-app-scan"
-      title: "Web Application Scan"
-      description: "Automated web app security testing"
-      status: "Pending"
-      tools: ["gobuster", "feroxbuster", "nuclei"]
-      
-    - id: "network-discovery"
-      title: "Network Discovery"
-      description: "Host discovery and network mapping"
-      status: "Ready"
-      tools: ["nmap", "masscan", "zmap"]
-      
-    - id: "vulnerability-scan"
-      title: "Vulnerability Assessment"
-      description: "Comprehensive vulnerability scanning"
-      status: "Ready"
-      tools: ["nuclei", "nessus", "openvas"]
-  
-  # Mock tools for demonstration
-  tools:
-    - id: "nmap"
-      name: "Nmap"
-      description: "Network exploration and port scanner"
-      category: "Port Scanning"
-      status: "Available"
-      
-    - id: "subfinder"
-      name: "Subfinder"
-      description: "Passive subdomain discovery"
-      category: "Reconnaissance" 
-      status: "Running"
-      
-    - id: "masscan"
-      name: "Masscan"
-      description: "High-speed port scanner"
-      category: "Port Scanning"
-      status: "Available"
-      
-    - id: "nuclei"
-      name: "Nuclei"
-      description: "Vulnerability scanner with templates"
-      category: "Vulnerability Scanning"
-      status: "Available"
-      
-    - id: "gobuster"
-      name: "Gobuster"
-      description: "Directory and file brute-forcer"
-      category: "Web Scanning"
-      status: "Available"
-  
-  # Log generation settings
-  logs:
-    update_interval: 500ms
-    max_entries: 1000
-    sample_messages:
-      - "Initializing port scan on target network"
-      - "Found open port 22/tcp (SSH) on 192.168.1.100"
-      - "Found open port 80/tcp (HTTP) on 192.168.1.100"
-      - "Found open port 443/tcp (HTTPS) on 192.168.1.100"
-      - "Subdomain discovery completed: 15 subdomains found"
-      - "Running nuclei security checks..."
-      - "Vulnerability scan completed with 3 findings"
-      - "Web application scan finished"
-      - "Host discovery found 25 active hosts"
-      - "DNS enumeration completed successfully"
-  
-  # System status simulation
-  status:
-    active_tasks: 2
-    completed: 15
-    failed: 1
-    uptime_start: "2024-01-15T10:00:00Z"
