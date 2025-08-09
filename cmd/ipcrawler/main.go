@@ -3,589 +3,583 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
-	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/viewport"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-isatty"
+
+	"github.com/your-org/ipcrawler/internal/tui/data/loader"
 )
 
-// Styles
-var (
-	titleStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#7D56F4")).
-		Bold(true).
-		MarginBottom(1)
-
-	panelStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
-		Padding(1).
-		Margin(0, 1)
-
-	focusedPanelStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#7D56F4")).
-		Padding(1).
-		Margin(0, 1)
-
-	logStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("248"))
-
-	timestampStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240"))
-
-	errorStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#EF4444")).
-		Bold(true)
-
-	successStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#04B575")).
-		Bold(true)
-)
-
-// List item implementation
-type item struct {
-	title, desc string
-}
-
-func (i item) FilterValue() string { return i.title }
-func (i item) Title() string       { return i.title }
-func (i item) Description() string { return i.desc }
-
-// Layout modes
-type layoutMode int
+// focusState tracks which card is focused
+type focusState int
 
 const (
-	layoutSmall layoutMode = iota
-	layoutMedium
-	layoutLarge
+	overviewFocus focusState = iota
+	workflowsFocus
+	outputFocus
+	toolsFocus
+	perfFocus
 )
 
-// Focus states
-type focusedPanel int
-
-const (
-	focusList focusedPanel = iota
-	focusViewport
-	focusStatus
-)
-
-// Main application model
 type model struct {
-	ready    bool
-	width    int
-	height   int
-	layout   layoutMode
-	focused  focusedPanel
-	list     list.Model
-	viewport viewport.Model
-	logs     []string
-	keys     keyMap
+	// Layout
+	width  int
+	height int
+	focus  focusState
+	ready  bool
+
+	// Components (not separate models, just data)
+	workflows *loader.WorkflowData
 	
-	// Production features
-	activeWorkflow string
-	activeTool     string
-	systemStatus   string
-	metrics        struct {
-		completed int
-		failed    int
-		active    int
+	// Live output
+	outputViewport viewport.Model
+	outputLogs     []string
+	
+	// Running tools
+	spinner spinner.Model
+	tools   []toolExecution
+	
+	// Performance data
+	perfData systemMetrics
+
+	// Calculated card dimensions (fixed to prevent flickering)
+	cardWidth  int
+	cardHeight int
+
+	// Styles for cards
+	cardStyle        lipgloss.Style
+	focusedCardStyle lipgloss.Style
+	titleStyle       lipgloss.Style
+	dimStyle         lipgloss.Style
+	headerStyle      lipgloss.Style
+}
+
+type toolExecution struct {
+	Name   string
+	Status string
+	Output string
+}
+
+type systemMetrics struct {
+	MemoryMB    float64
+	Goroutines  int
+	LastUpdate  string
+}
+
+func newModel() *model {
+	// Load workflows - try multiple paths
+	var workflows *loader.WorkflowData
+	var err error
+	
+	// Try current directory first
+	workflows, err = loader.LoadWorkflowDescriptions(".")
+	if err != nil || workflows == nil || len(workflows.Workflows) == 0 {
+		// Try from executable directory
+		if execPath, err := os.Executable(); err == nil {
+			execDir := filepath.Dir(execPath)
+			workflows, _ = loader.LoadWorkflowDescriptions(execDir)
+			
+			// If that fails, try parent directory of executable (for bin/ case)
+			if workflows == nil || len(workflows.Workflows) == 0 {
+				parentDir := filepath.Dir(execDir)
+				workflows, _ = loader.LoadWorkflowDescriptions(parentDir)
+			}
+		}
+	}
+	
+	// Final fallback: empty workflows
+	if workflows == nil || len(workflows.Workflows) == 0 {
+		workflows = &loader.WorkflowData{Workflows: make(map[string]loader.WorkflowConfig)}
+	}
+
+	// Create viewport for output
+	vp := viewport.New(50, 10)
+	
+	// Build initial output with workflow loading status
+	outputLines := []string{
+		"[12:34:56] INFO  System initialized",
+		"[12:34:57] INFO  Loading workflows from descriptions.yaml",
+	}
+	
+	// Add workflow loading result
+	if len(workflows.Workflows) > 0 {
+		outputLines = append(outputLines, fmt.Sprintf("[12:34:58] INFO  Loaded %d workflows successfully", len(workflows.Workflows)))
+		for name := range workflows.Workflows {
+			outputLines = append(outputLines, fmt.Sprintf("[12:34:59] DEBUG Found workflow: %s", name))
+		}
+	} else {
+		outputLines = append(outputLines, "[12:34:58] WARN  No workflows loaded - check workflows/descriptions.yaml")
+		if err != nil {
+			outputLines = append(outputLines, fmt.Sprintf("[12:34:59] ERROR %s", err.Error()))
+		}
+	}
+	
+	outputLines = append(outputLines, []string{
+		"[12:35:00] INFO  TUI ready - Use Tab to navigate cards",
+		"[12:35:01] INFO  Press 1-5 for direct card focus",
+	}...)
+	
+	vp.SetContent(strings.Join(outputLines, "\n"))
+
+	// Create spinner
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
+	return &model{
+		workflows:      workflows,
+		outputViewport: vp,
+		outputLogs:     []string{"System initialized", "Waiting for commands..."},
+		spinner:        s,
+		tools:          []toolExecution{},
+		perfData:       systemMetrics{MemoryMB: 12.5, Goroutines: 5, LastUpdate: "12:34:56"},
+		
+		// Box card styles
+		cardStyle: lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("240")).
+			Padding(0, 1),
+		focusedCardStyle: lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("69")).
+			Padding(0, 1),
+		titleStyle: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("69")).
+			Bold(true).
+			Align(lipgloss.Center),
+		headerStyle: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Align(lipgloss.Right),
+		dimStyle: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")),
 	}
 }
 
-// Key bindings
-type keyMap struct {
-	Up    key.Binding
-	Down  key.Binding
-	Left  key.Binding
-	Right key.Binding
-	Tab   key.Binding
-	Enter key.Binding
-	Quit  key.Binding
+func (m *model) Init() tea.Cmd {
+	return m.spinner.Tick
 }
 
-func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Tab, k.Quit}
-}
-
-func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Up, k.Down, k.Left, k.Right},
-		{k.Tab, k.Enter, k.Quit},
-	}
-}
-
-var keys = keyMap{
-	Up: key.NewBinding(
-		key.WithKeys("up", "k"),
-		key.WithHelp("↑/k", "move up"),
-	),
-	Down: key.NewBinding(
-		key.WithKeys("down", "j"),
-		key.WithHelp("↓/j", "move down"),
-	),
-	Left: key.NewBinding(
-		key.WithKeys("left", "h"),
-		key.WithHelp("←/h", "move left"),
-	),
-	Right: key.NewBinding(
-		key.WithKeys("right", "l"),
-		key.WithHelp("→/l", "move right"),
-	),
-	Tab: key.NewBinding(
-		key.WithKeys("tab"),
-		key.WithHelp("tab", "next panel"),
-	),
-	Enter: key.NewBinding(
-		key.WithKeys("enter", " "),
-		key.WithHelp("enter/space", "select"),
-	),
-	Quit: key.NewBinding(
-		key.WithKeys("q", "ctrl+c"),
-		key.WithHelp("q", "quit"),
-	),
-}
-
-// Create new model
-func newModel() model {
-	// Initialize workflows list
-	items := []list.Item{
-		item{title: "Port Scan Basic", desc: "Standard TCP port enumeration"},
-		item{title: "Subdomain Discovery", desc: "Comprehensive subdomain enumeration"},
-		item{title: "Web Application Scan", desc: "Automated web app security testing"},
-		item{title: "Network Discovery", desc: "Host discovery and network mapping"},
-		item{title: "Vulnerability Assessment", desc: "Comprehensive vulnerability scanning"},
-		item{title: "SSL/TLS Analysis", desc: "Certificate and protocol security analysis"},
-		item{title: "DNS Reconnaissance", desc: "DNS records and zone transfer testing"},
-		item{title: "Service Fingerprinting", desc: "Identify services and versions"},
-		item{title: "Content Discovery", desc: "Find hidden files and directories"},
-		item{title: "API Security Scan", desc: "REST/GraphQL endpoint testing"},
-	}
-
-	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
-	l.Title = "IPCrawler Workflows"
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(true)
-	l.SetShowHelp(false)
-
-	vp := viewport.New(0, 0)
-	vp.HighPerformanceRendering = true
-
-	// Initialize with system logs
-	logs := []string{
-		formatLogEntry("15:04:05", "INFO", "System", "IPCrawler v2.0.0 initialized"),
-		formatLogEntry("15:04:06", "INFO", "Config", "Loaded configuration from configs/ui.yaml"),
-		formatLogEntry("15:04:07", "INFO", "Tools", "Discovered 15 security tools"),
-		formatLogEntry("15:04:08", "INFO", "Network", "Network interfaces detected: eth0, lo"),
-		formatLogEntry("15:04:09", "INFO", "System", "Ready for operations"),
-	}
-
-	m := model{
-		list:         l,
-		viewport:     vp,
-		logs:         logs,
-		keys:         keys,
-		focused:      focusList,
-		systemStatus: "Ready",
-		metrics: struct {
-			completed int
-			failed    int
-			active    int
-		}{
-			completed: 0,
-			failed:    0,
-			active:    0,
-		},
-	}
-
-	return m
-}
-
-// Format log entries with color coding
-func formatLogEntry(timestamp, level, source, message string) string {
-	var levelStyled string
-	switch level {
-	case "ERROR":
-		levelStyled = errorStyle.Render("[ERROR]")
-	case "WARN":
-		levelStyled = errorStyle.Render("[WARN] ")
-	case "INFO":
-		levelStyled = successStyle.Render("[INFO] ")
-	default:
-		levelStyled = logStyle.Render("[" + level + "] ")
-	}
-
-	return fmt.Sprintf("%s %s %s %s",
-		timestampStyle.Render(timestamp),
-		levelStyled,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4")).Width(10).Render(source),
-		logStyle.Render(message),
-	)
-}
-
-// Initialize the model
-func (m model) Init() tea.Cmd {
-	return tea.Batch(
-		tea.Tick(time.Second*3, func(t time.Time) tea.Msg {
-			return tickMsg(t)
-		}),
-	)
-}
-
-type tickMsg time.Time
-
-// Update handles all messages
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
+func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		// CRITICAL: Handle WindowSizeMsg first - prevents text truncation
-		m.width, m.height = msg.Width, msg.Height
-		m.ready = true
-		m.layout = m.calculateLayout()
-		m.updatePanelSizes()
-
-	case tickMsg:
-		// Simulate activity
-		if m.activeWorkflow != "" {
-			newLog := formatLogEntry(
-				time.Now().Format("15:04:05"),
-				"INFO",
-				m.activeWorkflow,
-				fmt.Sprintf("Processing target 192.168.1.%d", len(m.logs)%255),
-			)
-			m.logs = append(m.logs, newLog)
-			if len(m.logs) > 100 {
-				m.logs = m.logs[1:]
-			}
-			m.updateViewportContent()
-		}
-		return m, tea.Tick(time.Second*3, func(t time.Time) tea.Msg {
-			return tickMsg(t)
-		})
-
 	case tea.KeyMsg:
-		switch {
-		case key.Matches(msg, m.keys.Quit):
+		switch msg.String() {
+		case "ctrl+c", "q", "esc":
 			return m, tea.Quit
-		case key.Matches(msg, m.keys.Tab):
-			m.cycleFocus()
-			return m, nil
-		case key.Matches(msg, m.keys.Enter):
-			if m.focused == focusList {
-				if i, ok := m.list.SelectedItem().(item); ok {
-					// Start workflow
-					m.activeWorkflow = i.title
-					m.systemStatus = "Running"
-					m.metrics.active++
-					newLog := formatLogEntry(
-						time.Now().Format("15:04:05"),
-						"INFO",
-						"Workflow",
-						fmt.Sprintf("Started workflow: %s", i.title),
-					)
-					m.logs = append(m.logs, newLog)
-					m.updateViewportContent()
-				}
+		case "tab":
+			m.focus = focusState((int(m.focus) + 1) % 5)
+		case "shift+tab":
+			m.focus = focusState((int(m.focus) + 4) % 5)
+		case "1":
+			m.focus = overviewFocus
+		case "2":
+			m.focus = workflowsFocus
+		case "3":
+			m.focus = outputFocus
+		case "4":
+			m.focus = toolsFocus
+		case "5":
+			m.focus = perfFocus
+		default:
+			// Handle focused card input
+			if m.focus == outputFocus {
+				m.outputViewport, cmd = m.outputViewport.Update(msg)
 			}
 		}
 
-		// Route keys to focused panel
-		switch m.focused {
-		case focusList:
-			var cmd tea.Cmd
-			m.list, cmd = m.list.Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		case focusViewport:
-			var cmd tea.Cmd
-			m.viewport, cmd = m.viewport.Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
+	case spinner.TickMsg:
+		m.spinner, cmd = m.spinner.Update(msg)
+	}
+
+	return m, cmd
+}
+
+func (m *model) View() string {
+	if !m.ready || m.width == 0 || m.height == 0 {
+		return "Initializing..."
+	}
+
+	// Create title
+	title := m.titleStyle.Render("IPCrawler TUI - Dynamic Cards Dashboard")
+	title = lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render(title)
+
+	// Create help
+	help := m.dimStyle.Render("Tab/Shift+Tab: cycle focus • 1-5: direct focus • q: quit")
+	help = lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render(help)
+
+	// Use pre-calculated card sizes (horizontal layout for 190 width)
+	// Top Row: Overview | Workflows | Tools | Performance (4 cards horizontal)
+	overview := m.renderOverviewCard()
+	workflows := m.renderWorkflowsCard()
+	tools := m.renderToolsCard()
+	perf := m.renderPerfCard()
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, overview, "  ", workflows, "  ", tools, "  ", perf)
+
+	// Bottom Row: Output (full width)
+	output := m.renderOutputCard()
+
+	// Combine all
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		title,
+		"",
+		topRow,
+		"",
+		output,
+		"",
+		help,
+	)
+
+	return content
+}
+
+func (m *model) renderOverviewCard() string {
+	style := m.cardStyle
+	if m.focus == overviewFocus {
+		style = m.focusedCardStyle
+	}
+
+	// Card header with title
+	title := m.titleStyle.Width(m.cardWidth - 2).Render("System Overview")
+	
+	// Card content
+	content := strings.Builder{}
+	content.WriteString(fmt.Sprintf("Workflows: %d\n", len(m.workflows.Workflows)))
+	content.WriteString(fmt.Sprintf("Tools Available: %d\n", len(m.workflows.GetAllTools())))
+	content.WriteString("\nCategories:\n")
+	
+	for _, workflow := range m.workflows.Workflows {
+		line := fmt.Sprintf("• %s (%d tools)", workflow.Name, len(workflow.Tools))
+		content.WriteString(line + "\n")
+	}
+
+	// Combine title and content
+	cardContent := lipgloss.JoinVertical(lipgloss.Left,
+		title,
+		strings.Repeat("─", m.cardWidth-2),
+		content.String(),
+	)
+
+	return style.Width(m.cardWidth).Height(m.cardHeight).Render(cardContent)
+}
+
+func (m *model) renderWorkflowsCard() string {
+	style := m.cardStyle
+	if m.focus == workflowsFocus {
+		style = m.focusedCardStyle
+	}
+
+	// Card header with title
+	title := m.titleStyle.Width(m.cardWidth - 2).Render("Workflows Tree")
+	
+	// Card content
+	content := strings.Builder{}
+	for _, workflow := range m.workflows.Workflows {
+		content.WriteString(fmt.Sprintf("▶ %s\n", workflow.Name))
+		for _, tool := range workflow.Tools {
+			content.WriteString(fmt.Sprintf("  - %s\n", tool))
+		}
+		content.WriteString("\n")
+		
+		// Limit display
+		if len(content.String()) > 200 {
+			break
 		}
 	}
 
-	return m, tea.Batch(cmds...)
-}
-
-// Main view rendering
-func (m model) View() string {
-	if !m.ready {
-		return titleStyle.Render("Initializing IPCrawler...")
+	if len(m.workflows.Workflows) == 0 {
+		content.WriteString("No workflows found\nCheck workflows/descriptions.yaml")
 	}
 
-	switch m.layout {
-	case layoutLarge:
-		return m.renderThreeColumn()
-	case layoutMedium:
-		return m.renderTwoColumn()
-	default:
-		return m.renderStacked()
-	}
+	// Combine title and content
+	cardContent := lipgloss.JoinVertical(lipgloss.Left,
+		title,
+		strings.Repeat("─", m.cardWidth-2),
+		content.String(),
+	)
+
+	return style.Width(m.cardWidth).Height(m.cardHeight).Render(cardContent)
 }
 
-// Calculate responsive layout
-func (m *model) calculateLayout() layoutMode {
-	switch {
-	case m.width >= 120:
-		return layoutLarge
-	case m.width >= 80:
-		return layoutMedium
-	default:
-		return layoutSmall
-	}
-}
-
-// Update panel sizes based on layout
-func (m *model) updatePanelSizes() {
-	contentHeight := m.height - 4
-
-	switch m.layout {
-	case layoutLarge:
-		leftW := int(float64(m.width) * 0.25)
-		mainW := int(float64(m.width) * 0.55)
-		
-		m.list.SetSize(leftW-4, contentHeight-2)
-		m.viewport.Width = mainW - 4
-		m.viewport.Height = contentHeight - 4
-		
-	case layoutMedium:
-		leftW := int(float64(m.width) * 0.30)
-		mainW := int(float64(m.width) * 0.70)
-		
-		m.list.SetSize(leftW-4, contentHeight-2)
-		m.viewport.Width = mainW - 4
-		m.viewport.Height = contentHeight - 8 // Footer space
-		
-	case layoutSmall:
-		m.list.SetSize(m.width-8, 8)
-		m.viewport.Width = m.width - 8
-		m.viewport.Height = contentHeight - 16
+func (m *model) renderOutputCard() string {
+	style := m.cardStyle
+	if m.focus == outputFocus {
+		style = m.focusedCardStyle
 	}
 
-	m.updateViewportContent()
+	// Card header with title and scroll info
+	titleText := m.titleStyle.Render("Live Output")
+	scrollInfo := m.headerStyle.Render(fmt.Sprintf("%.1f%%", m.outputViewport.ScrollPercent()*100))
+	header := lipgloss.JoinHorizontal(lipgloss.Left, titleText, 
+		strings.Repeat(" ", (m.width-4)-lipgloss.Width(titleText)-lipgloss.Width(scrollInfo)), scrollInfo)
+	
+	// Card content
+	content := m.outputViewport.View()
+
+	// Combine header and content
+	cardContent := lipgloss.JoinVertical(lipgloss.Left,
+		header,
+		strings.Repeat("─", m.width-6),
+		content,
+	)
+
+	return style.Width(m.width-4).Height(m.cardHeight).Render(cardContent)
 }
 
-// Update viewport with wrapped text
-func (m *model) updateViewportContent() {
-	if len(m.logs) == 0 {
-		m.viewport.SetContent("No logs available...")
+func (m *model) renderToolsCard() string {
+	style := m.cardStyle
+	if m.focus == toolsFocus {
+		style = m.focusedCardStyle
+	}
+
+	// Card header with title
+	title := m.titleStyle.Width(m.cardWidth - 2).Render("Running Tools")
+	
+	// Card content
+	content := strings.Builder{}
+	if len(m.tools) == 0 {
+		content.WriteString("No tools running\n")
+		content.WriteString(m.spinner.View() + " Waiting for jobs...")
+	} else {
+		for _, tool := range m.tools {
+			status := "✓"
+			if tool.Status == "running" {
+				status = m.spinner.View()
+			}
+			content.WriteString(fmt.Sprintf("%s %s\n", status, tool.Name))
+		}
+	}
+
+	// Combine title and content
+	cardContent := lipgloss.JoinVertical(lipgloss.Left,
+		title,
+		strings.Repeat("─", m.cardWidth-2),
+		content.String(),
+	)
+
+	return style.Width(m.cardWidth).Height(m.cardHeight).Render(cardContent)
+}
+
+func (m *model) renderPerfCard() string {
+	style := m.cardStyle
+	if m.focus == perfFocus {
+		style = m.focusedCardStyle
+	}
+
+	// Card header with title
+	title := m.titleStyle.Width(m.cardWidth - 2).Render("Performance Monitor")
+	
+	// Card content
+	content := fmt.Sprintf(`Memory: %.1f MB
+Goroutines: %d
+Last Update: %s
+
+System: Operational
+Status: Active`,
+		m.perfData.MemoryMB,
+		m.perfData.Goroutines,
+		m.perfData.LastUpdate,
+	)
+
+	// Combine title and content
+	cardContent := lipgloss.JoinVertical(lipgloss.Left,
+		title,
+		strings.Repeat("─", m.cardWidth-2),
+		content,
+	)
+
+	return style.Width(m.cardWidth).Height(m.cardHeight).Render(cardContent)
+}
+
+func (m *model) updateSizes() {
+	if m.width <= 10 || m.height <= 10 {
 		return
 	}
-	
-	// CRITICAL: Wrap text to viewport width to prevent truncation
-	wrappedLogs := make([]string, 0, len(m.logs))
-	for _, logLine := range m.logs {
-		wrapped := m.wrapText(logLine, m.viewport.Width)
-		wrappedLogs = append(wrappedLogs, wrapped)
+
+	// Calculate card dimensions for horizontal layout (4 cards across)
+	// 200 width = 4 cards + 3 spacers (2 chars each) = 4 cards in (200-6) = 194 width
+	m.cardWidth = (m.width - 8) / 4  // 4 cards horizontal with spacing
+	m.cardHeight = (m.height - 10) / 2 // 2 rows: top cards + output
+
+	// Ensure reasonable minimums for readability
+	if m.cardWidth < 35 {
+		m.cardWidth = 35
 	}
-	
-	content := strings.Join(wrappedLogs, "\n")
-	m.viewport.SetContent(content)
-	
-	// Auto scroll to bottom
-	m.viewport.GotoBottom()
+	if m.cardHeight < 12 {
+		m.cardHeight = 12
+	}
+
+	// Update viewport size for output card (full width, remaining height)
+	m.outputViewport.Width = m.width - 8
+	m.outputViewport.Height = m.cardHeight - 4
+	if m.outputViewport.Height < 8 {
+		m.outputViewport.Height = 8
+	}
 }
 
-// Text wrapping to prevent truncation
-func (m *model) wrapText(text string, width int) string {
-	if width <= 0 || len(text) <= width {
-		return text
-	}
-	
-	// Simple word wrapping
-	words := strings.Fields(text)
-	if len(words) == 0 {
-		return text
-	}
-	
-	var lines []string
-	currentLine := ""
-	
-	for _, word := range words {
-		if len(currentLine)+len(word)+1 > width {
-			if currentLine != "" {
-				lines = append(lines, currentLine)
-				currentLine = word
-			} else {
-				// Word longer than width
-				if len(word) > width-3 {
-					lines = append(lines, word[:width-3]+"...")
-				} else {
-					lines = append(lines, word)
-				}
-			}
-		} else {
-			if currentLine == "" {
-				currentLine = word
-			} else {
-				currentLine += " " + word
-			}
+// getTerminalSize returns the actual terminal dimensions
+func getTerminalSize() (int, int) {
+	cmd := exec.Command("stty", "size")
+	cmd.Stdin = os.Stdin
+	out, err := cmd.Output()
+	if err != nil {
+		// Fallback to tput if stty fails
+		rowsCmd := exec.Command("tput", "lines")
+		colsCmd := exec.Command("tput", "cols")
+		
+		rowsOut, err1 := rowsCmd.Output()
+		colsOut, err2 := colsCmd.Output()
+		
+		if err1 == nil && err2 == nil {
+			rows := strings.TrimSpace(string(rowsOut))
+			cols := strings.TrimSpace(string(colsOut))
+			
+			var height, width int
+			fmt.Sscanf(rows, "%d", &height)
+			fmt.Sscanf(cols, "%d", &width)
+			
+			return width, height
 		}
+		
+		// Final fallback
+		return 80, 24
 	}
 	
-	if currentLine != "" {
-		lines = append(lines, currentLine)
-	}
-	
-	return strings.Join(lines, "\n")
+	var height, width int
+	fmt.Sscanf(string(out), "%d %d", &height, &width)
+	return width, height
 }
 
-// Cycle focus between panels
-func (m *model) cycleFocus() {
-	switch m.focused {
-	case focusList:
-		m.focused = focusViewport
-	case focusViewport:
-		if m.layout == layoutLarge {
-			m.focused = focusStatus
-		} else {
-			m.focused = focusList
-		}
-	case focusStatus:
-		m.focused = focusList
-	}
-}
-
-// Three-column layout for large screens
-func (m model) renderThreeColumn() string {
-	leftW := int(float64(m.width) * 0.25)
-	mainW := int(float64(m.width) * 0.55)
-	rightW := int(float64(m.width) * 0.20)
-	contentH := m.height - 4
-
-	// Left panel (list)
-	listPanel := titleStyle.Render("Workflows") + "\n" + m.list.View()
-	leftStyled := panelStyle.Width(leftW).Height(contentH).Render(listPanel)
-	if m.focused == focusList {
-		leftStyled = focusedPanelStyle.Width(leftW).Height(contentH).Render(listPanel)
-	}
-
-	// Main panel (viewport)
-	header := titleStyle.Render("System Logs & Output")
-	viewportContent := m.viewport.View()
-	mainContent := header + "\n" + viewportContent
-	mainStyled := panelStyle.Width(mainW).Height(contentH).Render(mainContent)
-	if m.focused == focusViewport {
-		mainStyled = focusedPanelStyle.Width(mainW).Height(contentH).Render(mainContent)
-	}
-
-	// Right panel (status)
-	statusContent := m.renderStatus()
-	rightStyled := panelStyle.Width(rightW).Height(contentH).Render(statusContent)
-	if m.focused == focusStatus {
-		rightStyled = focusedPanelStyle.Width(rightW).Height(contentH).Render(statusContent)
-	}
-
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, mainStyled, rightStyled)
-}
-
-// Two-column layout for medium screens
-func (m model) renderTwoColumn() string {
-	leftW := int(float64(m.width) * 0.30)
-	mainW := int(float64(m.width) * 0.70)
-	contentH := m.height - 8
-
-	// Left panel
-	listPanel := titleStyle.Render("Workflows") + "\n" + m.list.View()
-	leftStyled := panelStyle.Width(leftW).Height(contentH).Render(listPanel)
-	if m.focused == focusList {
-		leftStyled = focusedPanelStyle.Width(leftW).Height(contentH).Render(listPanel)
-	}
-
-	// Main panel
-	header := titleStyle.Render("System Logs & Output")
-	viewportContent := m.viewport.View()
-	mainContent := header + "\n" + viewportContent
-	mainStyled := panelStyle.Width(mainW).Height(contentH).Render(mainContent)
-	if m.focused == focusViewport {
-		mainStyled = focusedPanelStyle.Width(mainW).Height(contentH).Render(mainContent)
-	}
-
-	topRow := lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, mainStyled)
-
-	// Footer status
-	footer := panelStyle.Width(m.width-2).Height(4).Render(m.renderStatus())
-	
-	return lipgloss.JoinVertical(lipgloss.Left, topRow, footer)
-}
-
-// Stacked layout for small screens
-func (m model) renderStacked() string {
-	panelW := m.width - 4
-
-	selected := "None"
-	if i, ok := m.list.SelectedItem().(item); ok {
-		selected = i.Title()
-	}
-
-	// Header (condensed list)
-	header := panelStyle.Width(panelW).Height(8).Render(
-		titleStyle.Render("Workflows") + "\n" + 
-		fmt.Sprintf("Selected: %s", selected),
-	)
-
-	// Main (viewport)
-	main := panelStyle.Width(panelW).Height(m.height-16).Render(
-		titleStyle.Render("System Logs") + "\n" + m.viewport.View(),
-	)
-
-	// Footer (status)
-	footer := panelStyle.Width(panelW).Height(4).Render(m.renderStatus())
-
-	return lipgloss.JoinVertical(lipgloss.Left, header, main, footer)
-}
-
-// Render status panel
-func (m model) renderStatus() string {
-	var statusIcon string
-	var statusColor lipgloss.Style
-	
-	switch m.systemStatus {
-	case "Running":
-		statusIcon = "●"
-		statusColor = successStyle
-	case "Error":
-		statusIcon = "●"
-		statusColor = errorStyle
-	default:
-		statusIcon = "●"
-		statusColor = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	}
-	
-	status := fmt.Sprintf("Active: %d | Completed: %d | Failed: %d | Logs: %d",
-		m.metrics.active, m.metrics.completed, m.metrics.failed, len(m.logs))
-	
-	activeWorkflow := m.activeWorkflow
-	if activeWorkflow == "" {
-		activeWorkflow = "None"
-	}
-	
-	return titleStyle.Render("System Status") + "\n" + 
-		statusColor.Render(statusIcon + " " + m.systemStatus) + "\n" +
-		"Workflow: " + activeWorkflow + "\n" +
-		status
-}
-
-// Main entry point
 func main() {
-	// Create the application model
-	app := newModel()
+	// Check for --new-window flag
+	openNewWindow := len(os.Args) > 1 && os.Args[1] == "--new-window"
+
+	if !openNewWindow {
+		// Launch in new terminal window with optimal size
+		launchInNewTerminal()
+		return
+	}
+
+	// This is the actual TUI execution in the new terminal
+	runTUI()
+}
+
+func launchInNewTerminal() {
+	// Get the executable path
+	executable, err := os.Executable()
+	if err != nil {
+		fmt.Printf("Error getting executable path: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Optimal dimensions for IPCrawler TUI (no overlaps, horizontal layout)
+	width := 200
+	height := 70
+
+	// Try different terminal applications based on OS
+	var cmd *exec.Cmd
 	
-	// CRITICAL: Single tea.Program with alt-screen
-	// This is the ONLY renderer in the entire application
-	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
-	
-	// Run the TUI
+	switch runtime.GOOS {
+	case "darwin": // macOS
+		// Try Terminal.app first
+		cmd = exec.Command("osascript", "-e", fmt.Sprintf(`
+tell application "Terminal"
+	activate
+	set newWindow to do script "%s --new-window"
+	tell newWindow's tab 1
+		set the size to {%d, %d}
+	end tell
+end tell`, executable, width, height))
+		
+		if err := cmd.Run(); err != nil {
+			// Fallback to iTerm2
+			cmd = exec.Command("osascript", "-e", fmt.Sprintf(`
+tell application "iTerm"
+	create window with default profile
+	tell current session of current window
+		write text "%s --new-window"
+		set rows to %d
+		set columns to %d
+	end tell
+end tell`, executable, height, width))
+		}
+
+	case "linux":
+		// Try gnome-terminal first
+		cmd = exec.Command("gnome-terminal", 
+			"--geometry", fmt.Sprintf("%dx%d", width, height),
+			"--title", "IPCrawler TUI",
+			"--", executable, "--new-window")
+		
+		if err := cmd.Start(); err != nil {
+			// Fallback to xterm
+			cmd = exec.Command("xterm", 
+				"-geometry", fmt.Sprintf("%dx%d", width, height),
+				"-title", "IPCrawler TUI",
+				"-e", executable, "--new-window")
+		}
+
+	default:
+		// Fallback: run in current terminal
+		fmt.Println("Opening TUI in current terminal (new window not supported on this platform)")
+		runTUI()
+		return
+	}
+
+	// Execute the command
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("Could not open new terminal window: %v\n", err)
+		fmt.Println("Falling back to current terminal...")
+		runTUI()
+	}
+}
+
+func runTUI() {
+	// Check TTY
+	if !isatty.IsTerminal(os.Stdout.Fd()) {
+		fmt.Println("IPCrawler TUI requires a terminal")
+		os.Exit(1)
+	}
+
+	// Check terminal size and give user feedback
+	actualWidth, actualHeight := getTerminalSize()
+	if actualWidth < 200 || actualHeight < 70 {
+		fmt.Printf("⚠️  Terminal size: %dx%d (detected)\n", actualWidth, actualHeight)
+		fmt.Printf("💡 Optimal size: 200x70 for best experience\n")
+		fmt.Printf("📖 See RESIZE_GUIDE.md for instructions\n")
+		fmt.Printf("\nContinue anyway? (y/N): ")
+		
+		var response string
+		fmt.Scanln(&response)
+		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
+			fmt.Println("Run 'make run' after resizing your terminal to 200x70")
+			os.Exit(0)
+		}
+	}
+
+	// Create model with optimal fixed size
+	model := newModel()
+	model.width = 200   // Fixed optimal width (no overlaps)
+	model.height = 70   // Fixed optimal height (full visibility)
+	model.updateSizes()
+	model.ready = true
+
+	// Run TUI with fixed dimensions (no resize handling)
+	p := tea.NewProgram(
+		model,
+		tea.WithAltScreen(),
+		// Remove mouse support to reduce flicker
+	)
+
 	if _, err := p.Run(); err != nil {
-		fmt.Printf("Error running IPCrawler: %v\n", err)
+		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
 }

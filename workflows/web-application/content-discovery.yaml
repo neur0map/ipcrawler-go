@@ -1,0 +1,27 @@
+name: "Web Content Discovery"
+description: "Discover hidden files, directories and endpoints"
+category: "web-application"
+tools:
+  - name: "gobuster"
+    config:
+      wordlist: "common.txt"
+      threads: 50
+      extensions: ["php", "html", "js", "txt"]
+  - name: "ffuf"
+    config:
+      wordlist: "directory-list-medium.txt"
+      rate: 100
+      match_codes: [200, 301, 302, 403]
+steps:
+  - name: "Directory Bruteforcing"
+    tools: ["gobuster"]
+    config:
+      mode: "dir"
+  - name: "File Discovery"
+    tools: ["ffuf"]
+    depends_on: ["Directory Bruteforcing"]
+    config:
+      mode: "file"
+output:
+  format: "txt"
+  file: "discovered_content.txt"

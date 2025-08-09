@@ -1,0 +1,45 @@
+# Workflow descriptions for the TUI
+# This file contains metadata for all available workflows
+
+reconnaissance:
+  name: "Reconnaissance"
+  description: "Information gathering and target enumeration workflows"
+  tools:
+    - subfinder
+    - amass
+    - nmap
+    - masscan
+    - naabu
+
+vulnerability-scanning:
+  name: "Vulnerability Scanning" 
+  description: "Automated vulnerability detection and assessment"
+  tools:
+    - nuclei
+    - nikto
+    - sqlmap
+
+network-scanning:
+  name: "Network Scanning"
+  description: "Network discovery and port scanning workflows"
+  tools:
+    - nmap
+    - masscan
+    - zmap
+
+web-application:
+  name: "Web Application Testing"
+  description: "Web application security assessment tools"
+  tools:
+    - gobuster
+    - ffuf
+    - dirb
+    - wpscan
+
+post-exploitation:
+  name: "Post Exploitation"
+  description: "Privilege escalation and lateral movement tools"
+  tools:
+    - linpeas
+    - winpeas
+    - bloodhound

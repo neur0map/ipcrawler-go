@@ -1,0 +1,29 @@
+name: "Subdomain Enumeration"
+description: "Comprehensive subdomain discovery using multiple tools"
+category: "reconnaissance"
+tools:
+  - name: "subfinder"
+    config:
+      sources: ["all"]
+      timeout: 30
+      threads: 10
+  - name: "amass"
+    config:
+      mode: "passive"
+      timeout: 60
+  - name: "assetfinder" 
+    config:
+      findrelated: true
+steps:
+  - name: "Passive Discovery"
+    tools: ["subfinder", "amass"]
+    parallel: true
+  - name: "Active Discovery"
+    tools: ["assetfinder"]
+    depends_on: ["Passive Discovery"]
+  - name: "DNS Validation"
+    tools: ["dnsx"]
+    depends_on: ["Active Discovery"]
+output:
+  format: "json"
+  file: "subdomains.json"
