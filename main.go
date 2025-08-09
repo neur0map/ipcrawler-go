@@ -12,7 +12,8 @@ import (
 	"github.com/carlosm/ipcrawler/internal/logger"
 	"github.com/carlosm/ipcrawler/internal/registry"
 	"github.com/carlosm/ipcrawler/internal/report"
-	"github.com/carlosm/ipcrawler/internal/tui"
+	"github.com/carlosm/ipcrawler/internal/term"
+	"github.com/carlosm/ipcrawler/internal/ui"
 	"github.com/carlosm/ipcrawler/internal/workflow"
 	"github.com/spf13/cobra"
 )
@@ -146,31 +147,38 @@ func runIPCrawler(cmd *cobra.Command, args []string) error {
 	executor.SetTarget(target) // Set the target on the executor
 	ctx := context.Background()
 	
-	// Initialize TUI monitoring if not disabled
-	var monitor *tui.Monitor
+	// Initialize TUI monitoring if not disabled and terminal supports it
+	var monitor *ui.Monitor
 	if !noTUI {
-		monitor = tui.NewMonitor(target)
-		cancelCtx, err := monitor.Start(ctx)
-		if err != nil {
-			fmt.Printf("Warning: Failed to start TUI monitoring: %v\n", err)
-			fmt.Println("Continuing with plain output...")
-			logger.SetConsoleLogger() // Use console logger if TUI fails
-		} else {
-			// Use the cancellable context for workflow execution
-			ctx = cancelCtx
-			// Set the monitor on the executor
-			executor.SetMonitor(monitor)
-			// Set logger to use TUI
-			logger.SetTUILogger(monitor)
-			fmt.Println("🎯 TUI monitoring started - enjoy the beautiful interface!")
-			time.Sleep(time.Millisecond * 500) // Brief pause to show message
-		}
-		
-		defer func() {
-			if monitor != nil {
-				monitor.Stop()
+		// Import term package for terminal capability checking
+		// Check if terminal supports TUI before attempting to start
+		if term.ShouldUseTUI() {
+			monitor = ui.NewMonitor(target)
+			cancelCtx, err := monitor.Start(ctx)
+			if err != nil {
+				fmt.Printf("Warning: Failed to start TUI monitoring: %v\n", err)
+				fmt.Println("Continuing with plain output...")
+				logger.SetConsoleLogger() // Use console logger if TUI fails
+			} else {
+				// Use the cancellable context for workflow execution
+				ctx = cancelCtx
+				// Set the monitor on the executor
+				executor.SetMonitor(monitor)
+				// Set logger to use TUI
+				logger.SetTUILogger(monitor)
+				fmt.Println("🎯 TUI monitoring started - enjoy the beautiful interface!")
+				time.Sleep(time.Millisecond * 500) // Brief pause to show message
 			}
-		}()
+			
+			defer func() {
+				if monitor != nil {
+					monitor.Stop()
+				}
+			}()
+		} else {
+			fmt.Println("Terminal does not support TUI mode, using plain output...")
+			logger.SetConsoleLogger()
+		}
 	} else {
 		// Explicitly use console logger when TUI is disabled
 		logger.SetConsoleLogger()
