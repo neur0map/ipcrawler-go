@@ -8,7 +8,7 @@ output:
     html: true               # Enable HTML reports
     pdf: false               # Enable PDF reports (requires wkhtmltopdf)
     xml: false               # Enable XML output
-    
+  
   logging:
     level: "info"            # Log level: debug, info, warn, error
     file: "ipcrawler.log"    # Log file name
@@ -16,8 +16,5 @@ output:
     max_backups: 3           # Number of backup log files
     max_age: 30              # Max age in days
     compress: true           # Compress old log files
-    
-  persistence:
-    database: "sqlite://ipcrawler.db"  # Database connection string
-    auto_save: true          # Auto-save results to database
-    interval: 60             # Auto-save interval in seconds
+  
+  # Persistence configuration is intentionally not used at this time.

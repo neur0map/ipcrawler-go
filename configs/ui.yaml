@@ -17,6 +17,16 @@ ui:
       status:
         width_large: 0.20   # 20% in large layout
         height_footer: 4    # Footer height in medium/small
+    
+    # Card layout system
+    cards:
+      columns: 4              # Number of horizontal cards
+      rows: 2                 # Number of vertical sections
+      min_width: 33           # Minimum card width
+      min_height: 10          # Minimum card height
+      spacing: 1               # Spacing between cards (dynamic; adjust to taste)
+      scroll_bar_space: 1     # Extra space for scroll bars
+      vertical_offset: 10      # Top/bottom margin (for title and help)
   
   # Theme configuration
   theme:
@@ -24,12 +34,35 @@ ui:
     colors:
       primary: "#FAFAFA"
       secondary: "#3C3C3C" 
-      accent: "86"          # Bright cyan for focused elements
+      accent: "#7D56F4"     # Purple accent
       success: "#04B575"
       warning: "#F59E0B"
       error: "#EF4444"
-      border: "240"         # Gray for unfocused borders
-      focused: "86"         # Cyan for focused borders
+      border: "#E5E5E5"     # Light gray border
+      focused: "#06B6D4"    # Cyan for focused borders
+      # Additional semantic colors for UI elements
+      info: "#0EA5E9"       # Blue for info messages
+      debug: "#6B7280"      # Gray for debug messages
+      timestamp: "#9CA3AF"  # Light gray for timestamps
+      prefix: "#8B5CF6"     # Purple for log prefixes
+      key: "#06B6D4"        # Light blue for keys
+      value: "#F9FAFB"      # White for values
+      workflow: "#10B981"   # Green for workflows
+      count: "#F59E0B"      # Yellow for counts
+      progress: "#22C55E"   # Bright green for progress
+      # System monitoring colors  
+      cpu: "#F97316"        # Orange for CPU
+      memory: "#3B82F6"     # Blue for memory
+      disk: "#10B981"       # Green for disk
+      network: "#EC4899"    # Magenta for network
+      # Status colors
+      running: "#F97316"    # Orange for running status
+      pending: "#6B7280"    # Gray for pending status
+      completed: "#06B6D4"  # Cyan for completed status
+      failed: "#EF4444"     # Red for failed status
+      # UI element colors
+      spinner: "#EC4899"    # Pink for spinner
+      list_selected: "#8B5CF6" # Purple for list selection
       
     # Adaptive colors for light/dark terminals
     adaptive:
@@ -48,18 +81,41 @@ ui:
       filtering_enabled: false    # Disabled due to key conflicts
       item_height: 3
       max_visible: 20             # Max items visible in list
+      # List dimensions
+      border_padding: 4           # Space for borders
+      content_margin: 2           # Internal margin
       
     viewport:
       high_performance: true
-      auto_scroll: true
+      auto_scroll: true           # Enable automatic scrolling
       line_numbers: false
       scroll_speed: 3             # Lines to scroll per key press
       page_size: 10               # Lines for page up/down
+      # Viewport dimensions
+      border_padding: 8           # Account for card borders
+      content_padding: 4          # Internal content padding
+      split_ratio: 0.5            # 50/50 split for bottom cards
+      mouse_wheel_delta: 3        # Lines per scroll wheel tick
+      scroll_sensitivity: 1.0     # Scroll speed multiplier
       
     status:
       spinner: "dot"
       show_stats: true
-      update_interval: 100ms
+      update_interval: "100ms"     # String for display
+      refresh_ms: 1500             # Numeric for system monitoring refresh
+    
+    # Progress bar configuration
+    progress_bar:
+      label_space: 12             # Space reserved for labels
+      min_width: 8                # Minimum bar width
+      filled_char: "█"            # Fill character
+      empty_char: "░"             # Empty character
+      
+    # Sparkline configuration
+    sparkline:
+      chars: ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]  # Sparkline characters
+      min_width: 10               # Minimum sparkline width
+      fallback_char: "▁"          # When no data available
       
   # Keyboard bindings
   keys:
@@ -86,11 +142,15 @@ ui:
   # Performance settings
   performance:
     alt_screen: true
-    framerate_cap: 60
+    framerate_cap: 60        # Maximum frames per second
     batch_updates: true
     lazy_rendering: true
     max_concurrent: 5        # Max concurrent workflow executions
     buffer_size: 1000        # Output buffer size in lines
+    # Animation and timing
+    system_monitor_refresh: 1500  # System metrics refresh rate in milliseconds
+    animation_factor: 0.15        # Smooth transition speed
+    fallback_refresh: 1000        # Emergency fallback refresh rate
     
   # Display settings
   display:
@@ -99,6 +159,18 @@ ui:
     show_spinner: true       # Show activity spinner
     word_wrap: true          # Word wrap long lines
     syntax_highlight: true   # Syntax highlighting for code
+    
+  # Text formatting
+  formatting:
+    percentage_format: "%5.1f%%"  # How to display percentages
+    decimal_places: 1             # Precision for metrics
+    unit_spacing: " "             # Space between value and unit
+    time_format: "15:04:05"       # Time display format
+    # Debug log dimensions
+    debug_component_width: 35     # Width for debug component logs
+    debug_component_height: 12    # Height for debug component logs
+    debug_viewport_width: 50      # Width for debug viewport logs
+    debug_viewport_height: 10     # Height for debug viewport logs
     
   # Workflow settings
   workflow:

@@ -20,24 +20,11 @@ Security and scanning configuration:
 - **Detection**: Severity levels, patterns, heuristics
 - **Reporting**: Output formats, redaction settings
 
-### network.yaml
-Network-related settings:
-- **Proxy**: HTTP/HTTPS/SOCKS5 proxy configuration
-- **DNS**: Custom DNS servers, timeouts
-- **Interfaces**: Network interface selection, IPv4/IPv6 preference
-
 ### output.yaml
 Output and logging configuration:
 - **Directory**: Where to save scan results
 - **Formats**: Enable/disable output formats (JSON, CSV, HTML, PDF)
 - **Logging**: Log levels, rotation, compression
-- **Persistence**: Database settings, auto-save intervals
-
-### api.yaml
-External API integrations:
-- **Keys**: API keys for services (use environment variables for security)
-- **Endpoints**: API URLs for various services
-- **Rate Limits**: Request throttling and backoff settings
 
 ## Usage
 
@@ -45,11 +32,7 @@ All configuration files are automatically loaded when IPCrawler starts. If a con
 
 ### Environment Variables
 
-For sensitive data like API keys, use environment variables:
-```bash
-export SHODAN_API_KEY="your-key-here"
-export CENSYS_API_KEY="your-key-here"
-```
+Environment variables can be used to override configuration values.
 
 ### Modifying Settings
 
@@ -82,16 +65,7 @@ ui:
       scroll_speed: 5        # Faster scrolling
 ```
 
-### Example: Configuring Proxy
 
-Edit `network.yaml`:
-```yaml
-network:
-  proxy:
-    enabled: true
-    http: "http://proxy.company.com:8080"
-    https: "https://proxy.company.com:8080"
-```
 
 ## Priority
 

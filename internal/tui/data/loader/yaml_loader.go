@@ -22,16 +22,39 @@ type WorkflowData struct {
 
 // LoadWorkflowDescriptions loads and parses the workflows/descriptions.yaml file
 func LoadWorkflowDescriptions(basePath string) (*WorkflowData, error) {
-	yamlPath := filepath.Join(basePath, "workflows", "descriptions.yaml")
+	// Try multiple possible locations for the workflow file
+	possiblePaths := []string{
+		filepath.Join(basePath, "workflows", "descriptions.yaml"),
+		filepath.Join(basePath, "..", "workflows", "descriptions.yaml"),
+		filepath.Join("workflows", "descriptions.yaml"),
+		filepath.Join(".", "workflows", "descriptions.yaml"),
+	}
 	
-	data, err := os.ReadFile(yamlPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read workflows file: %w", err)
+	// If basePath is empty, start with current directory
+	if basePath == "" {
+		basePath = "."
+	}
+	
+	var data []byte
+	var err error
+	var foundPath string
+	
+	// Try each path until we find the file
+	for _, path := range possiblePaths {
+		data, err = os.ReadFile(path)
+		if err == nil {
+			foundPath = path
+			break
+		}
+	}
+	
+	if data == nil {
+		return nil, fmt.Errorf("failed to find workflows/descriptions.yaml in any expected location")
 	}
 
 	var workflows map[string]WorkflowConfig
 	if err := yaml.Unmarshal(data, &workflows); err != nil {
-		return nil, fmt.Errorf("failed to parse workflows YAML: %w", err)
+		return nil, fmt.Errorf("failed to parse workflows YAML from %s: %w", foundPath, err)
 	}
 
 	return &WorkflowData{Workflows: workflows}, nil

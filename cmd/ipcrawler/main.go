@@ -115,7 +115,17 @@ type systemMetrics struct {
 	LastUpdate         time.Time
 	Hostname           string
 	Platform           string
+
+	// Smooth animation values
+	AnimatedCPU        float64
+	AnimatedMemory     float64
+	AnimatedDisk       float64
+	AnimationStartTime time.Time
+	BaselineGoroutines int // Baseline goroutine count (excluding monitoring)
 }
+
+// systemMetricsMsg is sent when system metrics are updated asynchronously
+type systemMetricsMsg systemMetrics
 
 // List item implementations for bubbles/list component
 
@@ -148,7 +158,8 @@ func (i workflowItem) Title() string {
 	executedMark := ""
 	if i.executed {
 		// Use a checkmark for executed workflows
-		executedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82")) // Green
+		// Executed workflow styling (success color from ui.yaml)
+		executedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575"))
 		executedMark = " " + executedStyle.Render("✓")
 	}
 
@@ -157,7 +168,8 @@ func (i workflowItem) Title() string {
 func (i workflowItem) Description() string {
 	// Show tool count and executed status more concisely
 	if i.executed {
-		executedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82")) // Green
+		// Executed workflow styling (success color from ui.yaml)
+		executedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575"))
 		return fmt.Sprintf("%s (%d tools) %s", i.description, i.toolCount, executedStyle.Render("[EXECUTED]"))
 	}
 	return fmt.Sprintf("%s (%d tools)", i.description, i.toolCount)
@@ -240,22 +252,22 @@ func newModel() *model {
 
 	// Create viewports for output and logs using config settings
 	liveOutputVp := viewport.New(50, 10)
-	// Apply config settings
-	if cfg.UI.Components.Viewport.ScrollSpeed > 0 {
-		liveOutputVp.MouseWheelDelta = cfg.UI.Components.Viewport.ScrollSpeed
+	// Apply viewport config settings
+	if cfg.UI.Components.Viewport.MouseWheelDelta > 0 {
+		liveOutputVp.MouseWheelDelta = cfg.UI.Components.Viewport.MouseWheelDelta
 	} else {
-		liveOutputVp.MouseWheelDelta = 3 // Default faster scrolling
+		liveOutputVp.MouseWheelDelta = 3 // Fallback if not configured
 	}
 	if cfg.UI.Components.Viewport.HighPerformance {
 		liveOutputVp.HighPerformanceRendering = true
 	}
 
 	logsVp := viewport.New(50, 10)
-	// Apply config settings
-	if cfg.UI.Components.Viewport.ScrollSpeed > 0 {
-		logsVp.MouseWheelDelta = cfg.UI.Components.Viewport.ScrollSpeed
+	// Apply viewport config settings
+	if cfg.UI.Components.Viewport.MouseWheelDelta > 0 {
+		logsVp.MouseWheelDelta = cfg.UI.Components.Viewport.MouseWheelDelta
 	} else {
-		logsVp.MouseWheelDelta = 3 // Default faster scrolling
+		logsVp.MouseWheelDelta = 3 // Fallback if not configured
 	}
 	if cfg.UI.Components.Viewport.HighPerformance {
 		logsVp.HighPerformanceRendering = true
@@ -418,18 +430,18 @@ func newModel() *model {
 	}
 
 	// Define color styles for direct log formatting (no buffer to avoid losing colors)
-	debugStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")) // Gray
-	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))   // Blue
-	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))  // Orange
-	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")) // Red
+	debugStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.UI.Theme.Colors["debug"]))
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.UI.Theme.Colors["info"]))
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.UI.Theme.Colors["warning"]))
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.UI.Theme.Colors["error"]))
 
-	timestampStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("243"))        // Gray
-	prefixStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("69")) // Purple
-	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("75"))               // Light blue
-	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255"))            // White
-	workflowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("120"))         // Green
-	countStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))            // Yellow
-	progressStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82"))          // Bright green
+	timestampStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.UI.Theme.Colors["timestamp"]))
+	prefixStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(cfg.UI.Theme.Colors["prefix"]))
+	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.UI.Theme.Colors["key"]))
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.UI.Theme.Colors["value"]))
+	workflowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.UI.Theme.Colors["workflow"]))
+	countStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.UI.Theme.Colors["count"]))
+	progressStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.UI.Theme.Colors["progress"]))
 
 	// Helper function to create colored log entries
 	createLogEntry := func(level, message string, keyvals ...interface{}) string {
@@ -569,26 +581,14 @@ func newModel() *model {
 		createLogEntry("INFO", "Core tools verified - system ready for operation"),
 		createLogEntry("ERROR", "Tool validation failed for deprecated scanner", "err", "version incompatible"),
 
-		createLogEntry("DEBUG", "Database connection testing..."),
-		createLogEntry("DEBUG", "Connecting to results database", "host", "localhost", "port", 5432),
-		createLogEntry("DEBUG", "Validating schema version", "current", "1.2.3", "required", "1.2.0"),
-		createLogEntry("DEBUG", "Testing write permissions", "table", "scan_results"),
-		createLogEntry("DEBUG", "Testing read permissions", "table", "workflow_history"),
-		createLogEntry("INFO", "Database connectivity established"),
+		// Database-related logs removed
 
 		createLogEntry("DEBUG", "Session management initialization..."),
 		createLogEntry("DEBUG", "Generating session ID", "session", "abc123def456"),
 		createLogEntry("DEBUG", "Setting session timeout", "timeout", "2h"),
-		createLogEntry("DEBUG", "Configuring auto-save", "interval", "5m"),
+		// Auto-save log removed
 		createLogEntry("DEBUG", "Loading previous session state", "found", false),
 		createLogEntry("INFO", "New session created successfully"),
-
-		createLogEntry("DEBUG", "API integration testing..."),
-		createLogEntry("DEBUG", "Testing VirusTotal API", "status", "authenticated"),
-		createLogEntry("DEBUG", "Testing Shodan API", "status", "authenticated"),
-		createLogEntry("DEBUG", "Testing SecurityTrails API", "status", "rate_limited"),
-		createLogEntry("WARN", "Some API services have limitations", "limited_apis", 1),
-		createLogEntry("INFO", "API integrations configured"),
 
 		createLogEntry("DEBUG", "Workflow engine startup..."),
 		createLogEntry("DEBUG", "Loading workflow executor", "max_concurrent", 3),
@@ -622,7 +622,7 @@ func newModel() *model {
 		createLogEntry("INFO", "System health: 100% operational", "progress", "100%"),
 		createLogEntry("DEBUG", "Ready to accept workflow execution requests"),
 		createLogEntry("INFO", "Use ↑↓ keys to scroll logs when focused on this window"),
-		createLogEntry("WARN", "Remember to configure API keys for enhanced functionality"),
+
 		createLogEntry("ERROR", "Demo mode active - some features limited", "err", "no production license"),
 	}...)
 
@@ -636,13 +636,15 @@ func newModel() *model {
 	// Create spinner
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	// Spinner styling
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.UI.Theme.Colors["spinner"]))
 
 	// Create list delegates with custom styling
 	delegate := list.NewDefaultDelegate()
+	// List selection styling
 	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
-		Foreground(lipgloss.Color("69")).
-		BorderLeftForeground(lipgloss.Color("69"))
+		Foreground(lipgloss.Color(cfg.UI.Theme.Colors["list_selected"])).
+		BorderLeftForeground(lipgloss.Color(cfg.UI.Theme.Colors["list_selected"]))
 	delegate.Styles.SelectedDesc = delegate.Styles.SelectedTitle.Copy()
 
 	// Build workflow tree items (for multi-selection)
@@ -679,12 +681,16 @@ func newModel() *model {
 	workflowTreeList.SetShowStatusBar(cfg.UI.Components.List.ShowStatusBar)
 	workflowTreeList.SetShowPagination(false)
 	workflowTreeList.SetFilteringEnabled(cfg.UI.Components.List.FilteringEnabled)
+	// Remove background from title
+	workflowTreeList.Styles.Title = workflowTreeList.Styles.Title.Background(lipgloss.NoColor{})
 
 	scanOverviewList := list.New(executionQueueItems, delegate, 0, 0)
 	scanOverviewList.Title = "Execution Queue"
 	scanOverviewList.SetShowStatusBar(cfg.UI.Components.List.ShowStatusBar)
 	scanOverviewList.SetShowPagination(false)
 	scanOverviewList.SetFilteringEnabled(cfg.UI.Components.List.FilteringEnabled)
+	// Remove background from title
+	scanOverviewList.Styles.Title = scanOverviewList.Styles.Title.Background(lipgloss.NoColor{})
 
 	m := &model{
 		config:            cfg,
@@ -714,7 +720,8 @@ func newModel() *model {
 				BottomLeft:  "╰",
 				BottomRight: "╯",
 			}).
-			BorderForeground(lipgloss.Color("240")).
+			// Card border styling
+			BorderForeground(lipgloss.Color(cfg.UI.Theme.Colors["border"])).
 			Padding(0, 1),
 		focusedCardStyle: lipgloss.NewStyle().
 			Border(lipgloss.Border{
@@ -727,7 +734,8 @@ func newModel() *model {
 				BottomLeft:  "╚",
 				BottomRight: "╝",
 			}).
-			BorderForeground(lipgloss.Color("86")). // Bright cyan for maximum visibility
+			// Focused card border styling
+			BorderForeground(lipgloss.Color(cfg.UI.Theme.Colors["focused"])). // Configurable focused color
 			Padding(0, 1),
 		titleStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color(cfg.UI.Theme.Colors["accent"])).
@@ -737,7 +745,7 @@ func newModel() *model {
 			Foreground(lipgloss.Color(cfg.UI.Theme.Colors["secondary"])).
 			Align(lipgloss.Right),
 		dimStyle: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240")),
+			Foreground(lipgloss.Color(cfg.UI.Theme.Colors["secondary"])),
 	}
 
 	// Initialize with first system metrics update
@@ -746,7 +754,86 @@ func newModel() *model {
 	return m
 }
 
-// updateSystemMetrics collects real system information using gopsutil
+// updateSystemMetricsAsync starts a background goroutine to collect system metrics
+func (m *model) updateSystemMetricsAsync() tea.Cmd {
+	return func() tea.Msg {
+		// Create a copy of current metrics to work with
+		newMetrics := m.perfData
+
+		// CPU information
+		cpuPercent, err := cpu.Percent(time.Second, false)
+		if err == nil && len(cpuPercent) > 0 {
+			newMetrics.CPUPercent = cpuPercent[0]
+		}
+
+		cpuCounts, err := cpu.Counts(true)
+		if err == nil {
+			newMetrics.CPUCores = cpuCounts
+		}
+
+		// Memory information
+		memInfo, err := mem.VirtualMemory()
+		if err == nil {
+			newMetrics.MemoryUsed = memInfo.Used
+			newMetrics.MemoryTotal = memInfo.Total
+			newMetrics.MemoryPercent = memInfo.UsedPercent
+		}
+
+		// Disk information (root filesystem)
+		diskInfo, err := disk.Usage("/")
+		if err == nil {
+			newMetrics.DiskUsed = diskInfo.Used
+			newMetrics.DiskTotal = diskInfo.Total
+			newMetrics.DiskPercent = diskInfo.UsedPercent
+		}
+
+		// Network information (simple rates only)
+		netIO, err := net.IOCounters(false)
+		if err == nil && len(netIO) > 0 {
+			newSent := netIO[0].BytesSent
+			newRecv := netIO[0].BytesRecv
+
+			// Calculate simple rates if we have previous data
+			if newMetrics.NetworkSent > 0 && newMetrics.NetworkRecv > 0 {
+				timeDiff := time.Since(newMetrics.LastUpdate).Seconds()
+				if timeDiff > 0 {
+					newMetrics.NetworkSentRate = uint64(float64(newSent-newMetrics.NetworkSent) / timeDiff)
+					newMetrics.NetworkRecvRate = uint64(float64(newRecv-newMetrics.NetworkRecv) / timeDiff)
+				}
+			}
+
+			newMetrics.NetworkSent = newSent
+			newMetrics.NetworkRecv = newRecv
+			// Clear history for simpler display (no sparklines)
+			newMetrics.NetworkSentHistory = nil
+			newMetrics.NetworkRecvHistory = nil
+		}
+
+		// Host information
+		hostInfo, err := host.Info()
+		if err == nil {
+			newMetrics.Uptime = hostInfo.Uptime
+			newMetrics.Hostname = hostInfo.Hostname
+			newMetrics.Platform = hostInfo.Platform
+		}
+
+		// Goroutines - establish baseline if not set, then show stable count
+		currentGoroutines := runtime.NumGoroutine()
+		if newMetrics.BaselineGoroutines == 0 {
+			// First measurement - establish baseline (subtract 1 for this goroutine)
+			newMetrics.BaselineGoroutines = currentGoroutines - 1
+			newMetrics.Goroutines = newMetrics.BaselineGoroutines
+		} else {
+			// Show stable baseline count (filter out temporary monitoring goroutines)
+			newMetrics.Goroutines = newMetrics.BaselineGoroutines
+		}
+		newMetrics.LastUpdate = time.Now()
+
+		return systemMetricsMsg(newMetrics)
+	}
+}
+
+// updateSystemMetrics collects real system information using gopsutil (DEPRECATED - use async version)
 func (m *model) updateSystemMetrics() {
 	// CPU information
 	cpuPercent, err := cpu.Percent(time.Second, false)
@@ -848,18 +935,46 @@ func createProgressBar(percent float64, width int, filled, empty string) string 
 	return bar
 }
 
+// smoothHistoryData applies a simple moving average to reduce sparkline flicker
+func smoothHistoryData(data []uint64, windowSize int) []uint64 {
+	if len(data) < windowSize || windowSize <= 1 {
+		return data
+	}
+
+	smoothed := make([]uint64, len(data))
+
+	// Copy first few elements as-is
+	for i := 0; i < windowSize-1; i++ {
+		smoothed[i] = data[i]
+	}
+
+	// Apply moving average
+	for i := windowSize - 1; i < len(data); i++ {
+		var sum uint64
+		for j := i - windowSize + 1; j <= i; j++ {
+			sum += data[j]
+		}
+		smoothed[i] = sum / uint64(windowSize)
+	}
+
+	return smoothed
+}
+
 // createSparkline generates a sparkline from historical data
 func createSparkline(data []uint64, width int) string {
 	if len(data) == 0 || width <= 0 {
 		return strings.Repeat(" ", width)
 	}
 
+	// Apply smoothing to reduce flicker (3-point moving average)
+	smoothedData := smoothHistoryData(data, 3)
+
 	// Sparkline characters from lowest to highest
 	sparkChars := []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
 
 	// Find min and max values for scaling
-	var min, max uint64 = data[0], data[0]
-	for _, val := range data {
+	var min, max uint64 = smoothedData[0], smoothedData[0]
+	for _, val := range smoothedData {
 		if val < min {
 			min = val
 		}
@@ -875,14 +990,14 @@ func createSparkline(data []uint64, width int) string {
 
 	// Take the last 'width' data points
 	startIdx := 0
-	if len(data) > width {
-		startIdx = len(data) - width
+	if len(smoothedData) > width {
+		startIdx = len(smoothedData) - width
 	}
 
 	var result strings.Builder
-	for i := startIdx; i < len(data) && result.Len() < width; i++ {
+	for i := startIdx; i < len(smoothedData) && result.Len() < width; i++ {
 		// Scale the value to sparkline character range
-		normalized := float64(data[i]-min) / float64(max-min)
+		normalized := float64(smoothedData[i]-min) / float64(max-min)
 		charIndex := int(normalized * float64(len(sparkChars)-1))
 		if charIndex >= len(sparkChars) {
 			charIndex = len(sparkChars) - 1
@@ -917,6 +1032,64 @@ func formatNetworkRate(bytesPerSec uint64) string {
 	return fmt.Sprintf("%.1f %cB/s", float64(bytesPerSec)/float64(div), "KMGTPE"[exp])
 }
 
+// smoothInterpolate provides smooth transitions between values using easing
+func smoothInterpolate(start, end, progress float64) float64 {
+	if progress >= 1.0 {
+		return end
+	}
+	if progress <= 0.0 {
+		return start
+	}
+
+	// Use easeOutCubic for smooth deceleration
+	// Formula: 1 - (1 - t)^3
+	easedProgress := 1 - (1-progress)*(1-progress)*(1-progress)
+	return start + (end-start)*easedProgress
+}
+
+// smoothInterpolateUint64 provides smooth transitions for uint64 values (like network rates)
+func smoothInterpolateUint64(start, end uint64, factor float64) uint64 {
+	if factor >= 1.0 {
+		return end
+	}
+	if factor <= 0.0 {
+		return start
+	}
+
+	// Use exponential smoothing for network rates to reduce flicker
+	// Formula: newValue = oldValue + factor * (newValue - oldValue)
+	diff := int64(end) - int64(start)
+	smoothed := int64(start) + int64(float64(diff)*factor)
+
+	if smoothed < 0 {
+		return 0
+	}
+	return uint64(smoothed)
+}
+
+// updateAnimatedValues smoothly transitions metrics to new values
+func (m *model) updateAnimatedValues() {
+	// Animation speed for CPU/Memory/Disk (smooth and stable)
+	animationFactor := 0.15
+
+	// Update animated values with smooth interpolation
+	m.perfData.AnimatedCPU = smoothInterpolate(m.perfData.AnimatedCPU, m.perfData.CPUPercent, animationFactor)
+	m.perfData.AnimatedMemory = smoothInterpolate(m.perfData.AnimatedMemory, m.perfData.MemoryPercent, animationFactor)
+	m.perfData.AnimatedDisk = smoothInterpolate(m.perfData.AnimatedDisk, m.perfData.DiskPercent, animationFactor)
+
+	// Network rates removed for simplicity (no longer animated)
+}
+
+// getThemeColor gets a color from the theme config with fallback
+func (m *model) getThemeColor(colorName, fallback string) lipgloss.Color {
+	if m.config != nil && m.config.UI.Theme.Colors != nil {
+		if color, exists := m.config.UI.Theme.Colors[colorName]; exists && color != "" {
+			return lipgloss.Color(color)
+		}
+	}
+	return lipgloss.Color(fallback)
+}
+
 func (m *model) Init() tea.Cmd {
 	return m.spinner.Tick
 }
@@ -930,6 +1103,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.updateSizes()
+		if !m.ready {
+			m.ready = true
+		}
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -1063,13 +1239,45 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case systemMetricsMsg:
+		// Received updated system metrics from background goroutine
+		newMetrics := systemMetrics(msg)
+
+		// Initialize animated values if this is the first update
+		if m.perfData.AnimationStartTime.IsZero() {
+			newMetrics.AnimatedCPU = newMetrics.CPUPercent
+			newMetrics.AnimatedMemory = newMetrics.MemoryPercent
+			newMetrics.AnimatedDisk = newMetrics.DiskPercent
+		} else {
+			// Preserve current animated values for smooth transition
+			newMetrics.AnimatedCPU = m.perfData.AnimatedCPU
+			newMetrics.AnimatedMemory = m.perfData.AnimatedMemory
+			newMetrics.AnimatedDisk = m.perfData.AnimatedDisk
+			// Preserve baseline goroutine count
+			if newMetrics.BaselineGoroutines == 0 && m.perfData.BaselineGoroutines > 0 {
+				newMetrics.BaselineGoroutines = m.perfData.BaselineGoroutines
+				newMetrics.Goroutines = m.perfData.BaselineGoroutines
+			}
+		}
+		newMetrics.AnimationStartTime = time.Now()
+		m.perfData = newMetrics
+
 	case spinner.TickMsg:
 		m.spinner, cmd = m.spinner.Update(msg)
 		cmds = append(cmds, cmd)
 
-		// Update system metrics every 3 seconds
-		if time.Since(m.perfData.LastUpdate) >= 3*time.Second {
-			m.updateSystemMetrics()
+		// Update animated values for smooth transitions
+		m.updateAnimatedValues()
+
+		// Update system metrics at configurable interval (non-blocking)
+		// Use configurable refresh interval
+		refreshMs := m.config.UI.Components.Status.RefreshMs
+		if refreshMs == 0 {
+			refreshMs = 1500 // fallback
+		}
+		refreshInterval := time.Duration(refreshMs) * time.Millisecond
+		if time.Since(m.perfData.LastUpdate) >= refreshInterval {
+			cmds = append(cmds, m.updateSystemMetricsAsync())
 		}
 
 		// Simulate tool execution progress
@@ -1130,9 +1338,31 @@ func (m *model) View() string {
 		return "Initializing..."
 	}
 
-	// Create title
-	title := m.titleStyle.Render("IPCrawler TUI - Dynamic Cards Dashboard")
-	title = lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render(title)
+	// Create stylized title with enhanced formatting
+	titleText := "IPCrawler"
+	subtitleText := "smart automatic reconnaissance"
+
+	// Main title with gradient-like styling
+	// Main title styling
+	mainTitle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.config.UI.Theme.Colors["info"])).
+		Bold(true).
+		Render(titleText)
+
+	// Subtitle styling
+	subtitle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.config.UI.Theme.Colors["timestamp"])).
+		Italic(true).
+		Render(subtitleText)
+
+	// Separator styling
+	separator := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.config.UI.Theme.Colors["secondary"])).
+		Render(" • ")
+
+	// Full title line
+	fullTitle := lipgloss.JoinHorizontal(lipgloss.Left, mainTitle, separator, subtitle)
+	title := lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render(fullTitle)
 
 	// Create help with focus-specific instructions
 	var helpText string
@@ -1171,12 +1401,13 @@ func (m *model) View() string {
 	executionQueue := m.renderScanOverviewCard()
 	tools := m.renderToolsCard()
 	perf := m.renderPerfCard()
-	topRow := lipgloss.JoinHorizontal(lipgloss.Top, workflowSelection, "  ", executionQueue, "  ", tools, "  ", perf)
+	gap := strings.Repeat(" ", m.config.UI.Layout.Cards.Spacing)
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, workflowSelection, gap, executionQueue, gap, tools, gap, perf)
 
 	// Bottom Row: Live Output and Logs (side by side)
 	liveOutput := m.renderOutputCard()
 	logs := m.renderLogsCard()
-	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, liveOutput, "  ", logs)
+	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, liveOutput, gap, logs)
 
 	// Combine all
 	content := lipgloss.JoinVertical(lipgloss.Left,
@@ -1194,10 +1425,11 @@ func (m *model) View() string {
 
 func (m *model) renderWorkflowTreeCard() string {
 	style := m.cardStyle
-	titleColor := lipgloss.Color("240")
+	// Card title styling
+	titleColor := m.getThemeColor("secondary", "240")
 	if m.focus == workflowTreeFocus {
 		style = m.focusedCardStyle
-		titleColor = lipgloss.Color("86") // Bright cyan when focused
+		titleColor = m.getThemeColor("focused", "86") // Bright cyan when focused
 	}
 
 	// Update list title color dynamically
@@ -1209,10 +1441,11 @@ func (m *model) renderWorkflowTreeCard() string {
 
 func (m *model) renderScanOverviewCard() string {
 	style := m.cardStyle
-	titleColor := lipgloss.Color("240")
+	// Card title styling
+	titleColor := m.getThemeColor("secondary", "240")
 	if m.focus == scanOverviewFocus {
 		style = m.focusedCardStyle
-		titleColor = lipgloss.Color("86") // Bright cyan when focused
+		titleColor = m.getThemeColor("focused", "86") // Bright cyan when focused
 	}
 
 	// Update list title color dynamically
@@ -1228,8 +1461,13 @@ func (m *model) renderOutputCard() string {
 		style = m.focusedCardStyle
 	}
 
-	// Calculate width for side-by-side layout (split bottom row)
-	outputWidth := (m.width - 6 - 4) / 2 // Split width, account for spacing and scroll bar
+	// Calculate width for side-by-side layout based on top-row card width to avoid rounding drift
+	gapWidth := m.config.UI.Layout.Cards.Spacing
+	// Set bottom-left content width so its TOTAL width equals: card1 + gap + card2 (top row)
+	// Each card total = content(m.cardWidth) + 4 (borders+padding)
+	// So left total = 2*(m.cardWidth+4) + gapWidth → content width = left total - 4
+	outputWidth := 2*m.cardWidth + gapWidth + 2
+	// Width is derived from top-row geometry to maintain perfect alignment
 
 	// Card header with title and scroll info
 	titleText := "Live Output"
@@ -1238,7 +1476,8 @@ func (m *model) renderOutputCard() string {
 	}
 	title := m.titleStyle.Render(titleText)
 	scrollInfo := m.headerStyle.Render(fmt.Sprintf("%.1f%%", m.outputViewport.ScrollPercent()*100))
-	titleWidth := outputWidth - 4
+	// Inner content width equals card width minus 2 border columns
+	titleWidth := outputWidth - 2
 	header := lipgloss.JoinHorizontal(lipgloss.Left, title,
 		strings.Repeat(" ", titleWidth-lipgloss.Width(title)-lipgloss.Width(scrollInfo)), scrollInfo)
 
@@ -1261,8 +1500,11 @@ func (m *model) renderLogsCard() string {
 		style = m.focusedCardStyle
 	}
 
-	// Calculate width for side-by-side layout (split bottom row)
-	logsWidth := (m.width - 6 - 4) / 2 // Split width, account for spacing and scroll bar
+	// Calculate complementary width to the left card so seams align with the top row
+	gapWidth := m.config.UI.Layout.Cards.Spacing
+	// Mirror the same calculation for the right card to keep totals consistent
+	// Right content width = 2*(m.cardWidth+4) + gapWidth - 4
+	logsWidth := 2*m.cardWidth + gapWidth + 2
 
 	// Card header with title and scroll info
 	titleText := "Logs"
@@ -1271,7 +1513,8 @@ func (m *model) renderLogsCard() string {
 	}
 	title := m.titleStyle.Render(titleText)
 	scrollInfo := m.headerStyle.Render(fmt.Sprintf("%.1f%%", m.logsViewport.ScrollPercent()*100))
-	titleWidth := logsWidth - 4
+	// Inner content width equals card width minus 2 border columns
+	titleWidth := logsWidth - 2
 	header := lipgloss.JoinHorizontal(lipgloss.Left, title,
 		strings.Repeat(" ", titleWidth-lipgloss.Width(title)-lipgloss.Width(scrollInfo)), scrollInfo)
 
@@ -1295,9 +1538,10 @@ func (m *model) renderToolsCard() string {
 	}
 
 	// Card header with title
-	titleColor := lipgloss.Color("240")
+	// Card title styling
+	titleColor := m.getThemeColor("secondary", "240")
 	if m.focus == toolsFocus {
-		titleColor = lipgloss.Color("86") // Bright cyan when focused
+		titleColor = m.getThemeColor("focused", "86") // Bright cyan when focused
 	}
 	title := m.titleStyle.Foreground(titleColor).Width(m.cardWidth - 2).Render("Executing")
 
@@ -1314,17 +1558,18 @@ func (m *model) renderToolsCard() string {
 			} else {
 				// Tool entry with status indicator
 				status := "[DONE]"
-				statusColor := lipgloss.Color("86") // Cyan for completed
+				// Tool status styling
+				statusColor := m.getThemeColor("completed", "86")
 
 				if tool.Status == "running" {
 					status = "[RUN] " + m.spinner.View()
-					statusColor = lipgloss.Color("214") // Orange for running
+					statusColor = m.getThemeColor("running", "214")
 				} else if tool.Status == "pending" {
 					status = "[WAIT]"
-					statusColor = lipgloss.Color("240") // Gray for pending
+					statusColor = m.getThemeColor("pending", "240")
 				} else if tool.Status == "failed" {
 					status = "[FAIL]"
-					statusColor = lipgloss.Color("196") // Red for failed
+					statusColor = m.getThemeColor("failed", "196")
 				}
 
 				statusStyled := lipgloss.NewStyle().Foreground(statusColor).Render(status)
@@ -1345,21 +1590,22 @@ func (m *model) renderToolsCard() string {
 
 func (m *model) renderPerfCard() string {
 	style := m.cardStyle
-	titleColor := lipgloss.Color("240")
+	// Card title styling
+	titleColor := m.getThemeColor("secondary", "240")
 	if m.focus == perfFocus {
 		style = m.focusedCardStyle
-		titleColor = lipgloss.Color("86") // Bright cyan when focused
+		titleColor = m.getThemeColor("focused", "86") // Bright cyan when focused
 	}
 
 	// Card header with title
 	title := m.titleStyle.Foreground(titleColor).Width(m.cardWidth - 2).Render("System Monitor")
 
-	// Color styles for different metrics
-	cpuStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))  // Orange
-	memStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))   // Blue
-	diskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("120")) // Green
-	netStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("201"))  // Magenta
-	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("243")) // Gray
+	// System monitoring styling
+	cpuStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("cpu", "214"))
+	memStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("memory", "39"))
+	diskStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("disk", "120"))
+	netStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("network", "201"))
+	infoStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("secondary", "243"))
 
 	// Progress bar width (adjust based on card width)
 	barWidth := m.cardWidth - 12 // Leave space for labels and percentages
@@ -1367,10 +1613,10 @@ func (m *model) renderPerfCard() string {
 		barWidth = 8
 	}
 
-	// Create progress bars with colors
-	cpuBar := createProgressBar(m.perfData.CPUPercent, barWidth, "█", "░")
-	memBar := createProgressBar(m.perfData.MemoryPercent, barWidth, "█", "░")
-	diskBar := createProgressBar(m.perfData.DiskPercent, barWidth, "█", "░")
+	// Create progress bars with colors using animated values for smooth transitions
+	cpuBar := createProgressBar(m.perfData.AnimatedCPU, barWidth, "█", "░")
+	memBar := createProgressBar(m.perfData.AnimatedMemory, barWidth, "█", "░")
+	diskBar := createProgressBar(m.perfData.AnimatedDisk, barWidth, "█", "░")
 
 	// Format uptime
 	uptimeHours := m.perfData.Uptime / 3600
@@ -1379,43 +1625,34 @@ func (m *model) renderPerfCard() string {
 	// Build content with visual elements
 	var contentLines []string
 
-	// CPU section
+	// CPU section with smooth animated values
 	contentLines = append(contentLines,
 		cpuStyle.Render(fmt.Sprintf("CPU (%d cores)", m.perfData.CPUCores)),
-		fmt.Sprintf("%s %5.1f%%", cpuStyle.Render(cpuBar), m.perfData.CPUPercent),
+		fmt.Sprintf("%s %5.1f%%", cpuStyle.Render(cpuBar), m.perfData.AnimatedCPU),
 		"",
 	)
 
-	// Memory section
+	// Memory section with smooth animated values
 	contentLines = append(contentLines,
 		memStyle.Render("Memory"),
-		fmt.Sprintf("%s %5.1f%%", memStyle.Render(memBar), m.perfData.MemoryPercent),
+		fmt.Sprintf("%s %5.1f%%", memStyle.Render(memBar), m.perfData.AnimatedMemory),
 		infoStyle.Render(fmt.Sprintf("%s / %s", formatBytes(m.perfData.MemoryUsed), formatBytes(m.perfData.MemoryTotal))),
 		"",
 	)
 
-	// Disk section
+	// Disk section with smooth animated values
 	contentLines = append(contentLines,
 		diskStyle.Render("Disk"),
-		fmt.Sprintf("%s %5.1f%%", diskStyle.Render(diskBar), m.perfData.DiskPercent),
+		fmt.Sprintf("%s %5.1f%%", diskStyle.Render(diskBar), m.perfData.AnimatedDisk),
 		infoStyle.Render(fmt.Sprintf("%s / %s", formatBytes(m.perfData.DiskUsed), formatBytes(m.perfData.DiskTotal))),
 		"",
 	)
 
-	// Network section with sparklines
-	sparklineWidth := barWidth - 3 // Leave space for rate display
-	if sparklineWidth < 6 {
-		sparklineWidth = 6
-	}
-
-	txSparkline := createSparkline(m.perfData.NetworkSentHistory, sparklineWidth)
-	rxSparkline := createSparkline(m.perfData.NetworkRecvHistory, sparklineWidth)
-
+	// Network section (current rates)
 	contentLines = append(contentLines,
-		netStyle.Render("Network Traffic"),
-		fmt.Sprintf("TX %s %s", netStyle.Render(txSparkline), infoStyle.Render(formatNetworkRate(m.perfData.NetworkSentRate))),
-		fmt.Sprintf("RX %s %s", netStyle.Render(rxSparkline), infoStyle.Render(formatNetworkRate(m.perfData.NetworkRecvRate))),
-		infoStyle.Render(fmt.Sprintf("Total: %s up / %s down", formatBytes(m.perfData.NetworkSent), formatBytes(m.perfData.NetworkRecv))),
+		netStyle.Render("Network"),
+		infoStyle.Render(fmt.Sprintf("UP:   %s", formatNetworkRate(m.perfData.NetworkSentRate))),
+		infoStyle.Render(fmt.Sprintf("DOWN: %s", formatNetworkRate(m.perfData.NetworkRecvRate))),
 		"",
 	)
 
@@ -1444,34 +1681,80 @@ func (m *model) updateSizes() {
 		return
 	}
 
-	// Calculate card dimensions for horizontal layout (4 cards across)
-	// Account for borders, spacing, and scroll bar space
-	scrollBarSpace := 4                               // Extra space for scroll bars
-	m.cardWidth = (m.width - 12 - scrollBarSpace) / 4 // 4 cards horizontal with spacing and scroll bar
-	m.cardHeight = (m.height - 10) / 2                // 2 rows: top cards + output
+	// Calculate card dimensions using config values
+	cards := m.config.UI.Layout.Cards
+	scrollBarSpace := cards.ScrollBarSpace
+	spacing := cards.Spacing
+	columns := cards.Columns
+	rows := cards.Rows
+	verticalOffset := cards.VerticalOffset
 
-	// Ensure reasonable minimums for readability but keep them compact
-	if m.cardWidth < 28 {
-		m.cardWidth = 28
+	// Guard against invalid or zero values from config
+	if columns <= 0 {
+		columns = 1
 	}
-	if m.cardHeight < 10 {
-		m.cardHeight = 10
+	if rows <= 0 {
+		rows = 1
+	}
+	if spacing < 0 {
+		spacing = 0
+	}
+	if scrollBarSpace < 0 {
+		scrollBarSpace = 0
+	}
+	if verticalOffset < 0 {
+		verticalOffset = 0
 	}
 
-	// Update list sizes (account for borders and padding)
-	listWidth := m.cardWidth - 4   // Subtract border and padding
-	listHeight := m.cardHeight - 4 // Subtract border and padding
+	// Compute available space safely (account for gaps between columns)
+	// For 4 cards with 2-space gaps: need 3 gaps * 2 spaces = 6 total spacing
+	totalSpacing := spacing * (columns - 1)
+	// Account for per-card horizontal chrome: 1 left pad + 1 right pad + 1 left border + 1 right border = 4
+	perCardChrome := 4
+	availableWidth := m.width - scrollBarSpace - totalSpacing - (columns * perCardChrome)
+	availableHeight := m.height - verticalOffset
+
+	// Ensure we have at least something to work with
+	if availableWidth < columns*cards.MinWidth {
+		availableWidth = columns * cards.MinWidth
+	}
+	if availableHeight < rows*cards.MinHeight {
+		availableHeight = rows * cards.MinHeight
+	}
+
+	// Use config-driven layout calculations with guards
+	m.cardWidth = availableWidth / columns
+	// Ensure non-negative after chrome subtraction
+	if m.cardWidth < 1 {
+		m.cardWidth = 1
+	}
+	m.cardHeight = availableHeight / rows
+
+	// Ensure reasonable minimums from config
+	if m.cardWidth < cards.MinWidth {
+		m.cardWidth = cards.MinWidth
+	}
+	if m.cardHeight < cards.MinHeight {
+		m.cardHeight = cards.MinHeight
+	}
+
+	// Update list sizes using config values
+	listConfig := m.config.UI.Components.List
+	listWidth := m.cardWidth - listConfig.BorderPadding
+	listHeight := m.cardHeight - listConfig.BorderPadding
 
 	if listWidth > 0 && listHeight > 0 {
 		m.workflowTreeList.SetSize(listWidth, listHeight)
 		m.scanOverviewList.SetSize(listWidth, listHeight)
 	}
 
-	// Update viewport sizes for side-by-side layout (live output and logs)
-	bottomCardWidth := (m.width - 6 - scrollBarSpace) / 2 // Split bottom row, account for scroll bar
-	viewportWidth := bottomCardWidth - 8                  // Account for card borders and padding
-	viewportHeight := m.cardHeight - 4
+	// Update viewport sizes using config values
+	viewportConfig := m.config.UI.Components.Viewport
+	splitWidth := int(float64(m.width-m.config.UI.Layout.Cards.Spacing-scrollBarSpace) * viewportConfig.SplitRatio)
+	viewportWidth := splitWidth - viewportConfig.BorderPadding
+	viewportHeight := m.cardHeight - viewportConfig.ContentPadding
 
+	// Reasonable minimums for viewport functionality
 	if viewportHeight < 8 {
 		viewportHeight = 8
 	}
@@ -1715,19 +1998,19 @@ func (m *model) updateLiveOutput() {
 
 // createColoredLogEntry creates a colored log entry for the model
 func (m *model) createColoredLogEntry(level, message string, keyvals ...interface{}) string {
-	// Define color styles
-	debugStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")) // Gray
-	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))   // Blue
-	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))  // Orange
-	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")) // Red
+	// Log styling with theme colors
+	debugStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("debug", "240"))
+	infoStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("info", "39"))
+	warnStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("warning", "214"))
+	errorStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("error", "196"))
 
-	timestampStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("243"))        // Gray
-	prefixStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("69")) // Purple
-	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("75"))               // Light blue
-	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255"))            // White
-	workflowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("120"))         // Green
-	countStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))            // Yellow
-	progressStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82"))          // Bright green
+	timestampStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("timestamp", "243"))
+	prefixStyle := lipgloss.NewStyle().Bold(true).Foreground(m.getThemeColor("prefix", "69"))
+	keyStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("key", "75"))
+	valueStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("value", "255"))
+	workflowStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("workflow", "120"))
+	countStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("count", "220"))
+	progressStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("progress", "82"))
 
 	timestamp := timestampStyle.Render(time.Now().Format("15:04:05"))
 	prefix := prefixStyle.Render("IPCrawler")
@@ -1947,7 +2230,7 @@ func runTUI() {
 	model.width = termWidth
 	model.height = termHeight
 	model.updateSizes()
-	model.ready = true
+	// ready flag will be set when WindowSizeMsg is received
 
 	// Run TUI with proper window size handling
 	p := tea.NewProgram(
