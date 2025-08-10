@@ -159,9 +159,17 @@ type FormattingConfig struct {
 
 // SecurityConfig for security.yaml
 type SecurityConfig struct {
-	Scanning  ScanningConfig  `mapstructure:"scanning"`
-	Detection DetectionConfig `mapstructure:"detection"`
-	Reporting ReportingConfig `mapstructure:"reporting"`
+	OSDetection bool                    `mapstructure:"os_detection"`
+	Execution   SecurityExecutionConfig `mapstructure:"execution"`
+	Scanning    ScanningConfig          `mapstructure:"scanning"`
+	Detection   DetectionConfig         `mapstructure:"detection"`
+	Reporting   ReportingConfig         `mapstructure:"reporting"`
+}
+
+type SecurityExecutionConfig struct {
+	ToolsRoot       string `mapstructure:"tools_root"`
+	ArgsValidation  bool   `mapstructure:"args_validation"`
+	ExecValidation  bool   `mapstructure:"exec_validation"`
 }
 
 type ScanningConfig struct {
@@ -195,12 +203,13 @@ type ReportingConfig struct {
 //
 // It also supports the legacy wrapper form under the "output" key via loadConfigFile.
 type OutputConfig struct {
-	Timestamp bool          `mapstructure:"timestamp"`
-	Info      LogSinkConfig `mapstructure:"info"`
-	Error     LogSinkConfig `mapstructure:"error"`
-	Warning   LogSinkConfig `mapstructure:"warning"`
-	Debug     LogSinkConfig `mapstructure:"debug"`
-	Raw       RawSinkConfig `mapstructure:"raw"`
+	Timestamp  bool          `mapstructure:"timestamp"`
+	TimeFormat string        `mapstructure:"time_format"`
+	Info       LogSinkConfig `mapstructure:"info"`
+	Error      LogSinkConfig `mapstructure:"error"`
+	Warning    LogSinkConfig `mapstructure:"warning"`
+	Debug      LogSinkConfig `mapstructure:"debug"`
+	Raw        RawSinkConfig `mapstructure:"raw"`
 }
 
 type LogSinkConfig struct {
@@ -456,6 +465,21 @@ func setUIDefaults(ui *UIConfig) {
 
 func setSecurityDefaults(sec *SecurityConfig) {
 	// Set minimal defaults if config file is missing
+	if !sec.OSDetection {
+		sec.OSDetection = true
+	}
+	
+	// Set defaults for execution settings
+	if sec.Execution.ToolsRoot == "" {
+		sec.Execution.ToolsRoot = "./tools/bin"
+	}
+	if !sec.Execution.ArgsValidation {
+		sec.Execution.ArgsValidation = true
+	}
+	if !sec.Execution.ExecValidation {
+		sec.Execution.ExecValidation = true
+	}
+	
 	if sec.Scanning.MaxThreads == 0 {
 		sec.Scanning.MaxThreads = 10
 	}
@@ -469,6 +493,9 @@ func setSecurityDefaults(sec *SecurityConfig) {
 
 func setOutputDefaults(out *OutputConfig) {
 	// Minimal defaults if config is missing
+	if out.TimeFormat == "" {
+		out.TimeFormat = "RFC3339Nano"
+	}
 	if out.Info.Directory == "" {
 		out.Info.Directory = "./output/logs/info/"
 	}

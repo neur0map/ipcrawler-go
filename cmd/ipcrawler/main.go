@@ -454,7 +454,11 @@ func newModel() *model {
 
 	// Helper function to create colored log entries
 	createLogEntry := func(level, message string, keyvals ...interface{}) string {
-		timestamp := timestampStyle.Render(time.Now().Format("15:04:05"))
+		timeFormat := cfg.UI.Formatting.TimeFormat
+		if timeFormat == "" {
+			timeFormat = "15:04:05" // Fallback
+		}
+		timestamp := timestampStyle.Render(time.Now().Format(timeFormat))
 		prefix := prefixStyle.Render("IPCrawler")
 
 		var levelStyled string
@@ -1306,8 +1310,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							if m.tools[j].Status == "pending" {
 								m.tools[j].Status = "running"
 								// Add to live output
+								timeFormat := m.config.UI.Formatting.TimeFormat
+								if timeFormat == "" {
+									timeFormat = "15:04:05" // Fallback
+								}
 								m.liveOutput = append(m.liveOutput,
-									fmt.Sprintf("[%s] Starting %s", time.Now().Format("15:04:05"), m.tools[j].Name))
+									fmt.Sprintf("[%s] Starting %s", time.Now().Format(timeFormat), m.tools[j].Name))
 								m.outputViewport.SetContent(strings.Join(m.liveOutput, "\n"))
 								m.outputViewport.GotoBottom()
 								foundNext = true
@@ -1315,8 +1323,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							}
 						}
 						// Add completion to live output
+						timeFormat := m.config.UI.Formatting.TimeFormat
+						if timeFormat == "" {
+							timeFormat = "15:04:05" // Fallback
+						}
 						m.liveOutput = append(m.liveOutput,
-							fmt.Sprintf("[%s] Completed %s", time.Now().Format("15:04:05"), m.tools[i].Name))
+							fmt.Sprintf("[%s] Completed %s", time.Now().Format(timeFormat), m.tools[i].Name))
 						m.outputViewport.SetContent(strings.Join(m.liveOutput, "\n"))
 						m.outputViewport.GotoBottom()
 
@@ -1968,7 +1980,11 @@ func (m *model) executeSelectedWorkflows() {
 	if len(m.tools) > 0 {
 		for i, tool := range m.tools {
 			if tool.Status == "running" {
-				m.liveOutput = append(m.liveOutput, fmt.Sprintf("[%s] Starting %s", time.Now().Format("15:04:05"), tool.Name))
+				timeFormat := m.config.UI.Formatting.TimeFormat
+				if timeFormat == "" {
+					timeFormat = "15:04:05" // Fallback
+				}
+				m.liveOutput = append(m.liveOutput, fmt.Sprintf("[%s] Starting %s", time.Now().Format(timeFormat), tool.Name))
 				break
 			} else if tool.Status == "header" && i+1 < len(m.tools) {
 				m.liveOutput = append(m.liveOutput, fmt.Sprintf("\n=== %s ===", tool.Name))
@@ -2024,7 +2040,11 @@ func (m *model) createColoredLogEntry(level, message string, keyvals ...interfac
 	countStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("count", "220"))
 	progressStyle := lipgloss.NewStyle().Foreground(m.getThemeColor("progress", "82"))
 
-	timestamp := timestampStyle.Render(time.Now().Format("15:04:05"))
+	timeFormat := m.config.UI.Formatting.TimeFormat
+	if timeFormat == "" {
+		timeFormat = "15:04:05" // Fallback
+	}
+	timestamp := timestampStyle.Render(time.Now().Format(timeFormat))
 	prefix := prefixStyle.Render("IPCrawler")
 
 	var levelStyled string
