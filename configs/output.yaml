@@ -7,27 +7,22 @@ time_format: "RFC3339Nano"
 info:
   directory: "./output/logs/info/"
   level: "info"
-  name: "ipcrawler.log"
 
 # error output
 error:
   directory: "./output/logs/error/"
   level: "error"
-  name: "errors.log"
 
 # warning output
 warning:
   directory: "./output/logs/warning/"
   level: "warning"
-  name: "warnings.log"
 
 # debug output
 debug:
   directory: "./output/logs/debug/"
   level: "debug"
-  name: "debug.log"
 
 # raw output
 raw:
   directory: "./output/raw/"
-  name: "raw.log"

@@ -215,12 +215,10 @@ type OutputConfig struct {
 type LogSinkConfig struct {
 	Directory string `mapstructure:"directory"`
 	Level     string `mapstructure:"level"`
-	Name      string `mapstructure:"name"`
 }
 
 type RawSinkConfig struct {
 	Directory string `mapstructure:"directory"`
-	Name      string `mapstructure:"name"`
 }
 
 // ToolsConfig for tools.yaml configuration
@@ -502,17 +500,11 @@ func setOutputDefaults(out *OutputConfig) {
 	if out.Info.Level == "" {
 		out.Info.Level = "info"
 	}
-	if out.Info.Name == "" {
-		out.Info.Name = "ipcrawler.log"
-	}
 	if out.Error.Directory == "" {
 		out.Error.Directory = "./output/logs/error/"
 	}
 	if out.Error.Level == "" {
 		out.Error.Level = "error"
-	}
-	if out.Error.Name == "" {
-		out.Error.Name = "errors.log"
 	}
 	if out.Warning.Directory == "" {
 		out.Warning.Directory = "./output/logs/warn/"
@@ -520,23 +512,14 @@ func setOutputDefaults(out *OutputConfig) {
 	if out.Warning.Level == "" {
 		out.Warning.Level = "warn"
 	}
-	if out.Warning.Name == "" {
-		out.Warning.Name = "warnings.log"
-	}
 	if out.Debug.Directory == "" {
 		out.Debug.Directory = "./output/logs/debug/"
 	}
 	if out.Debug.Level == "" {
 		out.Debug.Level = "debug"
 	}
-	if out.Debug.Name == "" {
-		out.Debug.Name = "debug.log"
-	}
 	if out.Raw.Directory == "" {
 		out.Raw.Directory = "./output/raw/"
-	}
-	if out.Raw.Name == "" {
-		out.Raw.Name = "raw.log"
 	}
 }
 
