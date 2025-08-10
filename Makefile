@@ -89,7 +89,18 @@ run: build ## Build and run IPCrawler TUI in new terminal window (cross-platform
 	@echo "$(YELLOW)Cross-platform launcher - detects your OS automatically$(RESET)"
 	@echo "$(GREEN)Opening in NEW terminal window with optimal size (200x70)$(RESET)"
 	@echo "$(YELLOW)Controls: Tab=cycle cards, 1-5=direct focus, q=quit$(RESET)"
-	@./scripts/tui-launch-window.sh
+	@if [ "$$EUID" -eq 0 ] || [ -n "$$SUDO_UID" ]; then \
+		echo "$(GREEN)Running with elevated privileges$(RESET)"; \
+		PRESERVE_SUDO=1 ./scripts/tui-launch-window.sh; \
+	else \
+		./scripts/tui-launch-window.sh; \
+	fi
+
+run-sudo: build ## Build and run IPCrawler TUI with sudo privileges in new terminal
+	@echo "$(BLUE)IPCrawler TUI with Sudo Privileges$(RESET)"
+	@echo "$(YELLOW)This will run with elevated privileges for all tools$(RESET)"
+	@echo "$(GREEN)Opening in NEW terminal window with sudo$(RESET)"
+	@PRESERVE_SUDO=1 ./scripts/tui-launch-window.sh
 
 run-new: build ## Open IPCrawler TUI in actual NEW terminal window
 	@echo "$(BLUE)Opening IPCrawler TUI in NEW terminal window$(RESET)"  

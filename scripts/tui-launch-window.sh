@@ -68,7 +68,15 @@ sleep 1 && echo "2..." && sleep 1 && echo "1..." && sleep 1
 LAUNCHER_EOF
 
 # Add the actual execution line with the binary path
-echo "exec \"$BINARY\" --new-window" >> "$LAUNCHER"
+# Check if we should preserve sudo privileges in new terminal
+if [ "$PRESERVE_SUDO" = "1" ]; then
+    # Running with sudo - preserve privileges in new terminal
+    echo "exec sudo \"$BINARY\" --new-window" >> "$LAUNCHER"
+    echo "echo 'Running IPCrawler with elevated privileges...'" >> "$LAUNCHER"
+else
+    # Running normally
+    echo "exec \"$BINARY\" --new-window" >> "$LAUNCHER"
+fi
 
 chmod +x "$LAUNCHER"
 

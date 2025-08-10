@@ -1,0 +1,35 @@
+tool: "naabu"
+description: ""
+
+# output format
+format: "json"
+file: "naabu.json"
+
+args:
+  aggressive:
+    - "-rate"
+    - "1000"
+    - "-c"
+    - "25"
+    - "-o"
+    - "{{output_dir}}/{{output_file}}"
+    - "-json"
+    - "{{target}}"
+  all_ports:
+    - "-p"
+    - "-"
+    - "-o"
+    - "{{output_dir}}/{{output_file}}"
+    - "-json"
+    - "{{target}}"
+  quick_scan:
+    - "-top-ports"
+    - "1000"
+    - "-o"
+    - "{{output_dir}}/{{output_file}}"
+    - "-json"
+    - "{{target}}"
+
+overrides:
+  - retry_attempts: 3
+  - timeout_seconds: 300

@@ -1,20 +1,33 @@
 # IPCrawler Output Configuration
-output:
-  directory: "./output"      # Base output directory
-  
-  formats:
-    json: true               # Enable JSON output
-    csv: true                # Enable CSV output
-    html: true               # Enable HTML reports
-    pdf: false               # Enable PDF reports (requires wkhtmltopdf)
-    xml: false               # Enable XML output
-  
-  logging:
-    level: "info"            # Log level: debug, info, warn, error
-    file: "ipcrawler.log"    # Log file name
-    max_size: 100            # Max log file size in MB
-    max_backups: 3           # Number of backup log files
-    max_age: 30              # Max age in days
-    compress: true           # Compress old log files
-  
-  # Persistence configuration is intentionally not used at this time.
+# Enable timestamp in log output
+timestamp: true
+time_format: "RFC3339Nano"
+
+# info output
+info:
+  directory: "./output/logs/info/"
+  level: "info"
+  name: "ipcrawler.log"
+
+# error output
+error:
+  directory: "./output/logs/error/"
+  level: "error"
+  name: "errors.log"
+
+# warning output
+warning:
+  directory: "./output/logs/warning/"
+  level: "warning"
+  name: "warnings.log"
+
+# debug output
+debug:
+  directory: "./output/logs/debug/"
+  level: "debug"
+  name: "debug.log"
+
+# raw output
+raw:
+  directory: "./output/raw/"
+  name: "raw.log"

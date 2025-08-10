@@ -1,0 +1,22 @@
+# Tool execution configuration
+tool_execution:
+  max_concurrent_executions: 3
+  max_parallel_executions: 2
+
+  # safe defaults
+default_timeout_seconds: 1800
+  retry_attempts: 1
+
+  # argv policy
+argv_policy:
+  max_args: 64
+  max_arg_bytes: 512
+  max_argv_bytes: 16384
+  deny_shell_metachars: true
+  allowed_char_classes: [alnum, "-", "_", ".", ":", "/", "="]
+
+# execution
+execution:
+  tools_path: "./tools"        # all executables must resolve under this dir
+  args_validation: true       # validate scripts before execution
+  exec_validation: true       # validate executables before execution

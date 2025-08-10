@@ -16,23 +16,35 @@ Controls the Terminal User Interface (TUI) appearance and behavior:
 
 ### security.yaml
 Security and scanning configuration:
-- **Scanning**: Thread limits, timeouts, rate limiting, user agents
-- **Detection**: Severity levels, patterns, heuristics
-- **Reporting**: Output formats, redaction settings
+- **os_detection**: Enable OS detection heuristics
+- **execution.tools_root**: Absolute/relative root where tools must reside
+- **execution.args_validation**: Validate arguments before execution
+- **execution.exec_validation**: Validate executables before execution
 
 ### output.yaml
 Output and logging configuration:
-- **Directory**: Where to save scan results
-- **Formats**: Enable/disable output formats (JSON, CSV, HTML, PDF)
-- **Logging**: Log levels, rotation, compression
+- **timestamp/time_format**: Timestamp emission and format
+- **info/error/warning/debug**: Directories, log levels, and filenames per sink
+- **raw**: Location for raw tool output
+
+### tools.yaml
+Global tool execution policy:
+- **tool_execution.max_concurrent_executions**: How many tools can be in-flight
+- **tool_execution.max_parallel_executions**: How many run simultaneously
+- **default_timeout_seconds**: Fallback timeout for tools
+- **retry_attempts**: Default retry count
+- **argv_policy**:
+  - **max_args / max_arg_bytes / max_argv_bytes**: Argument limits
+  - **deny_shell_metachars**: Reject shell metacharacters in args
+  - **allowed_char_classes**: Allowed character classes in args
+- **execution**:
+  - **tools_path**: Root path where tool binaries must resolve
+  - **args_validation**: Enable argument validation
+  - **exec_validation**: Enable executable validation
 
 ## Usage
 
 All configuration files are automatically loaded when IPCrawler starts. If a config file is not found, default values are used.
-
-### Environment Variables
-
-Environment variables can be used to override configuration values.
 
 ### Modifying Settings
 
@@ -40,32 +52,50 @@ Environment variables can be used to override configuration values.
 2. Save your changes
 3. Restart IPCrawler for changes to take effect
 
-### Example: Changing UI Colors
+## Examples
 
-Edit `ui.yaml`:
+### Changing UI Colors
 ```yaml
 ui:
   theme:
     colors:
-      primary: "#00FF00"    # Green primary color
-      accent: "#FF00FF"     # Magenta accent
+      primary: "#00FF00"
+      accent: "#FF00FF"
 ```
 
-### Example: Enabling High Performance Mode
-
-Edit `ui.yaml`:
+### Enabling High Performance Mode
 ```yaml
 ui:
   performance:
-    framerate_cap: 120       # Higher frame rate
-    lazy_rendering: false    # Disable lazy rendering
+    framerate_cap: 120
+    lazy_rendering: false
   components:
     viewport:
-      high_performance: true # Enable high-performance rendering
-      scroll_speed: 5        # Faster scrolling
+      high_performance: true
+      scroll_speed: 5
 ```
 
+### Adjust tool parallelism and safety (tools.yaml)
+```yaml
+tool_execution:
+  max_concurrent_executions: 3
+  max_parallel_executions: 2
 
+default_timeout_seconds: 1800
+retry_attempts: 1
+
+argv_policy:
+  max_args: 64
+  max_arg_bytes: 512
+  max_argv_bytes: 16384
+  deny_shell_metachars: true
+  allowed_char_classes: [alnum, "-", "_", ".", ":", "/", "="]
+
+execution:
+  tools_path: "./tools"
+  args_validation: true
+  exec_validation: true
+```
 
 ## Priority
 

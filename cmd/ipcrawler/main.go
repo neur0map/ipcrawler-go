@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -251,7 +252,15 @@ func newModel() *model {
 	}
 
 	// Create viewports for output and logs using config settings
-	liveOutputVp := viewport.New(50, 10)
+	viewportWidth := cfg.UI.Formatting.DebugViewportWidth
+	viewportHeight := cfg.UI.Formatting.DebugViewportHeight
+	if viewportWidth == 0 {
+		viewportWidth = 50 // Default fallback
+	}
+	if viewportHeight == 0 {
+		viewportHeight = 10 // Default fallback
+	}
+	liveOutputVp := viewport.New(viewportWidth, viewportHeight)
 	// Apply viewport config settings
 	if cfg.UI.Components.Viewport.MouseWheelDelta > 0 {
 		liveOutputVp.MouseWheelDelta = cfg.UI.Components.Viewport.MouseWheelDelta
@@ -262,7 +271,7 @@ func newModel() *model {
 		liveOutputVp.HighPerformanceRendering = true
 	}
 
-	logsVp := viewport.New(50, 10)
+	logsVp := viewport.New(viewportWidth, viewportHeight)
 	// Apply viewport config settings
 	if cfg.UI.Components.Viewport.MouseWheelDelta > 0 {
 		logsVp.MouseWheelDelta = cfg.UI.Components.Viewport.MouseWheelDelta
@@ -544,8 +553,8 @@ func newModel() *model {
 		createLogEntry("DEBUG", "UI component initialization starting..."),
 		createLogEntry("DEBUG", "Creating workflow tree list component", "width", 35, "height", 12),
 		createLogEntry("DEBUG", "Creating execution queue list component", "width", 35, "height", 12),
-		createLogEntry("DEBUG", "Creating live output viewport", "width", 50, "height", 10),
-		createLogEntry("DEBUG", "Creating system logs viewport", "width", 50, "height", 10),
+		createLogEntry("DEBUG", "Creating live output viewport", "width", viewportWidth, "height", viewportHeight),
+		createLogEntry("DEBUG", "Creating system logs viewport", "width", viewportWidth, "height", viewportHeight),
 		createLogEntry("DEBUG", "Setting up key bindings", "focus_keys", "1,2,3,4,5,6"),
 		createLogEntry("DEBUG", "Configuring scroll support", "scroll_keys", "up,down,page-up,page-down"),
 		createLogEntry("INFO", "All UI components initialized and configured"),
@@ -591,10 +600,10 @@ func newModel() *model {
 		createLogEntry("INFO", "New session created successfully"),
 
 		createLogEntry("DEBUG", "Workflow engine startup..."),
-		createLogEntry("DEBUG", "Loading workflow executor", "max_concurrent", 3),
-		createLogEntry("DEBUG", "Initializing task queue", "max_size", 100),
+		createLogEntry("DEBUG", "Loading workflow executor", "max_concurrent", cfg.Tools.ToolExecution.MaxConcurrentExecutions),
+		createLogEntry("DEBUG", "Initializing task queue", "max_size", cfg.Tools.ToolExecution.MaxParallelExecutions*50), // Estimated queue size
 		createLogEntry("DEBUG", "Setting up progress tracking", "granularity", "step"),
-		createLogEntry("DEBUG", "Configuring error handling", "retry_attempts", 3),
+		createLogEntry("DEBUG", "Configuring error handling", "retry_attempts", cfg.Tools.RetryAttempts),
 		createLogEntry("INFO", "Workflow execution engine ready"),
 
 		createLogEntry("DEBUG", "Output processing initialization..."),
@@ -1070,7 +1079,10 @@ func smoothInterpolateUint64(start, end uint64, factor float64) uint64 {
 // updateAnimatedValues smoothly transitions metrics to new values
 func (m *model) updateAnimatedValues() {
 	// Animation speed for CPU/Memory/Disk (smooth and stable)
-	animationFactor := 0.15
+	animationFactor := m.config.UI.Performance.AnimationFactor
+	if animationFactor == 0 {
+		animationFactor = 0.15 // Default fallback
+	}
 
 	// Update animated values with smooth interpolation
 	m.perfData.AnimatedCPU = smoothInterpolate(m.perfData.AnimatedCPU, m.perfData.CPUPercent, animationFactor)
@@ -2222,6 +2234,11 @@ func runTUI() {
 		}
 	}
 
+	// Check for sudo requirements before creating model
+	if !checkSudoRequirements() {
+		return // Exit cleanly if user chose not to continue
+	}
+
 	// Create model with optimal size
 	model := newModel()
 
@@ -2243,4 +2260,233 @@ func runTUI() {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// checkSudoRequirements checks if any workflows require sudo and warns the user
+// Returns true if the program should continue, false if it should exit
+func checkSudoRequirements() bool {
+	// Check current privilege level first
+	hasPrivileges, statusMsg := getPrivilegeStatus()
+	
+	// Load workflows to check for sudo requirements
+	workflows, err := loader.LoadWorkflowDescriptions(".")
+	if err != nil {
+		// Try alternative paths
+		if execPath, err := os.Executable(); err == nil {
+			execDir := filepath.Dir(execPath)
+			workflows, _ = loader.LoadWorkflowDescriptions(execDir)
+			if workflows == nil || len(workflows.Workflows) == 0 {
+				parentDir := filepath.Dir(execDir)
+				workflows, _ = loader.LoadWorkflowDescriptions(parentDir)
+			}
+		}
+	}
+
+	// If no workflows loaded, skip check and continue
+	if workflows == nil || len(workflows.Workflows) == 0 {
+		return true
+	}
+
+	// Check for tools requiring sudo
+	if workflows.HasToolsRequiringSudo() {
+		// If we already have privileges, show success message and continue
+		if hasPrivileges {
+			fmt.Println("✅ Privilege Check Passed")
+			fmt.Println("=========================")
+			fmt.Printf("Status: %s\n", statusMsg)
+			fmt.Println("All tools requiring elevated privileges will function properly.")
+			fmt.Println("\nLoading IPCrawler TUI...")
+			time.Sleep(1 * time.Second) // Brief pause to show message
+			fmt.Print("\033[H\033[2J") // Clear screen
+			return true
+		}
+		sudoTools := workflows.GetToolsRequiringSudo()
+		
+		fmt.Println("⚠️  IPCrawler Privilege Requirements")
+		fmt.Println("=====================================")
+		fmt.Printf("The following tools require sudo privileges for optimal functionality:\n\n")
+		
+		for _, tool := range sudoTools {
+			fmt.Printf("  • %s", tool.Name)
+			if tool.Reason != "" {
+				fmt.Printf(" - %s", tool.Reason)
+			}
+			fmt.Println()
+		}
+		
+		fmt.Println("\n💡 Solutions:")
+		fmt.Println("  1. Restart IPCrawler with sudo privileges (recommended)")
+		fmt.Println("  2. Continue with limited functionality (some scans may fail)")
+		fmt.Printf("\nRestart with sudo privileges? (Y/n): ")
+		
+		var response string
+		fmt.Scanln(&response)
+		
+		// Default to "yes" if empty or "y"/"yes", only "n"/"no" refuses
+		if strings.ToLower(response) == "n" || strings.ToLower(response) == "no" {
+			fmt.Println("\n⚠️  Continuing with limited functionality...")
+			fmt.Println("Some tools requiring root privileges may fail.")
+			fmt.Print("Press Enter to continue...")
+			fmt.Scanln(&response)
+			fmt.Print("\033[H\033[2J") // Clear screen
+			return true // Continue without privileges
+		}
+		
+		// User chose to escalate to sudo
+		fmt.Println("\n🔐 Restarting IPCrawler with sudo privileges...")
+		fmt.Println("You may be prompted for your password.")
+		
+		// Get the current executable path
+		executable, err := os.Executable()
+		if err != nil {
+			fmt.Printf("Error getting executable path: %v\n", err)
+			fmt.Println("Please run manually: sudo make run-here")
+			return false
+		}
+		
+		// Restart with sudo
+		cmd := exec.Command("sudo", executable, "--new-window")
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		
+		fmt.Print("\nStarting with elevated privileges...")
+		time.Sleep(1 * time.Second)
+		
+		// Replace current process with sudo version
+		err = cmd.Run()
+		if err != nil {
+			fmt.Printf("\nFailed to restart with sudo: %v\n", err)
+			fmt.Println("Fallback: Please run 'sudo make run-here' manually")
+			
+			fmt.Println("\n👋 Thank you for using IPCrawler!")
+			fmt.Print("\nClosing in 3 seconds...")
+			for i := 3; i > 0; i-- {
+				time.Sleep(1 * time.Second)
+				fmt.Printf(" %d", i)
+			}
+			fmt.Println()
+		}
+		
+		return false // Exit current unprivileged process
+	}
+	return true // Continue with TUI
+}
+
+// isRunningAsRoot checks if the current process is running with root privileges
+func isRunningAsRoot() bool {
+	// Check if UID is 0 (root)
+	if os.Geteuid() == 0 {
+		return true
+	}
+	return false
+}
+
+// isRunningWithSudo checks if the process was started with sudo
+func isRunningWithSudo() bool {
+	// Check SUDO_UID environment variable (set by sudo)
+	if os.Getenv("SUDO_UID") != "" {
+		return true
+	}
+	
+	// Check if we're root but SUDO_USER is set
+	if isRunningAsRoot() && os.Getenv("SUDO_USER") != "" {
+		return true
+	}
+	
+	return false
+}
+
+// isRootlessEnvironment detects if we're in a rootless environment like containers/HTB
+func isRootlessEnvironment() bool {
+	// Check if we're running as root but in a container-like environment
+	if !isRunningAsRoot() {
+		return false
+	}
+	
+	// Check for container indicators
+	containerIndicators := []string{
+		"/.dockerenv",                    // Docker
+		"/run/.containerenv",            // Podman
+		"/proc/1/cgroup",                // Check if we can read cgroup (container sign)
+	}
+	
+	for _, indicator := range containerIndicators {
+		if _, err := os.Stat(indicator); err == nil {
+			return true
+		}
+	}
+	
+	// Check if we're in a limited root environment
+	// HTB machines often have root but with limited capabilities
+	if isRunningAsRoot() {
+		// Check if we can access typical root-only files
+		restrictedPaths := []string{
+			"/etc/shadow",
+			"/root/.ssh",
+		}
+		
+		accessCount := 0
+		for _, path := range restrictedPaths {
+			if _, err := os.Stat(path); err == nil {
+				accessCount++
+			}
+		}
+		
+		// If we're root but can't access typical root files, likely rootless
+		if accessCount == 0 {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// getPrivilegeStatus returns a description of current privilege level
+func getPrivilegeStatus() (bool, string) {
+	if isRunningAsRoot() {
+		if isRunningWithSudo() {
+			return true, "Running with sudo privileges"
+		} else if isRootlessEnvironment() {
+			return true, "Running in rootless environment (container/sandbox)"
+		} else {
+			return true, "Running as root user"
+		}
+	}
+	
+	// Check if user might have capabilities without being root
+	currentUser, err := user.Current()
+	if err == nil && currentUser.Username != "" {
+		// Check if user is in privileged groups
+		groups := []string{"wheel", "admin", "sudo", "root"}
+		for _, group := range groups {
+			if checkUserInGroup(currentUser.Username, group) {
+				return false, fmt.Sprintf("Running as %s (member of %s group)", currentUser.Username, group)
+			}
+		}
+		return false, fmt.Sprintf("Running as %s (unprivileged)", currentUser.Username)
+	}
+	
+	return false, "Running as unprivileged user"
+}
+
+// checkUserInGroup checks if a user is in a specific group (Unix-like systems)
+func checkUserInGroup(username, groupname string) bool {
+	if runtime.GOOS == "windows" {
+		return false // Skip group checking on Windows
+	}
+	
+	cmd := exec.Command("id", "-Gn", username)
+	output, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	
+	groups := strings.Fields(string(output))
+	for _, group := range groups {
+		if group == groupname {
+			return true
+		}
+	}
+	return false
 }

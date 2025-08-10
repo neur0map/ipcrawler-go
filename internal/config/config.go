@@ -13,6 +13,7 @@ type Config struct {
 	UI       UIConfig       `mapstructure:"ui"`
 	Security SecurityConfig `mapstructure:"security"`
 	Output   OutputConfig   `mapstructure:"output"`
+	Tools    ToolsConfig    `mapstructure:"tools"`
 }
 
 // UIConfig represents UI configuration
@@ -186,28 +187,59 @@ type ReportingConfig struct {
 	Redaction    bool     `mapstructure:"redaction"`
 }
 
-// OutputConfig for output.yaml
+// OutputConfig matches the current configs/output.yaml schema (multi-sink by level)
+// Example (top-level file without an "output:" wrapper):
+//
+//	timestamp: true
+//	info: { directory: "./output/logs/info/", level: "info", name: "ipcrawler.log" }
+//
+// It also supports the legacy wrapper form under the "output" key via loadConfigFile.
 type OutputConfig struct {
-	Directory string        `mapstructure:"directory"`
-	Formats   FormatsConfig `mapstructure:"formats"`
-	Logging   LoggingConfig `mapstructure:"logging"`
+	Timestamp bool          `mapstructure:"timestamp"`
+	Info      LogSinkConfig `mapstructure:"info"`
+	Error     LogSinkConfig `mapstructure:"error"`
+	Warning   LogSinkConfig `mapstructure:"warning"`
+	Debug     LogSinkConfig `mapstructure:"debug"`
+	Raw       RawSinkConfig `mapstructure:"raw"`
 }
 
-type FormatsConfig struct {
-	JSON bool `mapstructure:"json"`
-	CSV  bool `mapstructure:"csv"`
-	HTML bool `mapstructure:"html"`
-	PDF  bool `mapstructure:"pdf"`
-	XML  bool `mapstructure:"xml"`
+type LogSinkConfig struct {
+	Directory string `mapstructure:"directory"`
+	Level     string `mapstructure:"level"`
+	Name      string `mapstructure:"name"`
 }
 
-type LoggingConfig struct {
-	Level      string `mapstructure:"level"`
-	File       string `mapstructure:"file"`
-	MaxSize    int    `mapstructure:"max_size"`
-	MaxBackups int    `mapstructure:"max_backups"`
-	MaxAge     int    `mapstructure:"max_age"`
-	Compress   bool   `mapstructure:"compress"`
+type RawSinkConfig struct {
+	Directory string `mapstructure:"directory"`
+	Name      string `mapstructure:"name"`
+}
+
+// ToolsConfig for tools.yaml configuration
+type ToolsConfig struct {
+	ToolExecution  ToolExecutionConfig `mapstructure:"tool_execution"`
+	DefaultTimeout int                 `mapstructure:"default_timeout_seconds"`
+	RetryAttempts  int                 `mapstructure:"retry_attempts"`
+	ArgvPolicy     ArgvPolicyConfig    `mapstructure:"argv_policy"`
+	Execution      ExecutionConfig     `mapstructure:"execution"`
+}
+
+type ToolExecutionConfig struct {
+	MaxConcurrentExecutions int `mapstructure:"max_concurrent_executions"`
+	MaxParallelExecutions   int `mapstructure:"max_parallel_executions"`
+}
+
+type ArgvPolicyConfig struct {
+	MaxArgs             int      `mapstructure:"max_args"`
+	MaxArgBytes         int      `mapstructure:"max_arg_bytes"`
+	MaxArgvBytes        int      `mapstructure:"max_argv_bytes"`
+	DenyShellMetachars  bool     `mapstructure:"deny_shell_metachars"`
+	AllowedCharClasses  []string `mapstructure:"allowed_char_classes"`
+}
+
+type ExecutionConfig struct {
+	ToolsPath       string `mapstructure:"tools_path"`
+	ArgsValidation  bool   `mapstructure:"args_validation"`
+	ExecValidation  bool   `mapstructure:"exec_validation"`
 }
 
 // Persistence config removed (not used)
@@ -235,6 +267,11 @@ func LoadConfig() (*Config, error) {
 		setOutputDefaults(&config.Output)
 	}
 
+	// Load Tools config
+	if err := loadConfigFile(configPath, "tools", &config.Tools); err != nil {
+		setToolsDefaults(&config.Tools)
+	}
+
 	return config, nil
 }
 
@@ -242,17 +279,17 @@ func LoadConfig() (*Config, error) {
 func findConfigPath() string {
 	// Try multiple paths in order of preference
 	paths := []string{
-		"configs",                                    // Current directory
-		"./configs",                                  // Explicit current directory
-		filepath.Join("..", "configs"),              // Parent directory
+		"configs",                      // Current directory
+		"./configs",                    // Explicit current directory
+		filepath.Join("..", "configs"), // Parent directory
 	}
 
 	// Add path relative to executable
 	if execPath, err := os.Executable(); err == nil {
 		execDir := filepath.Dir(execPath)
-		paths = append(paths, 
-			filepath.Join(execDir, "configs"),           // Same dir as executable
-			filepath.Join(execDir, "..", "configs"),     // Parent of executable
+		paths = append(paths,
+			filepath.Join(execDir, "configs"),       // Same dir as executable
+			filepath.Join(execDir, "..", "configs"), // Parent of executable
 		)
 	}
 
@@ -282,19 +319,19 @@ func loadConfigFile(basePath, name string, target interface{}) error {
 	if basePath != "" {
 		v.AddConfigPath(basePath)
 	}
-	
+
 	// Add config paths
 	v.AddConfigPath("configs")
 	v.AddConfigPath("./configs")
 	v.AddConfigPath("../configs")
-	
+
 	// Add paths relative to executable
 	if execPath, err := os.Executable(); err == nil {
 		execDir := filepath.Dir(execPath)
 		v.AddConfigPath(filepath.Join(execDir, "configs"))
 		v.AddConfigPath(filepath.Join(execDir, "..", "configs"))
 	}
-	
+
 	// Add system paths
 	v.AddConfigPath("/etc/ipcrawler")
 	v.AddConfigPath("$HOME/.ipcrawler")
@@ -303,13 +340,15 @@ func loadConfigFile(basePath, name string, target interface{}) error {
 		return err
 	}
 
-	// The YAML files have a top-level key (ui, security, output)
-	// We need to unmarshal into a map first, then extract the nested config
+	// The YAML files usually have a top-level key (ui, security, output)
+	// We unmarshal into a map first, then extract the named section.
+	// If the section is missing, we fall back to unmarshalling the whole file
+	// directly into the target to support flat schemas (e.g., new output.yaml).
 	var rawConfig map[string]interface{}
 	if err := v.Unmarshal(&rawConfig); err != nil {
 		return err
 	}
-	
+
 	// Extract the specific section (ui, security, or output)
 	if section, exists := rawConfig[name]; exists {
 		// Use viper to convert the section to the target struct
@@ -319,8 +358,11 @@ func loadConfigFile(basePath, name string, target interface{}) error {
 		}
 		return sectionViper.UnmarshalKey(name, target)
 	}
-	
-	return fmt.Errorf("section '%s' not found in config", name)
+	// Fallback: try whole-file unmarshal (supports flat schema files)
+	if err := v.Unmarshal(target); err == nil {
+		return nil
+	}
+	return fmt.Errorf("section '%s' not found in config and whole-file unmarshal failed", name)
 }
 
 func setUIDefaults(ui *UIConfig) {
@@ -328,7 +370,7 @@ func setUIDefaults(ui *UIConfig) {
 	if ui.Theme.Colors == nil {
 		ui.Theme.Colors = make(map[string]string)
 	}
-	
+
 	// Set default color palette
 	defaultColors := map[string]string{
 		"primary":       "#FAFAFA",
@@ -359,25 +401,25 @@ func setUIDefaults(ui *UIConfig) {
 		"spinner":       "#EC4899",
 		"list_selected": "#8B5CF6",
 	}
-	
+
 	// Apply defaults only for missing colors
 	for key, value := range defaultColors {
 		if _, exists := ui.Theme.Colors[key]; !exists {
 			ui.Theme.Colors[key] = value
 		}
 	}
-	
+
 	// Set layout defaults
 	if ui.Layout.Cards.Columns == 0 {
 		ui.Layout.Cards.Columns = 4
 		ui.Layout.Cards.Rows = 2
 		ui.Layout.Cards.MinWidth = 28
 		ui.Layout.Cards.MinHeight = 10
-		ui.Layout.Cards.Spacing = 2         // Match the "  " spacing in JoinHorizontal
-		ui.Layout.Cards.ScrollBarSpace = 2  // Minimal scroll bar space
-		ui.Layout.Cards.VerticalOffset = 4  // Space for title and help text
+		ui.Layout.Cards.Spacing = 2        // Match the "  " spacing in JoinHorizontal
+		ui.Layout.Cards.ScrollBarSpace = 2 // Minimal scroll bar space
+		ui.Layout.Cards.VerticalOffset = 4 // Space for title and help text
 	}
-	
+
 	// Set component defaults
 	if ui.Components.Viewport.MouseWheelDelta == 0 {
 		ui.Components.Viewport.MouseWheelDelta = 3
@@ -388,7 +430,7 @@ func setUIDefaults(ui *UIConfig) {
 	if ui.Components.Status.RefreshMs == 0 {
 		ui.Components.Status.RefreshMs = 1500
 	}
-	
+
 	// Set performance defaults
 	if ui.Performance.FramerateCap == 0 {
 		ui.Performance.FramerateCap = 60
@@ -401,6 +443,14 @@ func setUIDefaults(ui *UIConfig) {
 	}
 	if ui.Performance.AnimationFactor == 0 {
 		ui.Performance.AnimationFactor = 0.15
+	}
+
+	// Set default formatting values
+	if ui.Formatting.DebugViewportWidth == 0 {
+		ui.Formatting.DebugViewportWidth = 50
+	}
+	if ui.Formatting.DebugViewportHeight == 0 {
+		ui.Formatting.DebugViewportHeight = 10
 	}
 }
 
@@ -418,15 +468,91 @@ func setSecurityDefaults(sec *SecurityConfig) {
 }
 
 func setOutputDefaults(out *OutputConfig) {
-	// Set minimal defaults if config file is missing
-	if out.Directory == "" {
-		out.Directory = "./output"
+	// Minimal defaults if config is missing
+	if out.Info.Directory == "" {
+		out.Info.Directory = "./output/logs/info/"
 	}
-	if out.Logging.Level == "" {
-		out.Logging.Level = "info"
+	if out.Info.Level == "" {
+		out.Info.Level = "info"
 	}
-	if out.Logging.MaxSize == 0 {
-		out.Logging.MaxSize = 100
+	if out.Info.Name == "" {
+		out.Info.Name = "ipcrawler.log"
 	}
-	// No persistence defaults
+	if out.Error.Directory == "" {
+		out.Error.Directory = "./output/logs/error/"
+	}
+	if out.Error.Level == "" {
+		out.Error.Level = "error"
+	}
+	if out.Error.Name == "" {
+		out.Error.Name = "errors.log"
+	}
+	if out.Warning.Directory == "" {
+		out.Warning.Directory = "./output/logs/warn/"
+	}
+	if out.Warning.Level == "" {
+		out.Warning.Level = "warn"
+	}
+	if out.Warning.Name == "" {
+		out.Warning.Name = "warnings.log"
+	}
+	if out.Debug.Directory == "" {
+		out.Debug.Directory = "./output/logs/debug/"
+	}
+	if out.Debug.Level == "" {
+		out.Debug.Level = "debug"
+	}
+	if out.Debug.Name == "" {
+		out.Debug.Name = "debug.log"
+	}
+	if out.Raw.Directory == "" {
+		out.Raw.Directory = "./output/raw/"
+	}
+	if out.Raw.Name == "" {
+		out.Raw.Name = "raw.log"
+	}
+}
+
+func setToolsDefaults(tools *ToolsConfig) {
+	// Set defaults for tool execution settings
+	if tools.ToolExecution.MaxConcurrentExecutions == 0 {
+		tools.ToolExecution.MaxConcurrentExecutions = 3
+	}
+	if tools.ToolExecution.MaxParallelExecutions == 0 {
+		tools.ToolExecution.MaxParallelExecutions = 2
+	}
+	if tools.DefaultTimeout == 0 {
+		tools.DefaultTimeout = 1800 // 30 minutes
+	}
+	if tools.RetryAttempts == 0 {
+		tools.RetryAttempts = 1
+	}
+	
+	// Set defaults for argv policy
+	if tools.ArgvPolicy.MaxArgs == 0 {
+		tools.ArgvPolicy.MaxArgs = 64
+	}
+	if tools.ArgvPolicy.MaxArgBytes == 0 {
+		tools.ArgvPolicy.MaxArgBytes = 512
+	}
+	if tools.ArgvPolicy.MaxArgvBytes == 0 {
+		tools.ArgvPolicy.MaxArgvBytes = 16384
+	}
+	if !tools.ArgvPolicy.DenyShellMetachars {
+		tools.ArgvPolicy.DenyShellMetachars = true
+	}
+	if len(tools.ArgvPolicy.AllowedCharClasses) == 0 {
+		tools.ArgvPolicy.AllowedCharClasses = []string{"alnum", "-", "_", ".", ":", "/", "="}
+	}
+	
+	// Set defaults for execution settings
+	if tools.Execution.ToolsPath == "" {
+		tools.Execution.ToolsPath = "./tools"
+	}
+	if !tools.Execution.ArgsValidation {
+		tools.Execution.ArgsValidation = true
+	}
+	if !tools.Execution.ExecValidation {
+		tools.Execution.ExecValidation = true
+	}
 }

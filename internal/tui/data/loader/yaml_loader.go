@@ -8,11 +8,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ToolConfig represents a tool with its requirements
+type ToolConfig struct {
+	Name         string `yaml:"name"`
+	RequiresSudo bool   `yaml:"requires_sudo"`
+	Reason       string `yaml:"reason,omitempty"`
+}
+
 // WorkflowConfig represents a workflow configuration
 type WorkflowConfig struct {
-	Name        string   `yaml:"name"`
-	Description string   `yaml:"description"`
-	Tools       []string `yaml:"tools"`
+	Name        string       `yaml:"name"`
+	Description string       `yaml:"description"`
+	Tools       []ToolConfig `yaml:"tools"`
 }
 
 // WorkflowData holds all workflow configurations
@@ -80,7 +87,7 @@ func (wd *WorkflowData) GetAllTools() []string {
 	toolSet := make(map[string]bool)
 	for _, workflow := range wd.Workflows {
 		for _, tool := range workflow.Tools {
-			toolSet[tool] = true
+			toolSet[tool.Name] = true
 		}
 	}
 
@@ -89,6 +96,37 @@ func (wd *WorkflowData) GetAllTools() []string {
 		tools = append(tools, tool)
 	}
 	return tools
+}
+
+// GetToolsRequiringSudo returns all tools that require sudo privileges
+func (wd *WorkflowData) GetToolsRequiringSudo() []ToolConfig {
+	var sudoTools []ToolConfig
+	toolSet := make(map[string]ToolConfig)
+	
+	for _, workflow := range wd.Workflows {
+		for _, tool := range workflow.Tools {
+			if tool.RequiresSudo {
+				toolSet[tool.Name] = tool
+			}
+		}
+	}
+	
+	for _, tool := range toolSet {
+		sudoTools = append(sudoTools, tool)
+	}
+	return sudoTools
+}
+
+// HasToolsRequiringSudo checks if any workflow contains tools requiring sudo
+func (wd *WorkflowData) HasToolsRequiringSudo() bool {
+	for _, workflow := range wd.Workflows {
+		for _, tool := range workflow.Tools {
+			if tool.RequiresSudo {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // GetWorkflowSummary returns a summary string for overview
