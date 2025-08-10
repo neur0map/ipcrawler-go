@@ -16,6 +16,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
 	"github.com/mattn/go-isatty"
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v3/mem"
+	"github.com/shirou/gopsutil/v3/net"
 
 	"github.com/your-org/ipcrawler/internal/config"
 	"github.com/your-org/ipcrawler/internal/tui/data/loader"
@@ -91,9 +96,25 @@ type toolExecution struct {
 }
 
 type systemMetrics struct {
-	MemoryMB   float64
-	Goroutines int
-	LastUpdate string
+	CPUPercent         float64
+	CPUCores           int
+	MemoryUsed         uint64
+	MemoryTotal        uint64
+	MemoryPercent      float64
+	DiskUsed           uint64
+	DiskTotal          uint64
+	DiskPercent        float64
+	NetworkSent        uint64
+	NetworkRecv        uint64
+	NetworkSentRate    uint64   // Bytes per second
+	NetworkRecvRate    uint64   // Bytes per second
+	NetworkSentHistory []uint64 // Last 30 readings for sparkline
+	NetworkRecvHistory []uint64 // Last 30 readings for sparkline
+	Uptime             uint64
+	Goroutines         int
+	LastUpdate         time.Time
+	Hostname           string
+	Platform           string
 }
 
 // List item implementations for bubbles/list component
@@ -679,15 +700,33 @@ func newModel() *model {
 		systemLogs:        systemLogLines,
 		spinner:           s,
 		tools:             []toolExecution{},
-		perfData:          systemMetrics{MemoryMB: 12.5, Goroutines: 5, LastUpdate: "12:34:56"},
+		perfData:          systemMetrics{},
 
-		// Box card styles using config colors
+		// Box card styles using config colors with extra rounded borders
 		cardStyle: lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
+			Border(lipgloss.Border{
+				Top:         "─",
+				Bottom:      "─",
+				Left:        "│",
+				Right:       "│",
+				TopLeft:     "╭",
+				TopRight:    "╮",
+				BottomLeft:  "╰",
+				BottomRight: "╯",
+			}).
 			BorderForeground(lipgloss.Color("240")).
 			Padding(0, 1),
 		focusedCardStyle: lipgloss.NewStyle().
-			Border(lipgloss.ThickBorder()).
+			Border(lipgloss.Border{
+				Top:         "═",
+				Bottom:      "═",
+				Left:        "║",
+				Right:       "║",
+				TopLeft:     "╔",
+				TopRight:    "╗",
+				BottomLeft:  "╚",
+				BottomRight: "╝",
+			}).
 			BorderForeground(lipgloss.Color("86")). // Bright cyan for maximum visibility
 			Padding(0, 1),
 		titleStyle: lipgloss.NewStyle().
@@ -701,7 +740,181 @@ func newModel() *model {
 			Foreground(lipgloss.Color("240")),
 	}
 
+	// Initialize with first system metrics update
+	m.updateSystemMetrics()
+
 	return m
+}
+
+// updateSystemMetrics collects real system information using gopsutil
+func (m *model) updateSystemMetrics() {
+	// CPU information
+	cpuPercent, err := cpu.Percent(time.Second, false)
+	if err == nil && len(cpuPercent) > 0 {
+		m.perfData.CPUPercent = cpuPercent[0]
+	}
+
+	cpuCounts, err := cpu.Counts(true)
+	if err == nil {
+		m.perfData.CPUCores = cpuCounts
+	}
+
+	// Memory information
+	memInfo, err := mem.VirtualMemory()
+	if err == nil {
+		m.perfData.MemoryUsed = memInfo.Used
+		m.perfData.MemoryTotal = memInfo.Total
+		m.perfData.MemoryPercent = memInfo.UsedPercent
+	}
+
+	// Disk information (root filesystem)
+	diskInfo, err := disk.Usage("/")
+	if err == nil {
+		m.perfData.DiskUsed = diskInfo.Used
+		m.perfData.DiskTotal = diskInfo.Total
+		m.perfData.DiskPercent = diskInfo.UsedPercent
+	}
+
+	// Network information
+	netIO, err := net.IOCounters(false)
+	if err == nil && len(netIO) > 0 {
+		newSent := netIO[0].BytesSent
+		newRecv := netIO[0].BytesRecv
+
+		// Calculate rates if we have previous data
+		if m.perfData.NetworkSent > 0 && m.perfData.NetworkRecv > 0 {
+			timeDiff := time.Since(m.perfData.LastUpdate).Seconds()
+			if timeDiff > 0 {
+				m.perfData.NetworkSentRate = uint64(float64(newSent-m.perfData.NetworkSent) / timeDiff)
+				m.perfData.NetworkRecvRate = uint64(float64(newRecv-m.perfData.NetworkRecv) / timeDiff)
+
+				// Add to history (keep last 30 readings)
+				m.perfData.NetworkSentHistory = append(m.perfData.NetworkSentHistory, m.perfData.NetworkSentRate)
+				m.perfData.NetworkRecvHistory = append(m.perfData.NetworkRecvHistory, m.perfData.NetworkRecvRate)
+
+				// Trim history to last 30 entries
+				if len(m.perfData.NetworkSentHistory) > 30 {
+					m.perfData.NetworkSentHistory = m.perfData.NetworkSentHistory[1:]
+				}
+				if len(m.perfData.NetworkRecvHistory) > 30 {
+					m.perfData.NetworkRecvHistory = m.perfData.NetworkRecvHistory[1:]
+				}
+			}
+		}
+
+		m.perfData.NetworkSent = newSent
+		m.perfData.NetworkRecv = newRecv
+	}
+
+	// Host information
+	hostInfo, err := host.Info()
+	if err == nil {
+		m.perfData.Uptime = hostInfo.Uptime
+		m.perfData.Hostname = hostInfo.Hostname
+		m.perfData.Platform = hostInfo.Platform
+	}
+
+	// Goroutines
+	m.perfData.Goroutines = runtime.NumGoroutine()
+	m.perfData.LastUpdate = time.Now()
+}
+
+// formatBytes converts bytes to human-readable format
+func formatBytes(bytes uint64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := uint64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// createProgressBar creates a visual progress bar
+func createProgressBar(percent float64, width int, filled, empty string) string {
+	if width <= 0 {
+		return ""
+	}
+
+	filledWidth := int(percent / 100.0 * float64(width))
+	if filledWidth > width {
+		filledWidth = width
+	}
+
+	bar := strings.Repeat(filled, filledWidth) + strings.Repeat(empty, width-filledWidth)
+	return bar
+}
+
+// createSparkline generates a sparkline from historical data
+func createSparkline(data []uint64, width int) string {
+	if len(data) == 0 || width <= 0 {
+		return strings.Repeat(" ", width)
+	}
+
+	// Sparkline characters from lowest to highest
+	sparkChars := []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+
+	// Find min and max values for scaling
+	var min, max uint64 = data[0], data[0]
+	for _, val := range data {
+		if val < min {
+			min = val
+		}
+		if val > max {
+			max = val
+		}
+	}
+
+	// If all values are the same, return flat line
+	if max == min {
+		return strings.Repeat(string(sparkChars[0]), width)
+	}
+
+	// Take the last 'width' data points
+	startIdx := 0
+	if len(data) > width {
+		startIdx = len(data) - width
+	}
+
+	var result strings.Builder
+	for i := startIdx; i < len(data) && result.Len() < width; i++ {
+		// Scale the value to sparkline character range
+		normalized := float64(data[i]-min) / float64(max-min)
+		charIndex := int(normalized * float64(len(sparkChars)-1))
+		if charIndex >= len(sparkChars) {
+			charIndex = len(sparkChars) - 1
+		}
+		result.WriteRune(sparkChars[charIndex])
+	}
+
+	// Pad with spaces if needed
+	for result.Len() < width {
+		result.WriteRune(' ')
+	}
+
+	return result.String()
+}
+
+// formatNetworkRate converts bytes per second to human-readable format
+func formatNetworkRate(bytesPerSec uint64) string {
+	if bytesPerSec == 0 {
+		return "0 B/s"
+	}
+
+	const unit = 1024
+	if bytesPerSec < unit {
+		return fmt.Sprintf("%d B/s", bytesPerSec)
+	}
+
+	div, exp := uint64(unit), 0
+	for n := bytesPerSec / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB/s", float64(bytesPerSec)/float64(div), "KMGTPE"[exp])
 }
 
 func (m *model) Init() tea.Cmd {
@@ -853,6 +1066,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case spinner.TickMsg:
 		m.spinner, cmd = m.spinner.Update(msg)
 		cmds = append(cmds, cmd)
+
+		// Update system metrics every 3 seconds
+		if time.Since(m.perfData.LastUpdate) >= 3*time.Second {
+			m.updateSystemMetrics()
+		}
 
 		// Simulate tool execution progress
 		if len(m.tools) > 0 {
@@ -1011,7 +1229,7 @@ func (m *model) renderOutputCard() string {
 	}
 
 	// Calculate width for side-by-side layout (split bottom row)
-	outputWidth := (m.width - 6) / 2 // Split width, account for spacing
+	outputWidth := (m.width - 6 - 4) / 2 // Split width, account for spacing and scroll bar
 
 	// Card header with title and scroll info
 	titleText := "Live Output"
@@ -1044,7 +1262,7 @@ func (m *model) renderLogsCard() string {
 	}
 
 	// Calculate width for side-by-side layout (split bottom row)
-	logsWidth := (m.width - 6) / 2 // Split width, account for spacing
+	logsWidth := (m.width - 6 - 4) / 2 // Split width, account for spacing and scroll bar
 
 	// Card header with title and scroll info
 	titleText := "Logs"
@@ -1127,24 +1345,89 @@ func (m *model) renderToolsCard() string {
 
 func (m *model) renderPerfCard() string {
 	style := m.cardStyle
+	titleColor := lipgloss.Color("240")
 	if m.focus == perfFocus {
 		style = m.focusedCardStyle
+		titleColor = lipgloss.Color("86") // Bright cyan when focused
 	}
 
 	// Card header with title
-	title := m.titleStyle.Width(m.cardWidth - 2).Render("Performance Monitor")
+	title := m.titleStyle.Foreground(titleColor).Width(m.cardWidth - 2).Render("System Monitor")
 
-	// Card content
-	content := fmt.Sprintf(`Memory: %.1f MB
-Goroutines: %d
-Last Update: %s
+	// Color styles for different metrics
+	cpuStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))  // Orange
+	memStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))   // Blue
+	diskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("120")) // Green
+	netStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("201"))  // Magenta
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("243")) // Gray
 
-System: Operational
-Status: Active`,
-		m.perfData.MemoryMB,
-		m.perfData.Goroutines,
-		m.perfData.LastUpdate,
+	// Progress bar width (adjust based on card width)
+	barWidth := m.cardWidth - 12 // Leave space for labels and percentages
+	if barWidth < 8 {
+		barWidth = 8
+	}
+
+	// Create progress bars with colors
+	cpuBar := createProgressBar(m.perfData.CPUPercent, barWidth, "█", "░")
+	memBar := createProgressBar(m.perfData.MemoryPercent, barWidth, "█", "░")
+	diskBar := createProgressBar(m.perfData.DiskPercent, barWidth, "█", "░")
+
+	// Format uptime
+	uptimeHours := m.perfData.Uptime / 3600
+	uptimeMinutes := (m.perfData.Uptime % 3600) / 60
+
+	// Build content with visual elements
+	var contentLines []string
+
+	// CPU section
+	contentLines = append(contentLines,
+		cpuStyle.Render(fmt.Sprintf("CPU (%d cores)", m.perfData.CPUCores)),
+		fmt.Sprintf("%s %5.1f%%", cpuStyle.Render(cpuBar), m.perfData.CPUPercent),
+		"",
 	)
+
+	// Memory section
+	contentLines = append(contentLines,
+		memStyle.Render("Memory"),
+		fmt.Sprintf("%s %5.1f%%", memStyle.Render(memBar), m.perfData.MemoryPercent),
+		infoStyle.Render(fmt.Sprintf("%s / %s", formatBytes(m.perfData.MemoryUsed), formatBytes(m.perfData.MemoryTotal))),
+		"",
+	)
+
+	// Disk section
+	contentLines = append(contentLines,
+		diskStyle.Render("Disk"),
+		fmt.Sprintf("%s %5.1f%%", diskStyle.Render(diskBar), m.perfData.DiskPercent),
+		infoStyle.Render(fmt.Sprintf("%s / %s", formatBytes(m.perfData.DiskUsed), formatBytes(m.perfData.DiskTotal))),
+		"",
+	)
+
+	// Network section with sparklines
+	sparklineWidth := barWidth - 3 // Leave space for rate display
+	if sparklineWidth < 6 {
+		sparklineWidth = 6
+	}
+
+	txSparkline := createSparkline(m.perfData.NetworkSentHistory, sparklineWidth)
+	rxSparkline := createSparkline(m.perfData.NetworkRecvHistory, sparklineWidth)
+
+	contentLines = append(contentLines,
+		netStyle.Render("Network Traffic"),
+		fmt.Sprintf("TX %s %s", netStyle.Render(txSparkline), infoStyle.Render(formatNetworkRate(m.perfData.NetworkSentRate))),
+		fmt.Sprintf("RX %s %s", netStyle.Render(rxSparkline), infoStyle.Render(formatNetworkRate(m.perfData.NetworkRecvRate))),
+		infoStyle.Render(fmt.Sprintf("Total: %s up / %s down", formatBytes(m.perfData.NetworkSent), formatBytes(m.perfData.NetworkRecv))),
+		"",
+	)
+
+	// System info
+	contentLines = append(contentLines,
+		infoStyle.Render(fmt.Sprintf("Host: %s", m.perfData.Hostname)),
+		infoStyle.Render(fmt.Sprintf("OS: %s", m.perfData.Platform)),
+		infoStyle.Render(fmt.Sprintf("Uptime: %dh %dm", uptimeHours, uptimeMinutes)),
+		infoStyle.Render(fmt.Sprintf("Goroutines: %d", m.perfData.Goroutines)),
+	)
+
+	content := strings.Join(contentLines, "\n")
 
 	// Combine title and content
 	cardContent := lipgloss.JoinVertical(lipgloss.Left,
@@ -1162,16 +1445,17 @@ func (m *model) updateSizes() {
 	}
 
 	// Calculate card dimensions for horizontal layout (4 cards across)
-	// Account for borders and spacing
-	m.cardWidth = (m.width - 8) / 4    // 4 cards horizontal with spacing
-	m.cardHeight = (m.height - 10) / 2 // 2 rows: top cards + output
+	// Account for borders, spacing, and scroll bar space
+	scrollBarSpace := 4                               // Extra space for scroll bars
+	m.cardWidth = (m.width - 12 - scrollBarSpace) / 4 // 4 cards horizontal with spacing and scroll bar
+	m.cardHeight = (m.height - 10) / 2                // 2 rows: top cards + output
 
-	// Ensure reasonable minimums for readability
-	if m.cardWidth < 35 {
-		m.cardWidth = 35
+	// Ensure reasonable minimums for readability but keep them compact
+	if m.cardWidth < 28 {
+		m.cardWidth = 28
 	}
-	if m.cardHeight < 12 {
-		m.cardHeight = 12
+	if m.cardHeight < 10 {
+		m.cardHeight = 10
 	}
 
 	// Update list sizes (account for borders and padding)
@@ -1184,8 +1468,8 @@ func (m *model) updateSizes() {
 	}
 
 	// Update viewport sizes for side-by-side layout (live output and logs)
-	bottomCardWidth := (m.width - 6) / 2 // Split bottom row
-	viewportWidth := bottomCardWidth - 8 // Account for card borders and padding
+	bottomCardWidth := (m.width - 6 - scrollBarSpace) / 2 // Split bottom row, account for scroll bar
+	viewportWidth := bottomCardWidth - 8                  // Account for card borders and padding
 	viewportHeight := m.cardHeight - 4
 
 	if viewportHeight < 8 {

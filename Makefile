@@ -78,6 +78,9 @@ test-all: test-ui test-plain test-static test-deps ## Run all tests
 
 install: build ## Install IPCrawler TUI to $GOPATH/bin
 	@echo "$(BLUE)Installing IPCrawler TUI...$(RESET)"
+	@echo "$(YELLOW)Adding gopsutil dependency...$(RESET)"
+	go get github.com/shirou/gopsutil/v3@latest
+	go mod tidy
 	go install ./cmd/ipcrawler
 	@echo "$(GREEN)Installed to $$(go env GOPATH)/bin/ipcrawler$(RESET)"
 
