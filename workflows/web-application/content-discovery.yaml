@@ -1,4 +1,4 @@
-name: "Web Content Discovery"
+name: "Web Scanner"
 description: "Discover hidden files, directories and endpoints"
 category: "web-application"
 tools:

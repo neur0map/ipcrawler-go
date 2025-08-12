@@ -2,7 +2,7 @@
 # Charmbracelet-based Terminal User Interface
 
 .DEFAULT_GOAL := help
-.PHONY: help deps clean build demo test-ui test-plain all
+.PHONY: help deps clean build test-ui test-plain all
 
 # Colors for output
 BLUE := \033[34m
@@ -25,7 +25,6 @@ deps: ## Install/update Charmbracelet dependencies
 clean: ## Clean build artifacts
 	@echo "$(BLUE)Cleaning build artifacts...$(RESET)"
 	rm -f bin/ipcrawler
-	rm -f demo/ipcrawler-demo
 	rm -rf bin/
 	@echo "$(GREEN)Clean completed$(RESET)"
 
@@ -48,7 +47,7 @@ test-plain: ## Test binary execution
 
 test-keyboard: ## Test keyboard interactions
 	@echo "$(BLUE)Testing keyboard interactions...$(RESET)"
-	@echo "$(YELLOW)Manual test: Run 'make demo' and test:$(RESET)"
+	@echo "$(YELLOW)Manual test: Run 'make run' and test:$(RESET)"
 	@echo "  - Tab: Switch panels"
 	@echo "  - Arrow keys: Navigate lists and viewport" 
 	@echo "  - Space/Enter: Select items"

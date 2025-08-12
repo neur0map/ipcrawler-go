@@ -2,67 +2,22 @@
 # This file contains metadata for all available workflows
 
 reconnaissance:
-  name: "Reconnaissance"
-  description: "Information gathering and target enumeration workflows"
+  name: "Initial Recon"
+  description: "Multi-stage port discovery and service enumeration"
   tools:
-    - name: subfinder
-      requires_sudo: false
-    - name: amass
-      requires_sudo: false
     - name: nmap
       requires_sudo: true
       reason: "SYN scan and OS detection require root privileges"
-    - name: masscan
-      requires_sudo: true
-      reason: "Raw packet scanning requires root privileges"
     - name: naabu
       requires_sudo: false
 
-vulnerability-scanning:
-  name: "Vulnerability Scanning" 
-  description: "Automated vulnerability detection and assessment"
-  tools:
-    - name: nuclei
-      requires_sudo: false
-    - name: nikto
-      requires_sudo: false
-    - name: sqlmap
-      requires_sudo: false
-
-network-scanning:
-  name: "Network Scanning"
-  description: "Network discovery and port scanning workflows"
-  tools:
-    - name: nmap
-      requires_sudo: true
-      reason: "SYN scan and OS detection require root privileges"
-    - name: masscan
-      requires_sudo: true
-      reason: "Raw packet scanning requires root privileges"
-    - name: zmap
-      requires_sudo: true
-      reason: "Raw socket scanning requires root privileges"
-
 web-application:
-  name: "Web Application Testing"
-  description: "Web application security assessment tools"
+  name: "Web Scanner"
+  description: "Discover hidden files, directories and endpoints"
   tools:
     - name: gobuster
       requires_sudo: false
     - name: ffuf
       requires_sudo: false
     - name: dirb
-      requires_sudo: false
-    - name: wpscan
-      requires_sudo: false
-
-post-exploitation:
-  name: "Post Exploitation"
-  description: "Privilege escalation and lateral movement tools"
-  tools:
-    - name: linpeas
-      requires_sudo: false
-    - name: winpeas
-      requires_sudo: false
-    - name: bloodhound
       requires_sudo: false

@@ -296,156 +296,10 @@ func newModel() *model {
 		logsVp.HighPerformanceRendering = true
 	}
 
-	// Initialize live output (raw tool execution output) - extensive content for scrolling demo
+	// Initialize live output (raw tool execution output) - empty by default
 	liveOutputLines := []string{
 		"=== IPCrawler Live Tool Execution Output ===",
-		"Session started: 2024-08-09 12:34:56",
-		"",
-		">>> Executing Reconnaissance Workflow <<<",
-		"",
-		"[12:34:56] [NMAP] Starting network reconnaissance",
-		"[12:34:56] nmap -sS -sV -O --top-ports 1000 target.com",
-		"[12:34:57] Starting Nmap 7.95 ( https://nmap.org ) at 2024-08-09 12:34",
-		"[12:34:58] Nmap scan report for target.com (192.168.1.100)",
-		"[12:34:59] Host is up (0.050s latency).",
-		"[12:35:00] Not shown: 997 closed tcp ports (reset)",
-		"[12:35:01] PORT     STATE SERVICE    VERSION",
-		"[12:35:02] 22/tcp   open  ssh        OpenSSH 8.9p1 Ubuntu 3ubuntu0.1",
-		"[12:35:03] 80/tcp   open  http       Apache httpd 2.4.52",
-		"[12:35:04] 443/tcp  open  ssl/http   Apache httpd 2.4.52",
-		"[12:35:05] 3306/tcp open  mysql      MySQL 8.0.33-0ubuntu0.22.04.2",
-		"[12:35:06] 8080/tcp open  http-proxy Squid http proxy 5.2",
-		"[12:35:07] Device type: general purpose",
-		"[12:35:08] Running: Linux 5.X",
-		"[12:35:09] OS CPE: cpe:/o:linux:linux_kernel:5",
-		"[12:35:10] OS details: Linux 5.0 - 5.4",
-		"[12:35:11] Network Distance: 2 hops",
-		"[12:35:12] Nmap done: 1 IP address (1 host up) scanned in 15.42 seconds",
-		"",
-		"[12:35:13] [SUBDOMAIN] Starting subdomain enumeration",
-		"[12:35:13] subfinder -d target.com -all -recursive",
-		"[12:35:14] Found subdomain: www.target.com",
-		"[12:35:15] Found subdomain: api.target.com",
-		"[12:35:16] Found subdomain: admin.target.com",
-		"[12:35:17] Found subdomain: dev.target.com",
-		"[12:35:18] Found subdomain: staging.target.com",
-		"[12:35:19] Found subdomain: mail.target.com",
-		"[12:35:20] Found subdomain: ftp.target.com",
-		"[12:35:21] Found subdomain: blog.target.com",
-		"[12:35:22] Found subdomain: shop.target.com",
-		"[12:35:23] Found subdomain: support.target.com",
-		"[12:35:24] amass enum -d target.com -brute",
-		"[12:35:25] Found subdomain: vpn.target.com",
-		"[12:35:26] Found subdomain: jenkins.target.com",
-		"[12:35:27] Found subdomain: gitlab.target.com",
-		"[12:35:28] Found subdomain: jira.target.com",
-		"[12:35:29] Total subdomains found: 14",
-		"",
-		"[12:35:30] [DIRB] Starting directory brute force",
-		"[12:35:30] gobuster dir -u http://target.com -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt",
-		"[12:35:31] /.htaccess            (Status: 403) [Size: 278]",
-		"[12:35:32] /.htpasswd            (Status: 403) [Size: 278]",
-		"[12:35:33] /admin                (Status: 200) [Size: 1432]",
-		"[12:35:34] /api                  (Status: 200) [Size: 89]",
-		"[12:35:35] /backup               (Status: 301) [Size: 315]",
-		"[12:35:36] /cgi-bin              (Status: 403) [Size: 278]",
-		"[12:35:37] /config               (Status: 301) [Size: 315]",
-		"[12:35:38] /css                  (Status: 301) [Size: 312]",
-		"[12:35:39] /dashboard            (Status: 302) [Size: 0]",
-		"[12:35:40] /docs                 (Status: 301) [Size: 313]",
-		"[12:35:41] /downloads            (Status: 301) [Size: 318]",
-		"[12:35:42] /files                (Status: 301) [Size: 314]",
-		"[12:35:43] /images               (Status: 301) [Size: 315]",
-		"[12:35:44] /js                   (Status: 301) [Size: 311]",
-		"[12:35:45] /login                (Status: 200) [Size: 2156]",
-		"[12:35:46] /logs                 (Status: 403) [Size: 278]",
-		"[12:35:47] /phpinfo              (Status: 200) [Size: 95912]",
-		"[12:35:48] /robots.txt           (Status: 200) [Size: 45]",
-		"[12:35:49] /server-info          (Status: 403) [Size: 278]",
-		"[12:35:50] /server-status        (Status: 403) [Size: 278]",
-		"[12:35:51] /uploads              (Status: 301) [Size: 316]",
-		"[12:35:52] /wp-admin             (Status: 301) [Size: 317]",
-		"[12:35:53] /wp-content           (Status: 301) [Size: 319]",
-		"[12:35:54] /wp-includes          (Status: 301) [Size: 320]",
-		"",
-		">>> Executing Web Application Workflow <<<",
-		"",
-		"[12:35:55] [NIKTO] Starting web vulnerability scan",
-		"[12:35:55] nikto -h http://target.com -Format txt",
-		"[12:35:56] - Nikto v2.5.0",
-		"[12:35:57] + Target IP:          192.168.1.100",
-		"[12:35:58] + Target Hostname:    target.com",
-		"[12:35:59] + Target Port:        80",
-		"[12:36:00] + Start Time:         2024-08-09 12:35:55",
-		"[12:36:01] + Server: Apache/2.4.52 (Ubuntu)",
-		"[12:36:02] + /: The anti-clickjacking X-Frame-Options header is not present.",
-		"[12:36:03] + /: The X-Content-Type-Options header is not set.",
-		"[12:36:04] + /: Server may leak inodes via ETags, header found with file /robots.txt",
-		"[12:36:05] + /admin/: This might be interesting... has been seen in web logs from an unknown scanner.",
-		"[12:36:06] + /backup/: Backup folder found. This can contain sensitive files.",
-		"[12:36:07] + /config/: Configuration file found. May contain sensitive information.",
-		"[12:36:08] + /phpinfo.php: Output from the phpinfo() function was found.",
-		"[12:36:09] + /wp-admin/: Admin login page/section found.",
-		"[12:36:10] + /wp-login.php: Wordpress login found",
-		"[12:36:11] + 7967 requests: 0 error(s) and 10 item(s) reported",
-		"",
-		"[12:36:12] [SQLMAP] Testing for SQL injection",
-		"[12:36:12] sqlmap -u 'http://target.com/login.php' --data='username=admin&password=admin' --batch",
-		"[12:36:13] [INFO] testing connection to the target URL",
-		"[12:36:14] [INFO] checking if the target is protected by some kind of WAF/IPS",
-		"[12:36:15] [INFO] testing if the target URL content is stable",
-		"[12:36:16] [INFO] target URL content is stable",
-		"[12:36:17] [INFO] testing if POST parameter 'username' is dynamic",
-		"[12:36:18] [WARNING] POST parameter 'username' does not appear to be dynamic",
-		"[12:36:19] [INFO] heuristic (basic) test shows that POST parameter 'username' might be injectable",
-		"[12:36:20] [INFO] testing for SQL injection on POST parameter 'username'",
-		"[12:36:21] [INFO] testing 'AND boolean-based blind - WHERE or HAVING clause'",
-		"[12:36:22] [INFO] POST parameter 'username' appears to be 'AND boolean-based blind - WHERE or HAVING clause' injectable",
-		"[12:36:23] [INFO] testing 'Generic inline queries'",
-		"[12:36:24] [INFO] testing 'MySQL >= 5.5 AND error-based - WHERE, HAVING, ORDER BY or GROUP BY clause (BIGINT UNSIGNED)'",
-		"[12:36:25] [INFO] testing 'MySQL >= 5.5 OR error-based - WHERE or HAVING clause (BIGINT UNSIGNED)'",
-		"[12:36:26] POST parameter 'username' is vulnerable. Do you want to keep testing the others?",
-		"",
-		">>> Executing Vulnerability Scanning Workflow <<<",
-		"",
-		"[12:36:27] [NESSUS] Starting comprehensive vulnerability scan",
-		"[12:36:27] Starting Nessus scan ID: 12345",
-		"[12:36:28] Scan policy: Full Network Scan",
-		"[12:36:29] Target: 192.168.1.100",
-		"[12:36:30] [HIGH] CVE-2023-1234: Apache HTTP Server vulnerability",
-		"[12:36:31] [MEDIUM] CVE-2023-5678: MySQL privilege escalation",
-		"[12:36:32] [LOW] Missing security headers detected",
-		"[12:36:33] [INFO] Service enumeration complete",
-		"[12:36:34] [CRITICAL] SSH brute force protection not enabled",
-		"[12:36:35] [HIGH] Outdated WordPress installation detected",
-		"[12:36:36] [MEDIUM] Weak SSL/TLS configuration",
-		"[12:36:37] [LOW] Directory listing enabled in /uploads/",
-		"[12:36:38] Total vulnerabilities found: 43",
-		"[12:36:39] Critical: 1, High: 8, Medium: 15, Low: 19",
-		"",
-		"[12:36:40] [OPENVAS] Secondary vulnerability validation",
-		"[12:36:40] Launching OpenVAS scan...",
-		"[12:36:41] Scanning 192.168.1.100 with NVT feed 20240809",
-		"[12:36:42] Port scanning (Nmap) completed",
-		"[12:36:43] Host details: Linux target.com 5.15.0-72-generic",
-		"[12:36:44] Service detection completed",
-		"[12:36:45] Vulnerability tests: 98765 NVTs loaded",
-		"[12:36:46] Found: Weak SSH encryption algorithms",
-		"[12:36:47] Found: Apache version disclosure",
-		"[12:36:48] Found: MySQL default configuration",
-		"[12:36:49] Found: Missing HTTPS enforcement",
-		"[12:36:50] Scan progress: 100% complete",
-		"",
-		"=== SCAN SUMMARY ===",
-		"Total execution time: 16 minutes 54 seconds",
-		"Hosts scanned: 1",
-		"Subdomains found: 14",
-		"Directories discovered: 25",
-		"Vulnerabilities identified: 43",
-		"Critical security issues: 1",
-		"Recommendations generated: 12",
-		"",
-		"=== END OF LIVE OUTPUT ===",
+		"Ready to execute workflows...",
 		"",
 		"Use ↑↓ arrow keys to scroll through this content",
 		"Focus this window with key '3' then scroll",
@@ -557,20 +411,32 @@ func newModel() *model {
 		createLogEntry("INFO", "Memory usage optimal - ready for workflow execution"),
 		createLogEntry("DEBUG", "All components initialized successfully"),
 
-		// Add extensive system log entries for scrolling demo with varied levels and colors
+		// System startup log entries
 		createLogEntry("DEBUG", "Configuration validation starting..."),
-		createLogEntry("INFO", "Loading workflow configurations", "count", 5),
+		func() string {
+			count := 0
+			if workflows != nil {
+				count = len(workflows.Workflows)
+			}
+			return createLogEntry("INFO", "Loading workflow configurations", "count", count)
+		}(),
 		createLogEntry("WARN", "Using default configuration - custom config not found"),
-		createLogEntry("DEBUG", "Parsing reconnaissance workflow", "tools", "nmap,subfinder,amass,gobuster"),
-		createLogEntry("DEBUG", "Parsing web-application workflow", "tools", "nikto,sqlmap,wpscan,burpsuite"),
-		createLogEntry("DEBUG", "Parsing vulnerability-scanning workflow", "tools", "nessus,openvas,nuclei,zap"),
-		createLogEntry("DEBUG", "Parsing network-scanning workflow", "tools", "masscan,zmap,rustscan,unicornscan"),
-		createLogEntry("DEBUG", "Parsing post-exploitation workflow", "tools", "metasploit,empire,cobalt-strike,bloodhound"),
+		// Dynamically list available workflows from loaded configuration
+		func() string {
+			if workflows != nil && len(workflows.Workflows) > 0 {
+				var workflowNames []string
+				for name := range workflows.Workflows {
+					workflowNames = append(workflowNames, name)
+				}
+				return createLogEntry("DEBUG", "Parsing available workflows", "workflows", strings.Join(workflowNames, ","))
+			}
+			return createLogEntry("WARN", "No workflows loaded - check configuration")
+		}(),
 		createLogEntry("INFO", "All workflow configurations validated successfully"),
 
 		createLogEntry("DEBUG", "UI component initialization starting..."),
-		createLogEntry("DEBUG", "Creating workflow tree list component", "width", 35, "height", 12),
-		createLogEntry("DEBUG", "Creating execution queue list component", "width", 35, "height", 12),
+		createLogEntry("DEBUG", "Creating workflow tree list component"),
+		createLogEntry("DEBUG", "Creating execution queue list component"),
 		createLogEntry("DEBUG", "Creating live output viewport", "width", viewportWidth, "height", viewportHeight),
 		createLogEntry("DEBUG", "Creating system logs viewport", "width", viewportWidth, "height", viewportHeight),
 		createLogEntry("DEBUG", "Setting up key bindings", "focus_keys", "1,2,3,4,5,6"),
@@ -578,41 +444,58 @@ func newModel() *model {
 		createLogEntry("INFO", "All UI components initialized and configured"),
 
 		createLogEntry("DEBUG", "Security module initialization..."),
-		createLogEntry("DEBUG", "Loading security policies", "policy_count", 15),
-		createLogEntry("DEBUG", "Validating tool permissions", "executable_tools", 25),
+		createLogEntry("DEBUG", "Loading security policies"),
+		createLogEntry("DEBUG", "Validating tool permissions"),
 		createLogEntry("DEBUG", "Setting up sandboxing", "mode", "restricted"),
 		createLogEntry("DEBUG", "Configuring audit logging", "log_level", "debug"),
 		createLogEntry("INFO", "Security framework initialized successfully"),
 
 		createLogEntry("DEBUG", "Performance monitoring setup..."),
-		createLogEntry("DEBUG", "Initializing memory tracker", "initial_memory", "12.5MB"),
-		createLogEntry("DEBUG", "Setting up goroutine monitor", "initial_goroutines", 5),
+		createLogEntry("DEBUG", "Initializing memory tracker"),
+		createLogEntry("DEBUG", "Setting up goroutine monitor"),
 		createLogEntry("DEBUG", "Configuring metrics collection", "interval", "1s"),
 		createLogEntry("DEBUG", "Enabling real-time performance updates"),
 		createLogEntry("INFO", "Performance monitoring active"),
 
 		createLogEntry("DEBUG", "Network module configuration..."),
-		createLogEntry("DEBUG", "Testing external connectivity", "target", "8.8.8.8"),
-		createLogEntry("DEBUG", "Validating DNS resolution", "test_domain", "google.com"),
+		createLogEntry("DEBUG", "Testing external connectivity"),
+		createLogEntry("DEBUG", "Validating DNS resolution"),
 		createLogEntry("DEBUG", "Checking proxy settings", "proxy", "none"),
 		createLogEntry("DEBUG", "Configuring timeout values", "connect_timeout", "10s", "read_timeout", "30s"),
 		createLogEntry("INFO", "Network connectivity verified"),
 
 		createLogEntry("DEBUG", "Tool dependency verification..."),
-		createLogEntry("DEBUG", "Checking nmap installation", "version", "7.95", "status", "available"),
-		createLogEntry("DEBUG", "Checking subfinder installation", "version", "2.6.3", "status", "available"),
-		createLogEntry("DEBUG", "Checking gobuster installation", "version", "3.6", "status", "available"),
-		createLogEntry("DEBUG", "Checking nikto installation", "version", "2.5.0", "status", "available"),
-		createLogEntry("DEBUG", "Checking sqlmap installation", "version", "1.7.11", "status", "available"),
-		createLogEntry("WARN", "Some optional tools not found", "missing", "burpsuite,metasploit"),
-		createLogEntry("INFO", "Core tools verified - system ready for operation"),
-		createLogEntry("ERROR", "Tool validation failed for deprecated scanner", "err", "version incompatible"),
+		// Dynamically check tools from loaded workflows
+		func() string {
+			if workflows != nil && len(workflows.Workflows) > 0 {
+				var allTools []string
+				for _, workflow := range workflows.Workflows {
+					for _, tool := range workflow.Tools {
+						found := false
+						for _, existing := range allTools {
+							if existing == tool.Name {
+								found = true
+								break
+							}
+						}
+						if !found {
+							allTools = append(allTools, tool.Name)
+						}
+					}
+				}
+				if len(allTools) > 0 {
+					return createLogEntry("DEBUG", "Required tools detected", "tools", strings.Join(allTools, ","))
+				}
+			}
+			return createLogEntry("WARN", "No tools to verify - no workflows loaded")
+		}(),
+		createLogEntry("INFO", "Tool verification complete - system ready for operation"),
 
 		// Database-related logs removed
 
 		createLogEntry("DEBUG", "Session management initialization..."),
-		createLogEntry("DEBUG", "Generating session ID", "session", "abc123def456"),
-		createLogEntry("DEBUG", "Setting session timeout", "timeout", "2h"),
+		createLogEntry("DEBUG", "Generating session ID"),
+		createLogEntry("DEBUG", "Setting session timeout"),
 		// Auto-save log removed
 		createLogEntry("DEBUG", "Loading previous session state", "found", false),
 		createLogEntry("INFO", "New session created successfully"),
@@ -631,26 +514,23 @@ func newModel() *model {
 		createLogEntry("INFO", "Output processing pipeline configured"),
 
 		createLogEntry("DEBUG", "Plugin system loading..."),
-		createLogEntry("DEBUG", "Scanning plugin directory", "path", "/usr/local/share/ipcrawler/plugins"),
-		createLogEntry("DEBUG", "Loading custom reconnaissance plugin", "name", "advanced-recon"),
-		createLogEntry("DEBUG", "Loading reporting enhancement plugin", "name", "executive-summary"),
-		createLogEntry("WARN", "Plugin signature verification failed", "plugin", "untrusted-scanner"),
-		createLogEntry("INFO", "Trusted plugins loaded successfully", "count", 2),
+		createLogEntry("DEBUG", "Scanning plugin directory"),
+		createLogEntry("DEBUG", "Scanning for available plugins"),
+		createLogEntry("INFO", "Plugin system ready"),
 
 		createLogEntry("DEBUG", "Final system checks..."),
-		createLogEntry("DEBUG", "Verifying file permissions", "config_dir", "/etc/ipcrawler"),
-		createLogEntry("DEBUG", "Checking disk space", "available", "15.2GB", "required", "1GB"),
-		createLogEntry("DEBUG", "Validating log rotation", "max_size", "100MB", "retention", "30d"),
+		createLogEntry("DEBUG", "Verifying file permissions"),
+		createLogEntry("DEBUG", "Checking disk space"),
+		createLogEntry("DEBUG", "Validating log rotation"),
 		createLogEntry("DEBUG", "Testing emergency shutdown procedures"),
 		createLogEntry("INFO", "All system checks passed - IPCrawler ready for operation"),
 
 		createLogEntry("INFO", "=== SYSTEM STARTUP COMPLETE ==="),
-		createLogEntry("DEBUG", "Total initialization time: 2.34 seconds"),
-		createLogEntry("INFO", "System health: 100% operational", "progress", "100%"),
+		createLogEntry("DEBUG", "Initialization complete"),
+		createLogEntry("INFO", "System health: operational"),
 		createLogEntry("DEBUG", "Ready to accept workflow execution requests"),
 		createLogEntry("INFO", "Use ↑↓ keys to scroll logs when focused on this window"),
 
-		createLogEntry("ERROR", "Demo mode active - some features limited", "err", "no production license"),
 	}...)
 
 	// Set content for both viewports and auto-scroll to bottom
@@ -1659,62 +1539,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Update animated values for smooth transitions on every update cycle
 	m.updateAnimatedValues()
 
-	// Simulate tool execution progress - moved outside switch to run on every update
-	if len(m.tools) > 0 {
-		// Find current running tool and advance it
-		for i := range m.tools {
-			if m.tools[i].Status == "running" {
-				// Randomly complete tools after some ticks (simulation)
-				if time.Now().UnixNano()%7 == 0 { // Random completion
-					m.tools[i].Status = "done"
-					// Find next pending tool and start it
-					foundNext := false
-					for j := i + 1; j < len(m.tools); j++ {
-						if m.tools[j].Status == "pending" {
-							m.tools[j].Status = "running"
-							// Add to live output
-							timeFormat := m.config.UI.Formatting.TimeFormat
-							if timeFormat == "" {
-								timeFormat = "15:04:05" // Fallback
-							}
-							m.liveOutput = append(m.liveOutput,
-								fmt.Sprintf("[%s] Starting %s", time.Now().Format(timeFormat), m.tools[j].Name))
-							m.outputViewport.SetContent(strings.Join(m.liveOutput, "\n"))
-							m.outputViewport.GotoBottom()
-							foundNext = true
-							break
-						}
-					}
-					// Add completion to live output
-					timeFormat := m.config.UI.Formatting.TimeFormat
-					if timeFormat == "" {
-						timeFormat = "15:04:05" // Fallback
-					}
-					m.liveOutput = append(m.liveOutput,
-						fmt.Sprintf("[%s] Completed %s", time.Now().Format(timeFormat), m.tools[i].Name))
-					m.outputViewport.SetContent(strings.Join(m.liveOutput, "\n"))
-					m.outputViewport.GotoBottom()
-
-					// Check if all tools are done
-					if !foundNext {
-						allDone := true
-						for _, tool := range m.tools {
-							if tool.Status == "pending" || tool.Status == "running" {
-								allDone = false
-								break
-							}
-						}
-
-						if allDone {
-							// Mark workflows as executed and move them back
-							m.completeWorkflowExecution()
-						}
-					}
-				}
-				break
-			}
-		}
-	}
+	// TODO: Replace with real tool execution when backend is implemented
+	// Currently showing execution preparation only - no simulation
 
 
 	return m, tea.Batch(cmds...)
@@ -2407,48 +2233,36 @@ func (m *model) getExecutionContext() map[string]string {
 	return ctx
 }
 
-// executeSelectedWorkflows starts execution of selected workflows (UI simulation only)
+// executeSelectedWorkflows prepares execution of selected workflows (no backend yet)
 func (m *model) executeSelectedWorkflows() {
-	// This is UI-only for now - no actual backend execution
-	// When implementing real execution, use getExecutionContext():
-	// execCtx := m.getExecutionContext()
-	// ctx := &executor.ExecutionContext{
-	//     Target:     execCtx["target"],
-	//     Workspace:  execCtx["workspace"],
-	//     OutputDir:  execCtx["output_dir"],
-	//     LogsDir:    execCtx["logs_dir"],
-	//     ScansDir:   execCtx["scans_dir"],
-	//     ReportsDir: execCtx["reports_dir"],
-	//     RawDir:     execCtx["raw_dir"],
-	//     Timestamp:  execCtx["timestamp"],
-	//     SessionID:  execCtx["session_id"],
-	// }
+	// TODO: Implement real tool execution engine
+	// For now, just show the selected workflows and tools that would be executed
+	
 	items := []list.Item{}
-
-	// Clear and populate the tools execution list
 	m.tools = []toolExecution{}
 
+	// Show selected workflows in execution queue
 	for workflowName, selected := range m.selectedWorkflows {
 		if selected {
 			if workflow, exists := m.workflows.Workflows[workflowName]; exists {
 				items = append(items, executionItem{
 					name:        workflowName,
-					description: workflow.Name,
-					status:      "running",
+					description: fmt.Sprintf("%s (Ready for execution)", workflow.Name),
+					status:      "ready",
 				})
 
-				// Add workflow header to tools
+				// Add workflow header to tools list
 				m.tools = append(m.tools, toolExecution{
 					Name:   fmt.Sprintf("[%s]", workflow.Name),
-					Status: "header",
+					Status: "ready",
 					Output: "",
 				})
 
-				// Add each tool from the workflow to the execution list
+				// Add each tool from the workflow to the tools list
 				for _, tool := range workflow.Tools {
 					m.tools = append(m.tools, toolExecution{
-						Name:   fmt.Sprintf("  → %s", tool),
-						Status: "pending",
+						Name:   fmt.Sprintf("  → %s", tool.Name),
+						Status: "ready",
 						Output: "",
 					})
 				}
@@ -2456,52 +2270,32 @@ func (m *model) executeSelectedWorkflows() {
 		}
 	}
 
-	// If tools were added, set the first actual tool (not header) to running
-	for i := range m.tools {
-		if m.tools[i].Status == "pending" {
-			m.tools[i].Status = "running"
-			break
-		}
-	}
-
 	// Add execution summary
 	executedCount := len(items)
+	toolCount := len(m.tools) - executedCount // Subtract headers
 	items = append(items, executionItem{
-		name:        fmt.Sprintf("Executing %d workflows", executedCount),
-		description: fmt.Sprintf("Running %d tools total", len(m.tools)-executedCount),
+		name:        fmt.Sprintf("%d workflows prepared", executedCount),
+		description: fmt.Sprintf("%d tools ready for execution", toolCount),
 		status:      "info",
 	})
 
 	m.scanOverviewList.SetItems(items)
 
-	// Update live output with tool execution simulation
+	// Update live output with preparation message
 	m.liveOutput = []string{
-		"=== IPCrawler Tool Execution Started ===",
-		fmt.Sprintf("=== Executing %d Workflows ===", executedCount),
-		fmt.Sprintf("=== Total Tools to Execute: %d ===", len(m.tools)-executedCount),
+		"=== IPCrawler Execution Preparation ===",
+		fmt.Sprintf("Selected %d workflows for execution", executedCount),
+		fmt.Sprintf("Total tools ready: %d", toolCount),
+		"",
+		"Backend execution engine not yet implemented.",
+		"Workflows and tools have been validated and are ready.",
 		"",
 	}
 
-	// Log the start of execution
-	m.logSystemMessage("info", "Workflow execution started", "workflows", executedCount, "tools", len(m.tools)-executedCount)
+	// Log the preparation
+	m.logSystemMessage("info", "Workflow execution prepared", "workflows", executedCount, "tools", toolCount)
 
-	// Start the first tool's output
-	if len(m.tools) > 0 {
-		for i, tool := range m.tools {
-			if tool.Status == "running" {
-				timeFormat := m.config.UI.Formatting.TimeFormat
-				if timeFormat == "" {
-					timeFormat = "15:04:05" // Fallback
-				}
-				m.liveOutput = append(m.liveOutput, fmt.Sprintf("[%s] Starting %s", time.Now().Format(timeFormat), tool.Name))
-				break
-			} else if tool.Status == "header" && i+1 < len(m.tools) {
-				m.liveOutput = append(m.liveOutput, fmt.Sprintf("\n=== %s ===", tool.Name))
-			}
-		}
-	}
-
-	// Update viewport with initial output
+	// Update viewport with preparation output
 	m.outputViewport.SetContent(strings.Join(m.liveOutput, "\n"))
 	m.outputViewport.GotoBottom()
 
