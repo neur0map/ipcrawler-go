@@ -2657,88 +2657,11 @@ func getTerminalSize() (int, int) {
 }
 
 func main() {
-	// Check for --new-window flag
-	openNewWindow := len(os.Args) > 1 && os.Args[1] == "--new-window"
-
-	if !openNewWindow {
-		// Launch in new terminal window with optimal size
-		launchInNewTerminal()
-		return
-	}
-
-	// This is the actual TUI execution in the new terminal
+	// IPCrawler TUI - Main Entry Point
+	// This should only be called via shell script launcher from 'make run'
 	runTUI()
 }
 
-func launchInNewTerminal() {
-	// Get the executable path
-	executable, err := os.Executable()
-	if err != nil {
-		fmt.Printf("Error getting executable path: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Optimal dimensions for IPCrawler TUI (no overlaps, horizontal layout)
-	width := 200
-	height := 70
-
-	// Try different terminal applications based on OS
-	var cmd *exec.Cmd
-
-	switch runtime.GOOS {
-	case "darwin": // macOS
-		// Try Terminal.app first
-		cmd = exec.Command("osascript", "-e", fmt.Sprintf(`
-tell application "Terminal"
-	activate
-	set newWindow to do script "%s --new-window"
-	tell newWindow's tab 1
-		set the size to {%d, %d}
-	end tell
-end tell`, executable, width, height))
-
-		if err := cmd.Run(); err != nil {
-			// Fallback to iTerm2
-			cmd = exec.Command("osascript", "-e", fmt.Sprintf(`
-tell application "iTerm"
-	create window with default profile
-	tell current session of current window
-		write text "%s --new-window"
-		set rows to %d
-		set columns to %d
-	end tell
-end tell`, executable, height, width))
-		}
-
-	case "linux":
-		// Try gnome-terminal first
-		cmd = exec.Command("gnome-terminal",
-			"--geometry", fmt.Sprintf("%dx%d", width, height),
-			"--title", "IPCrawler TUI",
-			"--", executable, "--new-window")
-
-		if err := cmd.Start(); err != nil {
-			// Fallback to xterm
-			cmd = exec.Command("xterm",
-				"-geometry", fmt.Sprintf("%dx%d", width, height),
-				"-title", "IPCrawler TUI",
-				"-e", executable, "--new-window")
-		}
-
-	default:
-		// Fallback: run in current terminal
-		fmt.Println("Opening TUI in current terminal (new window not supported on this platform)")
-		runTUI()
-		return
-	}
-
-	// Execute the command
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("Could not open new terminal window: %v\n", err)
-		fmt.Println("Falling back to current terminal...")
-		runTUI()
-	}
-}
 
 func runTUI() {
 	// Check TTY
@@ -2865,16 +2788,8 @@ func checkSudoRequirements() bool {
 		fmt.Println("\n🔐 Restarting IPCrawler with sudo privileges...")
 		fmt.Println("You may be prompted for your password.")
 		
-		// Get the current executable path
-		executable, err := os.Executable()
-		if err != nil {
-			fmt.Printf("Error getting executable path: %v\n", err)
-			fmt.Println("Please run manually: sudo make run-here")
-			return false
-		}
-		
-		// Restart with sudo
-		cmd := exec.Command("sudo", executable, "--new-window")
+		// Restart with sudo (using shell script launcher)
+		cmd := exec.Command("sudo", "make", "run")
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -2886,7 +2801,7 @@ func checkSudoRequirements() bool {
 		err = cmd.Run()
 		if err != nil {
 			fmt.Printf("\nFailed to restart with sudo: %v\n", err)
-			fmt.Println("Fallback: Please run 'sudo make run-here' manually")
+			fmt.Println("Fallback: Please run 'sudo make run' manually")
 			
 			fmt.Println("\n👋 Thank you for using IPCrawler!")
 			fmt.Print("\nClosing in 3 seconds...")

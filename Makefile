@@ -13,6 +13,7 @@ RESET := \033[0m
 
 help: ## Show this help message
 	@echo "$(BLUE)IPCrawler TUI - 5-Card Dynamic Dashboard$(RESET)"
+	@echo "$(YELLOW)Main entry point: make run$(RESET)"
 	@echo "$(YELLOW)Available targets:$(RESET)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-12s$(RESET) %s\n", $$1, $$2}'
 
@@ -84,7 +85,7 @@ install: build ## Install IPCrawler TUI to $GOPATH/bin
 	go install ./cmd/ipcrawler
 	@echo "$(GREEN)Installed to $$(go env GOPATH)/bin/ipcrawler$(RESET)"
 
-run: build ## Build and run IPCrawler TUI in new terminal window (cross-platform)
+run: build ## Launch IPCrawler TUI with optimal setup (main entry point)
 	@echo "$(BLUE)IPCrawler TUI - 5-Card Horizontal Dashboard$(RESET)"
 	@echo "$(YELLOW)Cross-platform launcher - detects your OS automatically$(RESET)"
 	@echo "$(GREEN)Opening in NEW terminal window with optimal size (200x70)$(RESET)"
@@ -96,24 +97,6 @@ run: build ## Build and run IPCrawler TUI in new terminal window (cross-platform
 		./scripts/tui-launch-window.sh; \
 	fi
 
-run-sudo: build ## Build and run IPCrawler TUI with sudo privileges in new terminal
-	@echo "$(BLUE)IPCrawler TUI with Sudo Privileges$(RESET)"
-	@echo "$(YELLOW)This will run with elevated privileges for all tools$(RESET)"
-	@echo "$(GREEN)Opening in NEW terminal window with sudo$(RESET)"
-	@PRESERVE_SUDO=1 ./scripts/tui-launch-window.sh
-
-run-new: build ## Open IPCrawler TUI in actual NEW terminal window
-	@echo "$(BLUE)Opening IPCrawler TUI in NEW terminal window$(RESET)"  
-	@echo "$(YELLOW)This will open a separate terminal window (not same window)$(RESET)"
-	@./scripts/tui-launch-window.sh
-
-run-here: build ## Run IPCrawler TUI in current terminal (resize to 200x70 recommended)
-	@echo "$(BLUE)Running IPCrawler TUI in Current Terminal$(RESET)"
-	@echo "$(YELLOW)Recommended size: 200x70 for best experience$(RESET)"
-	@echo "$(YELLOW)macOS: Terminal → Window → Set Size to Columns:200 Rows:70$(RESET)"
-	@echo "$(GREEN)Press any key to continue...$(RESET)"
-	@read -n1 -r
-	./bin/ipcrawler
 
 dev: ## Development mode with auto-rebuild
 	@echo "$(BLUE)Development mode - watching for changes...$(RESET)"
@@ -141,4 +124,4 @@ doc: ## Show documentation
 
 all: deps build test-all ## Build everything and run all tests
 	@echo "$(GREEN)IPCrawler TUI build completed successfully!$(RESET)"
-	@echo "$(YELLOW)Run 'make run' to launch the TUI in a new terminal window$(RESET)"
+	@echo "$(YELLOW)Run 'make run' to launch IPCrawler$(RESET)"
