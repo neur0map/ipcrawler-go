@@ -2,6 +2,7 @@ package executor
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -106,9 +107,9 @@ func (tr *TemplateResolver) buildVariableMap(ctx *ExecutionContext) map[string]s
 		vars["raw_dir"] = ctx.RawDir
 	}
 
-	// Output file handling
+	// Output file handling based on scan_output_mode
 	if ctx.OutputFile == "" {
-		// Generate default filename based on tool, target, and timestamp
+		// Generate default filename based on tool, target, and scan output mode
 		timestamp := ctx.Timestamp
 		if timestamp == "" {
 			timestamp = time.Now().Format("20060102_150405")
@@ -116,7 +117,24 @@ func (tr *TemplateResolver) buildVariableMap(ctx *ExecutionContext) map[string]s
 
 		// Sanitize target for filename (replace problematic characters)
 		sanitizedTarget := tr.sanitizeForFilename(ctx.Target)
-		vars["output_file"] = fmt.Sprintf("%s_%s_%s", ctx.ToolName, sanitizedTarget, timestamp)
+		
+		// Handle different output modes
+		outputMode := tr.config.Output.ScanOutputMode
+		switch outputMode {
+		case "overwrite":
+			// No timestamp - same filename always overwrites
+			vars["output_file"] = fmt.Sprintf("%s_%s", ctx.ToolName, sanitizedTarget)
+		case "timestamp":
+			// Include timestamp for unique files
+			vars["output_file"] = fmt.Sprintf("%s_%s_%s", ctx.ToolName, sanitizedTarget, timestamp)
+		case "both":
+			// Default to timestamped, but we'll also create a latest link
+			vars["output_file"] = fmt.Sprintf("%s_%s_%s", ctx.ToolName, sanitizedTarget, timestamp)
+			vars["output_file_latest"] = fmt.Sprintf("%s_%s_latest", ctx.ToolName, sanitizedTarget)
+		default:
+			// Fallback to timestamp mode
+			vars["output_file"] = fmt.Sprintf("%s_%s_%s", ctx.ToolName, sanitizedTarget, timestamp)
+		}
 	} else {
 		vars["output_file"] = ctx.OutputFile
 	}
@@ -144,6 +162,9 @@ func (tr *TemplateResolver) buildVariableMap(ctx *ExecutionContext) map[string]s
 	if outputDir, exists := vars["output_dir"]; exists {
 		if outputFile, exists := vars["output_file"]; exists {
 			vars["output_path"] = filepath.Join(outputDir, outputFile)
+		}
+		if outputFileLatest, exists := vars["output_file_latest"]; exists {
+			vars["output_path_latest"] = filepath.Join(outputDir, outputFileLatest)
 		}
 	}
 
@@ -196,14 +217,16 @@ func (tr *TemplateResolver) sanitizeForFilename(input string) string {
 // GetAvailableVariables returns a list of all available template variables for documentation
 func (tr *TemplateResolver) GetAvailableVariables() []string {
 	return []string{
-		"target",      // The target being scanned
-		"output_dir",  // Output directory from config
-		"output_file", // Generated or specified output filename
-		"output_path", // Full path: output_dir/output_file
-		"timestamp",   // Execution timestamp
-		"session_id",  // Session identifier
-		"tool_name",   // Name of the tool
-		"mode",        // Execution mode
+		"target",             // The target being scanned
+		"output_dir",         // Output directory from config
+		"output_file",        // Generated or specified output filename
+		"output_file_latest", // Latest version filename (when scan_output_mode is "both")
+		"output_path",        // Full path: output_dir/output_file
+		"output_path_latest", // Full path to latest version (when available)
+		"timestamp",          // Execution timestamp
+		"session_id",         // Session identifier
+		"tool_name",          // Name of the tool
+		"mode",               // Execution mode
 		// Custom variables can be added via ExecutionContext.CustomVars
 	}
 }
@@ -221,4 +244,31 @@ func (tr *TemplateResolver) CreateExecutionContext(target, toolName, mode string
 		SessionID:  sessionID,
 		CustomVars: make(map[string]string),
 	}
+}
+
+// CreateLatestSymlink creates a symlink to the latest scan result
+func (tr *TemplateResolver) CreateLatestSymlink(timestampedPath, latestPath string) error {
+	// Only create symlinks if the config option is enabled
+	if !tr.config.Output.CreateLatestLinks {
+		return nil
+	}
+
+	// Only proceed if scan_output_mode is "both"
+	if tr.config.Output.ScanOutputMode != "both" {
+		return nil
+	}
+
+	// Remove existing symlink if it exists
+	if _, err := os.Lstat(latestPath); err == nil {
+		if err := os.Remove(latestPath); err != nil {
+			return fmt.Errorf("failed to remove existing latest symlink: %w", err)
+		}
+	}
+
+	// Create new symlink pointing to the timestamped file
+	if err := os.Symlink(filepath.Base(timestampedPath), latestPath); err != nil {
+		return fmt.Errorf("failed to create latest symlink: %w", err)
+	}
+
+	return nil
 }

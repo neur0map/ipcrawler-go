@@ -204,14 +204,16 @@ type ReportingConfig struct {
 //
 // It also supports the legacy wrapper form under the "output" key via loadConfigFile.
 type OutputConfig struct {
-	WorkspaceBase string        `mapstructure:"workspace_base"`
-	Timestamp     bool          `mapstructure:"timestamp"`
-	TimeFormat    string        `mapstructure:"time_format"`
-	Info          LogSinkConfig `mapstructure:"info"`
-	Error         LogSinkConfig `mapstructure:"error"`
-	Warning       LogSinkConfig `mapstructure:"warning"`
-	Debug         LogSinkConfig `mapstructure:"debug"`
-	Raw           RawSinkConfig `mapstructure:"raw"`
+	WorkspaceBase      string        `mapstructure:"workspace_base"`
+	Timestamp          bool          `mapstructure:"timestamp"`
+	TimeFormat         string        `mapstructure:"time_format"`
+	ScanOutputMode     string        `mapstructure:"scan_output_mode"`
+	CreateLatestLinks  bool          `mapstructure:"create_latest_links"`
+	Info               LogSinkConfig `mapstructure:"info"`
+	Error              LogSinkConfig `mapstructure:"error"`
+	Warning            LogSinkConfig `mapstructure:"warning"`
+	Debug              LogSinkConfig `mapstructure:"debug"`
+	Raw                RawSinkConfig `mapstructure:"raw"`
 }
 
 type LogSinkConfig struct {
@@ -498,6 +500,13 @@ func setOutputDefaults(out *OutputConfig) {
 	}
 	if out.TimeFormat == "" {
 		out.TimeFormat = "RFC3339Nano"
+	}
+	if out.ScanOutputMode == "" {
+		out.ScanOutputMode = "both"
+	}
+	// CreateLatestLinks defaults to true if not explicitly set
+	if !out.CreateLatestLinks {
+		out.CreateLatestLinks = true
 	}
 	if out.Info.Directory == "" {
 		out.Info.Directory = "{{workspace}}/logs/info/"

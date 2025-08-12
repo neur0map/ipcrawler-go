@@ -10,6 +10,13 @@ output:
   timestamp: true
   time_format: "RFC3339Nano"
 
+  # Scan output file management
+  scan_output_mode: "both"  # Options: "overwrite", "timestamp", "both"
+  # - "overwrite": Always use same filename (latest scan overwrites previous)
+  # - "timestamp": Include timestamp in filename (keeps all scan history)
+  # - "both": Create timestamped file + latest symlink/copy
+  create_latest_links: true  # Create symlinks to latest scan results
+
   # info output
   info:
     directory: "{{workspace}}/logs/info/"
