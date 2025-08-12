@@ -1,0 +1,27 @@
+# NOTE: This file is used for information purposes only.
+# ./configs/ is the global config directory.
+
+# Reusable variables for tools
+tool_specific:
+  variables:
+  - name: "merge_ports"
+    description: "Merged discovered ports from naabu"
+    tool: "naabu"
+  - name: "merge_services"
+    description: "Merged discovered services from nmap"
+    tool: "nmap"
+  - name: "merge_os"
+    description: "Merged discovered OS from nmap"
+    tool: "nmap"
+
+# General Reusable variables
+variables:
+  - name: "output_dir"
+    description: "The directory to write the output to"
+    default: "./output"
+  - name: "output_file"
+    description: "The file to write the output to"
+    default: "output.txt"
+  - name: "target"
+    description: "The target to scan"
+    default: "127.0.0.1"

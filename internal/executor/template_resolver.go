@@ -6,13 +6,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/your-org/ipcrawler/internal/config"
+	"github.com/neur0map/ipcrawler/internal/config"
 )
 
 // ExecutionContext holds the runtime context for template resolution
 type ExecutionContext struct {
 	Target     string            // The target being scanned (IP, domain, etc.)
 	OutputDir  string            // Base output directory from config
+	Workspace  string            // Workspace directory (workspace/target)
+	LogsDir    string            // Logs directory path
+	ScansDir   string            // Scans directory path
+	ReportsDir string            // Reports directory path
+	RawDir     string            // Raw output directory path
 	OutputFile string            // Specific output filename for this execution
 	Timestamp  string            // Execution timestamp
 	SessionID  string            // Unique session identifier
@@ -74,12 +79,31 @@ func (tr *TemplateResolver) buildVariableMap(ctx *ExecutionContext) map[string]s
 	// Target-related variables
 	vars["target"] = ctx.Target
 
-	// Output-related variables (from output.yaml config)
-	if ctx.OutputDir == "" {
+	// Workspace and output directory variables
+	if ctx.Workspace != "" {
+		vars["workspace"] = ctx.Workspace
+		vars["output_dir"] = ctx.Workspace // For backward compatibility
+	} else if ctx.OutputDir != "" {
+		vars["output_dir"] = ctx.OutputDir
+		vars["workspace"] = ctx.OutputDir // Use output_dir as workspace if not set
+	} else {
 		// Use raw output directory from config as default
 		vars["output_dir"] = tr.config.Output.Raw.Directory
-	} else {
-		vars["output_dir"] = ctx.OutputDir
+		vars["workspace"] = tr.config.Output.Raw.Directory
+	}
+
+	// Add specific directory paths if provided
+	if ctx.LogsDir != "" {
+		vars["logs_dir"] = ctx.LogsDir
+	}
+	if ctx.ScansDir != "" {
+		vars["scans_dir"] = ctx.ScansDir
+	}
+	if ctx.ReportsDir != "" {
+		vars["reports_dir"] = ctx.ReportsDir
+	}
+	if ctx.RawDir != "" {
+		vars["raw_dir"] = ctx.RawDir
 	}
 
 	// Output file handling

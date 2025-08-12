@@ -198,18 +198,20 @@ type ReportingConfig struct {
 // OutputConfig matches the current configs/output.yaml schema (multi-sink by level)
 // Example (top-level file without an "output:" wrapper):
 //
+//	workspace_base: "./workspace"
 //	timestamp: true
-//	info: { directory: "./output/logs/info/", level: "info", name: "ipcrawler.log" }
+//	info: { directory: "{{workspace}}/logs/info/", level: "info" }
 //
 // It also supports the legacy wrapper form under the "output" key via loadConfigFile.
 type OutputConfig struct {
-	Timestamp  bool          `mapstructure:"timestamp"`
-	TimeFormat string        `mapstructure:"time_format"`
-	Info       LogSinkConfig `mapstructure:"info"`
-	Error      LogSinkConfig `mapstructure:"error"`
-	Warning    LogSinkConfig `mapstructure:"warning"`
-	Debug      LogSinkConfig `mapstructure:"debug"`
-	Raw        RawSinkConfig `mapstructure:"raw"`
+	WorkspaceBase string        `mapstructure:"workspace_base"`
+	Timestamp     bool          `mapstructure:"timestamp"`
+	TimeFormat    string        `mapstructure:"time_format"`
+	Info          LogSinkConfig `mapstructure:"info"`
+	Error         LogSinkConfig `mapstructure:"error"`
+	Warning       LogSinkConfig `mapstructure:"warning"`
+	Debug         LogSinkConfig `mapstructure:"debug"`
+	Raw           RawSinkConfig `mapstructure:"raw"`
 }
 
 type LogSinkConfig struct {
@@ -491,35 +493,38 @@ func setSecurityDefaults(sec *SecurityConfig) {
 
 func setOutputDefaults(out *OutputConfig) {
 	// Minimal defaults if config is missing
+	if out.WorkspaceBase == "" {
+		out.WorkspaceBase = "./workspace"
+	}
 	if out.TimeFormat == "" {
 		out.TimeFormat = "RFC3339Nano"
 	}
 	if out.Info.Directory == "" {
-		out.Info.Directory = "./output/logs/info/"
+		out.Info.Directory = "{{workspace}}/logs/info/"
 	}
 	if out.Info.Level == "" {
 		out.Info.Level = "info"
 	}
 	if out.Error.Directory == "" {
-		out.Error.Directory = "./output/logs/error/"
+		out.Error.Directory = "{{workspace}}/logs/error/"
 	}
 	if out.Error.Level == "" {
 		out.Error.Level = "error"
 	}
 	if out.Warning.Directory == "" {
-		out.Warning.Directory = "./output/logs/warn/"
+		out.Warning.Directory = "{{workspace}}/logs/warning/"
 	}
 	if out.Warning.Level == "" {
 		out.Warning.Level = "warn"
 	}
 	if out.Debug.Directory == "" {
-		out.Debug.Directory = "./output/logs/debug/"
+		out.Debug.Directory = "{{workspace}}/logs/debug/"
 	}
 	if out.Debug.Level == "" {
 		out.Debug.Level = "debug"
 	}
 	if out.Raw.Directory == "" {
-		out.Raw.Directory = "./output/raw/"
+		out.Raw.Directory = "{{workspace}}/raw/"
 	}
 }
 

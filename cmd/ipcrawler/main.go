@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"os/user"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -21,20 +24,21 @@ import (
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
-	"github.com/shirou/gopsutil/v3/net"
+	netutil "github.com/shirou/gopsutil/v3/net"
 
-	"github.com/your-org/ipcrawler/internal/config"
-	"github.com/your-org/ipcrawler/internal/tui/data/loader"
+	"github.com/neur0map/ipcrawler/internal/config"
+	"github.com/neur0map/ipcrawler/internal/tui/data/loader"
 )
 
 // focusState tracks which card is focused
 type focusState int
 
 const (
-	workflowTreeFocus focusState = iota // Was overviewFocus - now for selecting workflows
-	scanOverviewFocus                   // Was workflowsFocus - now shows selected workflow details
-	outputFocus                         // Live raw tool output
-	logsFocus                           // System logs, debug, errors, warnings
+	targetInputFocus focusState = iota // Modal for target input
+	workflowTreeFocus                  // Was overviewFocus - now for selecting workflows
+	scanOverviewFocus                  // Was workflowsFocus - now shows selected workflow details
+	outputFocus                        // Live raw tool output
+	logsFocus                          // System logs, debug, errors, warnings
 	toolsFocus
 	perfFocus
 )
@@ -51,6 +55,12 @@ type model struct {
 
 	// Data source
 	workflows *loader.WorkflowData
+
+	// Target modal state
+	showTargetModal bool           // Controls modal visibility
+	targetInput     textinput.Model // Text input component
+	scanTarget      string          // Stored target value after validation
+	targetError     string          // Validation error message
 
 	// Interactive list components
 	workflowTreeList list.Model // For selecting workflows
@@ -123,10 +133,14 @@ type systemMetrics struct {
 	AnimatedDisk       float64
 	AnimationStartTime time.Time
 	BaselineGoroutines int // Baseline goroutine count (excluding monitoring)
+	lastCPUTimes       *cpu.TimesStat // Previous CPU times for calculating usage
 }
 
 // systemMetricsMsg is sent when system metrics are updated asynchronously
 type systemMetricsMsg systemMetrics
+
+// metricsTickMsg is sent by the metrics ticker to trigger regular updates
+type metricsTickMsg struct{}
 
 // List item implementations for bubbles/list component
 
@@ -705,9 +719,22 @@ func newModel() *model {
 	// Remove background from title
 	scanOverviewList.Styles.Title = scanOverviewList.Styles.Title.Background(lipgloss.NoColor{})
 
+	// Session persistence removed - fresh start each time
+	
+	// Initialize target input (fresh session each time)
+	ti := textinput.New()
+	ti.Placeholder = "Enter IP, hostname, or CIDR (e.g., 192.168.1.0/30)"
+	ti.Focus()
+	ti.CharLimit = 256
+	ti.Width = 60
+
 	m := &model{
 		config:            cfg,
 		workflows:         workflows,
+		// No session persistence - fresh start each time
+		showTargetModal:   true, // Always show modal on startup
+		targetInput:       ti,
+		scanTarget:        "", // Empty target for fresh start
 		workflowTreeList:  workflowTreeList,
 		scanOverviewList:  scanOverviewList,
 		selectedWorkflows: make(map[string]bool),
@@ -761,8 +788,8 @@ func newModel() *model {
 			Foreground(lipgloss.Color(cfg.UI.Theme.Colors["secondary"])),
 	}
 
-	// Initialize with first system metrics update
-	m.updateSystemMetrics()
+	// Initialize system metrics with zero timestamp to force immediate first update
+	m.perfData.LastUpdate = time.Time{} // Zero time ensures immediate first update
 
 	return m
 }
@@ -773,10 +800,37 @@ func (m *model) updateSystemMetricsAsync() tea.Cmd {
 		// Create a copy of current metrics to work with
 		newMetrics := m.perfData
 
-		// CPU information
-		cpuPercent, err := cpu.Percent(time.Second, false)
-		if err == nil && len(cpuPercent) > 0 {
-			newMetrics.CPUPercent = cpuPercent[0]
+		// CPU information (use current CPU times for calculation)
+		cpuTimes, err := cpu.Times(false)
+		if err == nil && len(cpuTimes) > 0 {
+			// Calculate CPU usage from times if we have previous data
+			if newMetrics.LastUpdate.IsZero() {
+				// First time - just store the times, usage will be 0
+				newMetrics.CPUPercent = 0
+			} else {
+				// Calculate usage based on time differences
+				currentTime := cpuTimes[0]
+				timeDelta := time.Since(newMetrics.LastUpdate).Seconds()
+				
+				if timeDelta > 0 && newMetrics.lastCPUTimes != nil {
+					prevTime := *newMetrics.lastCPUTimes
+					
+					totalDelta := (currentTime.User + currentTime.System + currentTime.Nice + 
+								  currentTime.Iowait + currentTime.Irq + currentTime.Softirq + 
+								  currentTime.Steal + currentTime.Idle) - 
+								 (prevTime.User + prevTime.System + prevTime.Nice + 
+								  prevTime.Iowait + prevTime.Irq + prevTime.Softirq + 
+								  prevTime.Steal + prevTime.Idle)
+					
+					idleDelta := currentTime.Idle - prevTime.Idle
+					
+					if totalDelta > 0 {
+						newMetrics.CPUPercent = 100.0 * (1.0 - idleDelta/totalDelta)
+					}
+				}
+			}
+			// Store current times for next calculation
+			newMetrics.lastCPUTimes = &cpuTimes[0]
 		}
 
 		cpuCounts, err := cpu.Counts(true)
@@ -801,18 +855,22 @@ func (m *model) updateSystemMetricsAsync() tea.Cmd {
 		}
 
 		// Network information (simple rates only)
-		netIO, err := net.IOCounters(false)
+		netIO, err := netutil.IOCounters(false)
 		if err == nil && len(netIO) > 0 {
 			newSent := netIO[0].BytesSent
 			newRecv := netIO[0].BytesRecv
 
-			// Calculate simple rates if we have previous data
-			if newMetrics.NetworkSent > 0 && newMetrics.NetworkRecv > 0 {
+			// Calculate simple rates if we have previous data and this isn't the first reading
+			if !newMetrics.LastUpdate.IsZero() && newMetrics.NetworkSent > 0 && newMetrics.NetworkRecv > 0 {
 				timeDiff := time.Since(newMetrics.LastUpdate).Seconds()
-				if timeDiff > 0 {
+				if timeDiff > 0 && newSent >= newMetrics.NetworkSent && newRecv >= newMetrics.NetworkRecv {
 					newMetrics.NetworkSentRate = uint64(float64(newSent-newMetrics.NetworkSent) / timeDiff)
 					newMetrics.NetworkRecvRate = uint64(float64(newRecv-newMetrics.NetworkRecv) / timeDiff)
 				}
+			} else {
+				// First reading - rates are 0
+				newMetrics.NetworkSentRate = 0
+				newMetrics.NetworkRecvRate = 0
 			}
 
 			newMetrics.NetworkSent = newSent
@@ -841,6 +899,8 @@ func (m *model) updateSystemMetricsAsync() tea.Cmd {
 			newMetrics.Goroutines = newMetrics.BaselineGoroutines
 		}
 		newMetrics.LastUpdate = time.Now()
+
+		// Metrics collection completed
 
 		return systemMetricsMsg(newMetrics)
 	}
@@ -876,7 +936,7 @@ func (m *model) updateSystemMetrics() {
 	}
 
 	// Network information
-	netIO, err := net.IOCounters(false)
+	netIO, err := netutil.IOCounters(false)
 	if err == nil && len(netIO) > 0 {
 		newSent := netIO[0].BytesSent
 		newRecv := netIO[0].BytesRecv
@@ -1107,12 +1167,306 @@ func (m *model) getThemeColor(colorName, fallback string) lipgloss.Color {
 }
 
 func (m *model) Init() tea.Cmd {
-	return m.spinner.Tick
+	// Get refresh interval from config
+	refreshMs := m.config.UI.Components.Status.RefreshMs
+	if refreshMs == 0 {
+		refreshMs = 1000 // Default to 1 second
+	}
+	refreshInterval := time.Duration(refreshMs) * time.Millisecond
+
+	return tea.Batch(
+		m.spinner.Tick,
+		textinput.Blink,
+		// Dedicated metrics ticker
+		tea.Every(refreshInterval, func(t time.Time) tea.Msg {
+			return metricsTickMsg{}
+		}),
+	)
+}
+
+// validateTarget validates the input target (IP, hostname, or CIDR)
+func (m *model) validateTarget(input string) error {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return fmt.Errorf("target cannot be empty")
+	}
+
+	// Split by comma for multiple targets
+	targets := strings.Split(input, ",")
+	
+	for _, target := range targets {
+		target = strings.TrimSpace(target)
+		
+		// Try to parse as IP address
+		if ip := net.ParseIP(target); ip != nil {
+			continue // Valid IP
+		}
+		
+		// Try to parse as CIDR
+		if _, _, err := net.ParseCIDR(target); err == nil {
+			continue // Valid CIDR
+		}
+		
+		// Try to resolve as hostname
+		if _, err := net.LookupHost(target); err == nil {
+			continue // Valid hostname
+		}
+		
+		// Check if it looks like a hostname (basic validation)
+		if isValidHostname(target) {
+			continue // Likely valid hostname (will be resolved at execution time)
+		}
+		
+		return fmt.Errorf("invalid target: %s (must be IP, hostname, or CIDR)", target)
+	}
+	
+	return nil
+}
+
+// isValidHostname performs basic hostname validation
+func isValidHostname(hostname string) bool {
+	// Basic hostname validation
+	if len(hostname) > 253 {
+		return false
+	}
+	
+	// Must contain only valid characters
+	for _, r := range hostname {
+		if !((r >= 'a' && r <= 'z') || 
+			 (r >= 'A' && r <= 'Z') || 
+			 (r >= '0' && r <= '9') || 
+			 r == '.' || r == '-') {
+			return false
+		}
+	}
+	
+	// Must not start or end with dot or hyphen
+	if strings.HasPrefix(hostname, ".") || strings.HasPrefix(hostname, "-") ||
+		strings.HasSuffix(hostname, ".") || strings.HasSuffix(hostname, "-") {
+		return false
+	}
+	
+	return true
+}
+
+// sanitizeTargetForPath converts a target (IP, hostname, CIDR) to a safe directory name
+func (m *model) sanitizeTargetForPath(target string) string {
+	// Handle multiple targets (take first one for main directory)
+	targets := strings.Split(target, ",")
+	if len(targets) > 0 {
+		target = strings.TrimSpace(targets[0])
+	}
+	
+	// Replace problematic characters for filesystem
+	sanitized := target
+	sanitized = strings.ReplaceAll(sanitized, "/", "_")  // CIDR notation
+	sanitized = strings.ReplaceAll(sanitized, ":", "_")  // IPv6
+	sanitized = strings.ReplaceAll(sanitized, " ", "_")  // Spaces
+	sanitized = strings.ReplaceAll(sanitized, "..", "_") // Double dots
+	
+	// Ensure it's not empty
+	if sanitized == "" {
+		sanitized = "unknown_target"
+	}
+	
+	return sanitized
+}
+
+// getProjectDirectory returns the directory where the project files are located
+func getProjectDirectory() (string, error) {
+	// Try to get executable directory first (for built binaries)
+	if execPath, err := os.Executable(); err == nil {
+		execDir := filepath.Dir(execPath)
+		// Check if this looks like a project directory by looking for key files
+		if _, err := os.Stat(filepath.Join(execDir, "go.mod")); err == nil {
+			return execDir, nil
+		}
+		// If go.mod not found, try parent directory (common when binary is in bin/)
+		parentDir := filepath.Dir(execDir)
+		if _, err := os.Stat(filepath.Join(parentDir, "go.mod")); err == nil {
+			return parentDir, nil
+		}
+	}
+	
+	// Fallback: try current working directory
+	if cwd, err := os.Getwd(); err == nil {
+		if _, err := os.Stat(filepath.Join(cwd, "go.mod")); err == nil {
+			return cwd, nil
+		}
+	}
+	
+	// Last resort: use current working directory anyway
+	return os.Getwd()
+}
+
+// createWorkspaceStructure creates the complete workspace directory structure with all subdirectories and initial files
+func (m *model) createWorkspaceStructure(workspacePath string) error {
+	// Get the project directory (where go.mod, Makefile, configs are)
+	projectDir, err := getProjectDirectory()
+	if err != nil {
+		return fmt.Errorf("failed to determine project directory: %w", err)
+	}
+	
+	// Create absolute workspace path in the project directory
+	absoluteWorkspacePath := filepath.Join(projectDir, workspacePath)
+	
+	// Create main workspace directory in project directory
+	if err := os.MkdirAll(absoluteWorkspacePath, 0755); err != nil {
+		return fmt.Errorf("failed to create workspace directory %s: %w", absoluteWorkspacePath, err)
+	}
+	
+	// Define directory structure
+	directories := []string{
+		"logs/info",
+		"logs/error",
+		"logs/warning",
+		"logs/debug",
+		"scans",
+		"reports",
+		"raw",
+	}
+	
+	// Create all subdirectories
+	for _, dir := range directories {
+		dirPath := filepath.Join(absoluteWorkspacePath, dir)
+		if err := os.MkdirAll(dirPath, 0755); err != nil {
+			m.logSystemMessage("warn", "Failed to create directory", "path", dirPath, "err", err.Error())
+		}
+	}
+	
+	// Create README.md
+	readmePath := filepath.Join(absoluteWorkspacePath, "README.md")
+	readmeContent := fmt.Sprintf(`# IPCrawler Workspace
+
+## Target Information
+- **Target**: %s
+- **Created**: %s
+- **Session ID**: %s
+
+## Directory Structure
+- **logs/** - Application and tool logs
+  - **info/** - Informational messages
+  - **error/** - Error logs
+  - **warning/** - Warning messages
+  - **debug/** - Debug information
+- **scans/** - Tool scan results
+- **reports/** - Generated reports and summaries  
+- **raw/** - Raw tool output
+
+## Usage
+All scan outputs for this target will be stored in this workspace.
+Each tool execution will create timestamped files in the appropriate directories.
+
+## Template Variables
+When tools are executed, these paths are available:
+- {{workspace}} - This directory
+- {{logs_dir}} - logs/
+- {{scans_dir}} - scans/
+- {{reports_dir}} - reports/
+- {{raw_dir}} - raw/
+`, m.scanTarget, time.Now().Format("2006-01-02 15:04:05"), m.getSessionID())
+	
+	if err := os.WriteFile(readmePath, []byte(readmeContent), 0644); err != nil {
+		m.logSystemMessage("warn", "Failed to create README", "err", err.Error())
+	}
+	
+	// Create session_info.json
+	sessionPath := filepath.Join(absoluteWorkspacePath, "session_info.json")
+	sessionInfo := map[string]interface{}{
+		"target":      m.scanTarget,
+		"workspace":   absoluteWorkspacePath,
+		"created":     time.Now().Format(time.RFC3339),
+		"session_id":  m.getSessionID(),
+		"directories": directories,
+	}
+	
+	if data, err := json.MarshalIndent(sessionInfo, "", "  "); err == nil {
+		if err := os.WriteFile(sessionPath, data, 0644); err != nil {
+			m.logSystemMessage("warn", "Failed to create session info", "err", err.Error())
+		} else {
+			m.logSystemMessage("info", "Created session_info.json", "path", sessionPath)
+		}
+	}
+	
+	m.logSystemMessage("info", "Workspace structure created", 
+		"workspace", absoluteWorkspacePath,
+		"directories", len(directories),
+		"target", m.scanTarget)
+	
+	return nil
+}
+
+// getSessionID returns the current session ID or generates a new one
+func (m *model) getSessionID() string {
+	// No session persistence - return empty session ID
+	return fmt.Sprintf("session_%d", time.Now().Unix())
 }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
+
+	// Handle target modal input first if it's showing
+	if m.showTargetModal {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "enter":
+				// Validate and accept target
+				inputValue := strings.TrimSpace(m.targetInput.Value())
+				if err := m.validateTarget(inputValue); err != nil {
+					m.targetError = err.Error()
+				} else {
+					m.scanTarget = inputValue
+					m.showTargetModal = false
+					m.targetError = ""
+					m.focus = workflowTreeFocus // Set initial focus after modal closes
+					
+					// Create workspace/target directory structure immediately
+					sanitizedTarget := m.sanitizeTargetForPath(m.scanTarget)
+					// Use workspace_base from configuration (no hardcoded paths)
+					outputDir := filepath.Join(m.config.Output.WorkspaceBase, sanitizedTarget)
+					
+					if err := m.createWorkspaceStructure(outputDir); err != nil {
+						m.logSystemMessage("error", "Failed to create workspace", "err", err.Error())
+					} else {
+						m.logSystemMessage("info", "Workspace initialized successfully", "path", outputDir)
+					}
+					
+					m.logSystemMessage("info", "Target configured", "target", m.scanTarget, "workspace", outputDir)
+				}
+				return m, nil
+			case "esc":
+				// Exit the application if no target is set
+				if m.scanTarget == "" {
+					return m, tea.Quit
+				}
+				m.showTargetModal = false
+				return m, nil
+			case "ctrl+c":
+				return m, tea.Quit
+			default:
+				// Update text input
+				m.targetInput, cmd = m.targetInput.Update(msg)
+				m.targetError = "" // Clear error on new input
+				return m, cmd
+			}
+		case tea.WindowSizeMsg:
+			m.width = msg.Width
+			m.height = msg.Height
+			m.updateSizes()
+			if !m.ready {
+				m.ready = true
+			}
+			return m, nil
+		case metricsTickMsg, systemMetricsMsg, spinner.TickMsg:
+			// Allow system messages through even when modal is showing
+			// Fall through to main message processing
+		default:
+			// For other messages while modal is showing, return early
+			return m, nil
+		}
+	}
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -1258,6 +1612,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case systemMetricsMsg:
 		// Received updated system metrics from background goroutine
 		newMetrics := systemMetrics(msg)
+		
+		// Debug: Log that we received the metrics update
+		m.logSystemMessage("debug", "Received system metrics update", 
+			"cpu", fmt.Sprintf("%.1f%%", newMetrics.CPUPercent),
+			"memory", fmt.Sprintf("%.1f%%", newMetrics.MemoryPercent),
+			"timestamp", newMetrics.LastUpdate.Format("15:04:05"))
 
 		// Initialize animated values if this is the first update
 		if m.perfData.AnimationStartTime.IsZero() {
@@ -1282,84 +1642,171 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		cmds = append(cmds, cmd)
 
-		// Update animated values for smooth transitions
-		m.updateAnimatedValues()
-
-		// Update system metrics at configurable interval (non-blocking)
-		// Use configurable refresh interval
+	case metricsTickMsg:
+		// Trigger metrics update and return next tick command
 		refreshMs := m.config.UI.Components.Status.RefreshMs
 		if refreshMs == 0 {
-			refreshMs = 1500 // fallback
+			refreshMs = 1000 // Default to 1 second
 		}
 		refreshInterval := time.Duration(refreshMs) * time.Millisecond
-		if time.Since(m.perfData.LastUpdate) >= refreshInterval {
-			cmds = append(cmds, m.updateSystemMetricsAsync())
-		}
+		
+		cmds = append(cmds, m.updateSystemMetricsAsync())
+		cmds = append(cmds, tea.Every(refreshInterval, func(t time.Time) tea.Msg {
+			return metricsTickMsg{}
+		}))
+	}
 
-		// Simulate tool execution progress
-		if len(m.tools) > 0 {
-			// Find current running tool and advance it
-			for i := range m.tools {
-				if m.tools[i].Status == "running" {
-					// Randomly complete tools after some ticks (simulation)
-					if time.Now().UnixNano()%7 == 0 { // Random completion
-						m.tools[i].Status = "done"
-						// Find next pending tool and start it
-						foundNext := false
-						for j := i + 1; j < len(m.tools); j++ {
-							if m.tools[j].Status == "pending" {
-								m.tools[j].Status = "running"
-								// Add to live output
-								timeFormat := m.config.UI.Formatting.TimeFormat
-								if timeFormat == "" {
-									timeFormat = "15:04:05" // Fallback
-								}
-								m.liveOutput = append(m.liveOutput,
-									fmt.Sprintf("[%s] Starting %s", time.Now().Format(timeFormat), m.tools[j].Name))
-								m.outputViewport.SetContent(strings.Join(m.liveOutput, "\n"))
-								m.outputViewport.GotoBottom()
-								foundNext = true
+	// Update animated values for smooth transitions on every update cycle
+	m.updateAnimatedValues()
+
+	// Simulate tool execution progress - moved outside switch to run on every update
+	if len(m.tools) > 0 {
+		// Find current running tool and advance it
+		for i := range m.tools {
+			if m.tools[i].Status == "running" {
+				// Randomly complete tools after some ticks (simulation)
+				if time.Now().UnixNano()%7 == 0 { // Random completion
+					m.tools[i].Status = "done"
+					// Find next pending tool and start it
+					foundNext := false
+					for j := i + 1; j < len(m.tools); j++ {
+						if m.tools[j].Status == "pending" {
+							m.tools[j].Status = "running"
+							// Add to live output
+							timeFormat := m.config.UI.Formatting.TimeFormat
+							if timeFormat == "" {
+								timeFormat = "15:04:05" // Fallback
+							}
+							m.liveOutput = append(m.liveOutput,
+								fmt.Sprintf("[%s] Starting %s", time.Now().Format(timeFormat), m.tools[j].Name))
+							m.outputViewport.SetContent(strings.Join(m.liveOutput, "\n"))
+							m.outputViewport.GotoBottom()
+							foundNext = true
+							break
+						}
+					}
+					// Add completion to live output
+					timeFormat := m.config.UI.Formatting.TimeFormat
+					if timeFormat == "" {
+						timeFormat = "15:04:05" // Fallback
+					}
+					m.liveOutput = append(m.liveOutput,
+						fmt.Sprintf("[%s] Completed %s", time.Now().Format(timeFormat), m.tools[i].Name))
+					m.outputViewport.SetContent(strings.Join(m.liveOutput, "\n"))
+					m.outputViewport.GotoBottom()
+
+					// Check if all tools are done
+					if !foundNext {
+						allDone := true
+						for _, tool := range m.tools {
+							if tool.Status == "pending" || tool.Status == "running" {
+								allDone = false
 								break
 							}
 						}
-						// Add completion to live output
-						timeFormat := m.config.UI.Formatting.TimeFormat
-						if timeFormat == "" {
-							timeFormat = "15:04:05" // Fallback
-						}
-						m.liveOutput = append(m.liveOutput,
-							fmt.Sprintf("[%s] Completed %s", time.Now().Format(timeFormat), m.tools[i].Name))
-						m.outputViewport.SetContent(strings.Join(m.liveOutput, "\n"))
-						m.outputViewport.GotoBottom()
 
-						// Check if all tools are done
-						if !foundNext {
-							allDone := true
-							for _, tool := range m.tools {
-								if tool.Status == "pending" || tool.Status == "running" {
-									allDone = false
-									break
-								}
-							}
-
-							if allDone {
-								// Mark workflows as executed and move them back
-								m.completeWorkflowExecution()
-							}
+						if allDone {
+							// Mark workflows as executed and move them back
+							m.completeWorkflowExecution()
 						}
 					}
-					break
 				}
+				break
 			}
 		}
 	}
 
+
 	return m, tea.Batch(cmds...)
+}
+
+// renderTargetModal renders the target input modal
+func (m *model) renderTargetModal() string {
+	// Modal styles
+	modalStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(m.config.UI.Theme.Colors["accent"])).
+		Padding(2, 4).
+		Width(70).
+		Align(lipgloss.Center)
+
+	titleStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.config.UI.Theme.Colors["primary"])).
+		Bold(true).
+		MarginBottom(1)
+
+	helpStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.config.UI.Theme.Colors["secondary"])).
+		Italic(true).
+		MarginTop(1).
+		MarginBottom(1)
+
+	errorStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.config.UI.Theme.Colors["error"])).
+		Bold(true).
+		MarginTop(1)
+
+	instructionStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.config.UI.Theme.Colors["info"])).
+		MarginTop(2)
+
+	// Build modal content
+	var content strings.Builder
+	
+	content.WriteString(titleStyle.Render("Target Configuration"))
+	content.WriteString("\n\n")
+	
+	if m.targetInput.Value() != "" {
+		content.WriteString(helpStyle.Render("Previous target loaded. Press Enter to use or modify:"))
+	} else {
+		content.WriteString(helpStyle.Render("Enter the target for scanning:"))
+	}
+	content.WriteString("\n\n")
+	
+	content.WriteString(m.targetInput.View())
+	content.WriteString("\n")
+	
+	if m.targetError != "" {
+		content.WriteString("\n")
+		content.WriteString(errorStyle.Render("⚠ " + m.targetError))
+	}
+	
+	content.WriteString("\n")
+	content.WriteString(instructionStyle.Render("Press Enter to confirm, Esc to cancel"))
+	content.WriteString("\n\n")
+	content.WriteString(helpStyle.Render("Supported formats:"))
+	content.WriteString("\n")
+	content.WriteString(helpStyle.Render("• IP Address: 192.168.1.1"))
+	content.WriteString("\n")
+	content.WriteString(helpStyle.Render("• Hostname: example.com"))
+	content.WriteString("\n")
+	content.WriteString(helpStyle.Render("• CIDR: 192.168.1.0/24"))
+	content.WriteString("\n")
+	content.WriteString(helpStyle.Render("• Multiple targets: 192.168.1.1, example.com"))
+
+	// Center the modal
+	modal := modalStyle.Render(content.String())
+	
+	// Place modal in center of screen
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		modal,
+		lipgloss.WithWhitespaceChars("░"),
+		lipgloss.WithWhitespaceForeground(lipgloss.Color("#333333")),
+	)
 }
 
 func (m *model) View() string {
 	if !m.ready || m.width == 0 || m.height == 0 {
 		return "Initializing..."
+	}
+
+	// Show modal if active
+	if m.showTargetModal {
+		return m.renderTargetModal()
 	}
 
 	// Create stylized title with enhanced formatting
@@ -1386,7 +1833,20 @@ func (m *model) View() string {
 
 	// Full title line
 	fullTitle := lipgloss.JoinHorizontal(lipgloss.Left, mainTitle, separator, subtitle)
-	title := lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render(fullTitle)
+	
+	// Add target display if configured
+	var titleWithTarget string
+	if m.scanTarget != "" {
+		targetStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(m.config.UI.Theme.Colors["success"])).
+			Bold(true)
+		targetLine := targetStyle.Render(fmt.Sprintf("Target: %s", m.scanTarget))
+		titleWithTarget = lipgloss.JoinVertical(lipgloss.Center, fullTitle, targetLine)
+	} else {
+		titleWithTarget = fullTitle
+	}
+	
+	title := lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render(titleWithTarget)
 
 	// Create help with focus-specific instructions
 	var helpText string
@@ -1829,6 +2289,15 @@ func (m *model) updateWorkflowList() {
 func (m *model) updateExecutionQueue() {
 	items := []list.Item{}
 
+	// Add target information at the top if configured
+	if m.scanTarget != "" {
+		items = append(items, executionItem{
+			name:        "Target: " + m.scanTarget,
+			description: "Configured scanning target",
+			status:      "info",
+		})
+	}
+
 	if len(m.selectedWorkflows) == 0 {
 		items = append(items, executionItem{
 			name:        "No workflows selected",
@@ -1911,9 +2380,49 @@ func (m *model) completeWorkflowExecution() {
 	m.logSystemMessage("success", "All workflows completed", "total", len(m.executedWorkflows))
 }
 
+// getExecutionContext creates an ExecutionContext for tool execution
+func (m *model) getExecutionContext() map[string]string {
+	// Create context that can be used by executor
+	ctx := make(map[string]string)
+	ctx["target"] = m.scanTarget
+	
+	// Use workspace directory from configuration - no session persistence
+	outputDir := ""
+	// Create workspace/target structure using config
+	sanitizedTarget := m.sanitizeTargetForPath(m.scanTarget)
+	outputDir = filepath.Join(m.config.Output.WorkspaceBase, sanitizedTarget)
+	
+	// Set different output paths for different types
+	ctx["output_dir"] = outputDir
+	ctx["workspace"] = outputDir
+	ctx["logs_dir"] = filepath.Join(outputDir, "logs")
+	ctx["scans_dir"] = filepath.Join(outputDir, "scans")
+	ctx["reports_dir"] = filepath.Join(outputDir, "reports")
+	ctx["raw_dir"] = filepath.Join(outputDir, "raw")
+	ctx["timestamp"] = time.Now().Format("20060102_150405")
+	
+	// Add session ID - no persistence, generate new ID each time
+	ctx["session_id"] = fmt.Sprintf("session_%d", time.Now().Unix())
+	
+	return ctx
+}
+
 // executeSelectedWorkflows starts execution of selected workflows (UI simulation only)
 func (m *model) executeSelectedWorkflows() {
 	// This is UI-only for now - no actual backend execution
+	// When implementing real execution, use getExecutionContext():
+	// execCtx := m.getExecutionContext()
+	// ctx := &executor.ExecutionContext{
+	//     Target:     execCtx["target"],
+	//     Workspace:  execCtx["workspace"],
+	//     OutputDir:  execCtx["output_dir"],
+	//     LogsDir:    execCtx["logs_dir"],
+	//     ScansDir:   execCtx["scans_dir"],
+	//     ReportsDir: execCtx["reports_dir"],
+	//     RawDir:     execCtx["raw_dir"],
+	//     Timestamp:  execCtx["timestamp"],
+	//     SessionID:  execCtx["session_id"],
+	// }
 	items := []list.Item{}
 
 	// Clear and populate the tools execution list

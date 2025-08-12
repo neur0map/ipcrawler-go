@@ -29,6 +29,13 @@ args:
     - "{{output_dir}}/{{output_file}}"
     - "-json"
     - "{{target}}"
+  top_ports:
+    - "-top-ports"
+    - "1000"
+    - "-o"
+    - "{{output_dir}}/{{output_file}}"
+    - "-json"
+    - "{{target}}"
 
 overrides:
   - retry_attempts: 3

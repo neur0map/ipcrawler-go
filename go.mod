@@ -1,4 +1,4 @@
-module github.com/your-org/ipcrawler
+module github.com/neur0map/ipcrawler
 
 go 1.23.0
 

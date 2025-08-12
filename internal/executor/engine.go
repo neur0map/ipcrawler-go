@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/your-org/ipcrawler/internal/config"
+	"github.com/neur0map/ipcrawler/internal/config"
 )
 
 // ExecutionResult represents the result of a tool execution

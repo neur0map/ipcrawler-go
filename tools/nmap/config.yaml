@@ -1,0 +1,33 @@
+tool: "nmap"
+description: "Nmap is a network scanner that can be used to scan for open ports, services, and other information on a network."
+
+# output format
+format: "txt"
+file: "nmap.txt"
+
+args:
+  aggressive:
+    - "-p"
+    - "22,80,443,8080,8443"
+    - "-sV"
+    - "-O"
+    - "-A"
+    - "--min-rate"
+    - "1000"
+    - "--max-rate"
+    - "5000"
+    - "-oA"
+    - "{{output_dir}}/{{output_file}}"
+    - "{{target}}"
+  all_ports:
+    - "-p"
+    - "-"
+    - "-o"
+    - "{{output_dir}}/{{output_file}}"
+    - "{{target}}"
+  quick_scan:
+    - "-p"
+    - "1-1024"
+    - "-o"
+    - "{{output_dir}}/{{output_file}}"
+    - "{{target}}"

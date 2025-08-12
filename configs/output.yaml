@@ -1,28 +1,43 @@
 # IPCrawler Output Configuration
-# Enable timestamp in log output
-timestamp: true
-time_format: "RFC3339Nano"
+# Output will be organized under workspace/{{target}}/ directory structure
+# Each target gets its own workspace with subdirectories for different output types
 
-# info output
-info:
-  directory: "./output/logs/info/"
-  level: "info"
+output:
+  # Base workspace directory (no hardcoded paths)
+  workspace_base: "./workspace"
 
-# error output
-error:
-  directory: "./output/logs/error/"
-  level: "error"
+  # Enable timestamp in log output
+  timestamp: true
+  time_format: "RFC3339Nano"
 
-# warning output
-warning:
-  directory: "./output/logs/warning/"
-  level: "warning"
+  # info output
+  info:
+    directory: "{{workspace}}/logs/info/"
+    level: "info"
 
-# debug output
-debug:
-  directory: "./output/logs/debug/"
-  level: "debug"
+  # error output
+  error:
+    directory: "{{workspace}}/logs/error/"
+    level: "error"
 
-# raw output
-raw:
-  directory: "./output/raw/"
+  # warning output
+  warning:
+    directory: "{{workspace}}/logs/warning/"
+    level: "warning"
+
+  # debug output
+  debug:
+    directory: "{{workspace}}/logs/debug/"
+    level: "debug"
+
+  # raw tool output
+  raw:
+    directory: "{{workspace}}/raw/"
+
+  # scan results (not currently in config struct but available for tools)
+  scans:
+    directory: "{{workspace}}/scans/"
+
+  # reports and summaries (not currently in config struct but available for tools)
+  reports:
+    directory: "{{workspace}}/reports/"

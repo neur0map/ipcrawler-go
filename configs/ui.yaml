@@ -179,3 +179,16 @@ ui:
     stop_on_error: false     # Stop workflow on first error
     parallel_tools: 3        # Max parallel tool executions
 
+
+  # Modal configuration
+  modal:
+    target_input:
+      width: 70                    # Modal width
+      padding: 4                   # Internal padding
+      show_help: true             # Show format help
+      placeholder: "Enter IP, hostname, or CIDR (e.g., 192.168.1.0/30)"
+      validation:
+        allow_multiple: true      # Allow comma-separated targets
+        resolve_hostnames: true   # Try to resolve hostnames
+        allow_cidr: true         # Allow CIDR notation
+        max_targets: 10          # Maximum number of targets
