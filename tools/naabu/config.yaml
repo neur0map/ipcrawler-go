@@ -1,3 +1,130 @@
 tool: "naabu"
-description: ""
+description: "Fast and reliable port scanner for network discovery"
 
+# Generic args structure
+args:
+  # Standard user modes (no sudo required)
+  fast_scan:
+    - "-host"
+    - "{{target}}"
+    - "-top-ports"
+    - "100"
+    - "-rate"
+    - "2000"
+    - "-json"
+    - "-o"
+    - "{{scans_dir}}/{{output_file}}.json"
+    - "-silent"
+
+  connect_scan:
+    - "-host"
+    - "{{target}}"
+    - "-scan-type"
+    - "c"
+    - "-top-ports"
+    - "1000"
+    - "-json"
+    - "-o"
+    - "{{scans_dir}}/{{output_file}}.json"
+
+  web_ports:
+    - "-host"
+    - "{{target}}"
+    - "-p"
+    - "80,443,8080,8443"
+    - "-json"
+    - "-o"
+    - "{{scans_dir}}/{{output_file}}.json"
+
+  common_ports:
+    - "-host"
+    - "{{target}}"
+    - "-p"
+    - "22,80,443,8080,8443"
+    - "-json"
+    - "-o"
+    - "{{scans_dir}}/{{output_file}}.json"
+
+  top1000_scan:
+    - "-host"
+    - "{{target}}"
+    - "-top-ports"
+    - "1000"
+    - "-rate"
+    - "1000"
+    - "-json"
+    - "-o"
+    - "{{scans_dir}}/{{output_file}}.json"
+    - "-silent"
+
+  top1000_fast:
+    - "-host"
+    - "{{target}}"
+    - "-top-ports"
+    - "1000"
+    - "-rate"
+    - "2000"
+    - "-json"
+    - "-o"
+    - "{{scans_dir}}/{{output_file}}.json"
+
+  # Privileged modes (require sudo)
+  syn_scan:
+    - "-host"
+    - "{{target}}"
+    - "-scan-type"
+    - "s"
+    - "-top-ports"
+    - "1000"
+    - "-rate"
+    - "2000"
+    - "-json"
+    - "-o"
+    - "{{scans_dir}}/{{output_file}}.json"
+
+  comprehensive_scan:
+    - "-host"
+    - "{{target}}"
+    - "-scan-type"
+    - "s"
+    - "-p"
+    - "-"
+    - "-rate"
+    - "1500"
+    - "-json"
+    - "-o"
+    - "{{scans_dir}}/{{output_file}}.json"
+
+  host_discovery:
+    - "-host"
+    - "{{target}}"
+    - "-host-discovery"
+    - "-top-ports"
+    - "100"
+    - "-json"
+    - "-o"
+    - "{{scans_dir}}/{{output_file}}.json"
+
+  stealth_scan:
+    - "-host"
+    - "{{target}}"
+    - "-scan-type"
+    - "s"
+    - "-top-ports"
+    - "100"
+    - "-rate"
+    - "100"
+    - "-timeout"
+    - "5000"
+    - "-json"
+    - "-o"
+    - "{{scans_dir}}/{{output_file}}.json"
+
+  udp_scan:
+    - "-host"
+    - "{{target}}"
+    - "-p"
+    - "u:53,u:161,u:162,u:123,u:69"
+    - "-json"
+    - "-o"
+    - "{{scans_dir}}/{{output_file}}.json"

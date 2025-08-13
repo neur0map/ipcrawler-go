@@ -1,0 +1,119 @@
+tool: "nmap"
+description: "Network exploration and security auditing tool"
+format: "xml"
+
+# Generic args structure - all modes use XML output for structured data
+args:
+  # Basic modes (no sudo required)
+  tcp_connect_scan:
+    - "-sT"
+    - "-p"
+    - "1-1000"
+    - "-T4"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"
+
+  service_detection:
+    - "-sV"
+    - "-p"
+    - "22,80,443,8080,8443,3389,5432,3306"
+    - "-T4"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"
+
+  default_scripts:
+    - "-sC"
+    - "-p"
+    - "22,80,443,8080,8443"
+    - "-T4"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"
+
+  ping_scan:
+    - "-sn"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"
+
+  web_ports_scan:
+    - "-sT"
+    - "-p"
+    - "80,443,8080,8443,8000,8888,9000,3000"
+    - "-sV"
+    - "-T4"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"
+
+  common_ports:
+    - "-sT"
+    - "-p"
+    - "21,22,23,25,53,80,110,111,135,139,143,443,993,995,1723,3306,3389,5432,5900,6379"
+    - "-T4"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"
+
+  # Privileged modes (require sudo)
+  syn_scan:
+    - "-sS"
+    - "-p"
+    - "1-1000"
+    - "-T4"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"
+
+  comprehensive_scan:
+    - "-sS"
+    - "-sV"
+    - "-O"
+    - "-sC"
+    - "-p"
+    - "1-65535"
+    - "-T4"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"
+
+  stealth_scan:
+    - "-sS"
+    - "-p"
+    - "1-1000"
+    - "-T1"
+    - "-f"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"
+
+  os_detection:
+    - "-O"
+    - "-p"
+    - "22,80,443"
+    - "-T4"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"
+
+  vuln_scan:
+    - "-sS"
+    - "--script"
+    - "vuln"
+    - "-p"
+    - "22,80,443,8080,8443"
+    - "-T4"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"
+
+  udp_scan:
+    - "-sU"
+    - "-p"
+    - "53,67,68,69,123,161,162,514,1194"
+    - "-T4"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"

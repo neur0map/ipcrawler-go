@@ -3,3 +3,8 @@ description: "Multi-stage port discovery and service enumeration"
 category: "reconnaissance"
 tools:
   - name: "naabu"
+    description: "Fast port discovery"
+    modes: ["fast_scan", "top1000_scan", "comprehensive_scan"]
+  - name: "nmap"
+    description: "Detailed service analysis"
+    modes: ["service_detection", "default_scripts", "syn_scan"]

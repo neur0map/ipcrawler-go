@@ -473,7 +473,7 @@ func setSecurityDefaults(sec *SecurityConfig) {
 	
 	// Set defaults for execution settings
 	if sec.Execution.ToolsRoot == "" {
-		sec.Execution.ToolsRoot = "./tools/bin"
+		sec.Execution.ToolsRoot = "" // Empty means allow system PATH
 	}
 	if !sec.Execution.ArgsValidation {
 		sec.Execution.ArgsValidation = true
@@ -566,12 +566,12 @@ func setToolsDefaults(tools *ToolsConfig) {
 		tools.ArgvPolicy.DenyShellMetachars = true
 	}
 	if len(tools.ArgvPolicy.AllowedCharClasses) == 0 {
-		tools.ArgvPolicy.AllowedCharClasses = []string{"alnum", "-", "_", ".", ":", "/", "="}
+		tools.ArgvPolicy.AllowedCharClasses = []string{"alnum", "-", "_", ".", ":", "/", "=", ","}
 	}
 	
 	// Set defaults for execution settings
 	if tools.Execution.ToolsPath == "" {
-		tools.Execution.ToolsPath = "./tools"
+		tools.Execution.ToolsPath = "" // Empty means allow system PATH
 	}
 	if !tools.Execution.ArgsValidation {
 		tools.Execution.ArgsValidation = true

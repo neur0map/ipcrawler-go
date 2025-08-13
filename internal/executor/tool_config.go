@@ -147,3 +147,4 @@ func (tc *ToolConfig) GetAvailableModes() []string {
 	}
 	return modes
 }
+

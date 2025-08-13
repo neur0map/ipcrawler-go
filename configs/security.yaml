@@ -2,6 +2,6 @@
 security:
   os_detection: true
   execution:
-    tools_root: "./tools/bin"        # all executables must resolve under this dir
+    tools_root: ""                   # leave empty to allow system PATH, or set to restrict to specific dir
     args_validation: true          # validate scripts before execution
     exec_validation: true          # validate executables before execution

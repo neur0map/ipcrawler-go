@@ -1,12 +1,14 @@
 package executor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/neur0map/ipcrawler/internal/config"
@@ -25,6 +27,8 @@ type ExecutionResult struct {
 	OutputPath   string        `json:"output_path"`
 	ErrorMessage string        `json:"error_message,omitempty"`
 	CommandLine  []string      `json:"command_line"`
+	Stdout       string        `json:"stdout,omitempty"`
+	Stderr       string        `json:"stderr,omitempty"`
 }
 
 // ExecutionOptions contains options for tool execution
@@ -42,15 +46,47 @@ type ToolExecutionEngine struct {
 	templateResolver *TemplateResolver
 	globalConfig     *config.Config
 	toolsPath        string
+	validator        *SecurityValidator
+	
+	// Concurrency control
+	concurrentSem    chan struct{}
+	parallelSem      chan struct{}
+	runningMutex     sync.RWMutex
+	runningTools     map[string]int // toolName -> count
 }
 
-// NewToolExecutionEngine creates a new tool execution engine
+// NewToolExecutionEngine creates a new tool execution engine  
 func NewToolExecutionEngine(globalConfig *config.Config, toolsPath string) *ToolExecutionEngine {
+	// If toolsPath is empty, use the configured tools path or default to allowing system PATH
+	if toolsPath == "" && globalConfig != nil {
+		toolsPath = globalConfig.Tools.Execution.ToolsPath
+	}
+	// Get concurrency limits from config or use defaults
+	maxConcurrent := 3
+	maxParallel := 2
+	
+	if globalConfig != nil && globalConfig.Tools.ToolExecution.MaxConcurrentExecutions > 0 {
+		maxConcurrent = globalConfig.Tools.ToolExecution.MaxConcurrentExecutions
+	}
+	
+	if globalConfig != nil && globalConfig.Tools.ToolExecution.MaxParallelExecutions > 0 {
+		maxParallel = globalConfig.Tools.ToolExecution.MaxParallelExecutions
+	}
+	
+	// Config loader always uses "./tools" for config files
+	configToolsPath := "./tools"
+	
 	return &ToolExecutionEngine{
-		configLoader:     NewToolConfigLoader(toolsPath),
+		configLoader:     NewToolConfigLoader(configToolsPath),
 		templateResolver: NewTemplateResolver(globalConfig),
 		globalConfig:     globalConfig,
-		toolsPath:        toolsPath,
+		toolsPath:        toolsPath, // This can be empty for system PATH
+		validator:        NewSecurityValidator(globalConfig),
+		
+		// Initialize concurrency control
+		concurrentSem:    make(chan struct{}, maxConcurrent),
+		parallelSem:      make(chan struct{}, maxParallel),
+		runningTools:     make(map[string]int),
 	}
 }
 
@@ -66,6 +102,52 @@ func (tee *ToolExecutionEngine) ExecuteTool(ctx context.Context, toolName, mode,
 		Success:   false,
 	}
 
+	// Acquire concurrent execution semaphore
+	select {
+	case tee.concurrentSem <- struct{}{}:
+		defer func() { <-tee.concurrentSem }()
+	case <-ctx.Done():
+		result.ErrorMessage = "execution cancelled while waiting for concurrent slot"
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(result.StartTime)
+		return result, ctx.Err()
+	}
+
+	// Check if we can run this tool in parallel (based on tool-specific limits)
+	tee.runningMutex.Lock()
+	currentRunning := tee.runningTools[toolName]
+	
+	// If this tool is already running and we're at the parallel limit, acquire parallel semaphore
+	needsParallelSem := currentRunning >= 1
+	
+	if needsParallelSem {
+		tee.runningMutex.Unlock()
+		select {
+		case tee.parallelSem <- struct{}{}:
+			defer func() { <-tee.parallelSem }()
+		case <-ctx.Done():
+			result.ErrorMessage = "execution cancelled while waiting for parallel slot"
+			result.EndTime = time.Now()
+			result.Duration = result.EndTime.Sub(result.StartTime)
+			return result, ctx.Err()
+		}
+		tee.runningMutex.Lock()
+	}
+	
+	// Track this execution
+	tee.runningTools[toolName]++
+	tee.runningMutex.Unlock()
+	
+	// Ensure we decrement the counter when done
+	defer func() {
+		tee.runningMutex.Lock()
+		tee.runningTools[toolName]--
+		if tee.runningTools[toolName] <= 0 {
+			delete(tee.runningTools, toolName)
+		}
+		tee.runningMutex.Unlock()
+	}()
+
 	// Load tool configuration
 	toolConfig, err := tee.configLoader.LoadToolConfig(toolName)
 	if err != nil {
@@ -74,6 +156,7 @@ func (tee *ToolExecutionEngine) ExecuteTool(ctx context.Context, toolName, mode,
 		result.Duration = result.EndTime.Sub(result.StartTime)
 		return result, err
 	}
+
 
 	// Get tool arguments for the specified mode
 	argsTemplate, err := toolConfig.GetToolArguments(mode)
@@ -87,15 +170,34 @@ func (tee *ToolExecutionEngine) ExecuteTool(ctx context.Context, toolName, mode,
 	// Create execution context
 	execCtx := tee.templateResolver.CreateExecutionContext(target, toolName, mode)
 
+	// Generate workspace paths
+	sanitizedTarget := sanitizeForFilename(target)
+	workspaceDir := filepath.Join("./workspace", sanitizedTarget)
+	execCtx.Workspace = workspaceDir
+	execCtx.OutputDir = workspaceDir
+	execCtx.ScansDir = filepath.Join(workspaceDir, "scans")
+	execCtx.LogsDir = filepath.Join(workspaceDir, "logs")
+	execCtx.ReportsDir = filepath.Join(workspaceDir, "reports")
+	execCtx.RawDir = filepath.Join(workspaceDir, "raw")
+
 	// Set custom output file if tool config specifies one
 	if toolConfig.File != "" {
 		execCtx.OutputFile = toolConfig.File
 	}
 
+
 	// Resolve template variables in arguments
 	resolvedArgs, err := tee.templateResolver.ResolveArguments(argsTemplate, execCtx)
 	if err != nil {
 		result.ErrorMessage = fmt.Sprintf("failed to resolve template variables: %v", err)
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(result.StartTime)
+		return result, err
+	}
+
+	// Validate arguments against security policies
+	if err := tee.validator.ValidateArguments(resolvedArgs); err != nil {
+		result.ErrorMessage = fmt.Sprintf("argument validation failed: %v", err)
 		result.EndTime = time.Now()
 		result.Duration = result.EndTime.Sub(result.StartTime)
 		return result, err
@@ -112,14 +214,22 @@ func (tee *ToolExecutionEngine) ExecuteTool(ctx context.Context, toolName, mode,
 		return result, err
 	}
 
+	// Validate executable path against security policies
+	if err := tee.validator.ValidateExecutable(toolExecutable); err != nil {
+		result.ErrorMessage = fmt.Sprintf("executable validation failed: %v", err)
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(result.StartTime)
+		return result, err
+	}
+
 	// Set up execution options
 	if options == nil {
 		options = &ExecutionOptions{}
 	}
 	if options.Timeout == 0 {
 		// Use timeout from global config if available, otherwise use a reasonable default
-		if tee.globalConfig != nil && tee.globalConfig.Security.Scanning.TimeoutSeconds > 0 {
-			options.Timeout = time.Duration(tee.globalConfig.Security.Scanning.TimeoutSeconds) * time.Second
+		if tee.globalConfig != nil && tee.globalConfig.Tools.DefaultTimeout > 0 {
+			options.Timeout = time.Duration(tee.globalConfig.Tools.DefaultTimeout) * time.Second
 		} else {
 			options.Timeout = 30 * time.Minute // Fallback default
 		}
@@ -129,53 +239,115 @@ func (tee *ToolExecutionEngine) ExecuteTool(ctx context.Context, toolName, mode,
 	execContext, cancel := context.WithTimeout(ctx, options.Timeout)
 	defer cancel()
 
-	// Ensure output directory exists
-	vars := tee.templateResolver.buildVariableMap(execCtx)
-	outputDir := vars["output_dir"]
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		result.ErrorMessage = fmt.Sprintf("failed to create output directory: %v", err)
-		result.EndTime = time.Now()
-		result.Duration = result.EndTime.Sub(result.StartTime)
-		return result, err
+	// Ensure all workspace directories exist
+	dirsToCreate := []string{
+		execCtx.Workspace,
+		execCtx.ScansDir,
+		execCtx.LogsDir,
+		execCtx.ReportsDir,
+		execCtx.RawDir,
 	}
+	
+	for _, dir := range dirsToCreate {
+		if dir != "" {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				result.ErrorMessage = fmt.Sprintf("failed to create directory %s: %v", dir, err)
+				result.EndTime = time.Now()
+				result.Duration = result.EndTime.Sub(result.StartTime)
+				return result, err
+			}
+		}
+	}
+
+	// Build variable map for template resolution
+	vars := tee.templateResolver.buildVariableMap(execCtx)
 
 	// Store the expected output path
 	if outputPath, exists := vars["output_path"]; exists {
 		result.OutputPath = outputPath
 	}
 
-	// Execute the tool
-	cmd := exec.CommandContext(execContext, toolExecutable, resolvedArgs...)
+	// Prepare output buffers
+	var stdoutBuf, stderrBuf bytes.Buffer
 
-	// Set working directory
-	if options.WorkingDir != "" {
-		cmd.Dir = options.WorkingDir
+	// Execute with retry logic
+	retryAttempts := 1
+	if tee.globalConfig != nil && tee.globalConfig.Tools.RetryAttempts > 0 {
+		retryAttempts = tee.globalConfig.Tools.RetryAttempts
 	}
 
-	// Set environment variables
-	cmd.Env = os.Environ()
-	for key, value := range options.Environment {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
-	}
+	var lastErr error
+	for attempt := 0; attempt <= retryAttempts; attempt++ {
+		// Reset buffers for each attempt
+		if options.CaptureOutput {
+			stdoutBuf.Reset()
+			stderrBuf.Reset()
+		}
 
-	// Run the command
-	err = cmd.Run()
+		// Create a new command for each attempt
+		execCmd := exec.CommandContext(execContext, toolExecutable, resolvedArgs...)
+		
+		// Set working directory
+		if options.WorkingDir != "" {
+			execCmd.Dir = options.WorkingDir
+		}
 
-	result.EndTime = time.Now()
-	result.Duration = result.EndTime.Sub(result.StartTime)
+		// Set environment variables
+		execCmd.Env = os.Environ()
+		for key, value := range options.Environment {
+			execCmd.Env = append(execCmd.Env, fmt.Sprintf("%s=%s", key, value))
+		}
 
-	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
+		// Capture output if requested
+		if options.CaptureOutput {
+			execCmd.Stdout = &stdoutBuf
+			execCmd.Stderr = &stderrBuf
+		}
+
+		// Run the command
+		lastErr = execCmd.Run()
+
+		// Store captured output in result
+		if options.CaptureOutput {
+			result.Stdout = stdoutBuf.String()
+			result.Stderr = stderrBuf.String()
+		}
+
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(result.StartTime)
+
+		if lastErr == nil {
+			// Success
+			result.Success = true
+			result.ExitCode = 0
+			break
+		}
+
+		// Handle error
+		if exitError, ok := lastErr.(*exec.ExitError); ok {
 			result.ExitCode = exitError.ExitCode()
 		} else {
 			result.ExitCode = -1
 		}
-		result.ErrorMessage = fmt.Sprintf("tool execution failed: %v", err)
-		return result, err
-	}
 
-	result.Success = true
-	result.ExitCode = 0
+		// If this was the last attempt, set final error
+		if attempt == retryAttempts {
+			result.ErrorMessage = fmt.Sprintf("tool execution failed after %d attempts: %v", attempt+1, lastErr)
+			return result, lastErr
+		}
+
+		// Wait before retrying (exponential backoff)
+		if attempt < retryAttempts {
+			waitTime := time.Duration(attempt+1) * time.Second
+			select {
+			case <-time.After(waitTime):
+				// Continue to retry
+			case <-execContext.Done():
+				result.ErrorMessage = "execution cancelled during retry wait"
+				return result, execContext.Err()
+			}
+		}
+	}
 
 	// Validate output file was created if requested
 	if options.ValidateOutput && result.OutputPath != "" {
@@ -191,13 +363,19 @@ func (tee *ToolExecutionEngine) ExecuteTool(ctx context.Context, toolName, mode,
 
 // findToolExecutable locates the executable for a tool
 func (tee *ToolExecutionEngine) findToolExecutable(toolName string) (string, error) {
-	// Try common executable names and paths
-	candidates := []string{
-		toolName,                               // Direct name (if in PATH)
-		filepath.Join(tee.toolsPath, toolName), // In tools directory
-		filepath.Join(tee.toolsPath, "bin", toolName),    // In tools/bin
-		filepath.Join(tee.toolsPath, toolName, toolName), // In tools/toolname/toolname
+	var candidates []string
+	
+	// If toolsPath is set, try tools directory first (security priority)
+	if tee.toolsPath != "" {
+		candidates = append(candidates,
+			filepath.Join(tee.toolsPath, toolName, toolName), // In tools/toolname/toolname
+			filepath.Join(tee.toolsPath, "bin", toolName),    // In tools/bin
+			filepath.Join(tee.toolsPath, toolName),           // In tools directory
+		)
 	}
+	
+	// Always try system PATH as fallback
+	candidates = append(candidates, toolName)
 
 	// Add common executable extensions on Windows
 	if strings.Contains(strings.ToLower(os.Getenv("OS")), "windows") {
@@ -295,3 +473,56 @@ func (tee *ToolExecutionEngine) PreviewCommand(toolName, mode, target string) ([
 
 	return append([]string{toolExecutable}, resolvedArgs...), nil
 }
+
+// GetExecutionStatus returns information about current executions
+func (tee *ToolExecutionEngine) GetExecutionStatus() map[string]interface{} {
+	tee.runningMutex.RLock()
+	defer tee.runningMutex.RUnlock()
+	
+	status := map[string]interface{}{
+		"concurrent_slots_available": cap(tee.concurrentSem) - len(tee.concurrentSem),
+		"concurrent_slots_total":     cap(tee.concurrentSem),
+		"parallel_slots_available":   cap(tee.parallelSem) - len(tee.parallelSem),
+		"parallel_slots_total":       cap(tee.parallelSem),
+		"running_tools":              make(map[string]int),
+	}
+	
+	// Copy running tools map
+	runningTools := make(map[string]int)
+	for tool, count := range tee.runningTools {
+		runningTools[tool] = count
+	}
+	status["running_tools"] = runningTools
+	
+	return status
+}
+
+// sanitizeForFilename removes or replaces characters that are problematic in filenames
+func sanitizeForFilename(input string) string {
+	replacements := map[string]string{
+		"/":  "_",
+		"\\": "_",
+		":":  "_",
+		"*":  "_",
+		"?":  "_",
+		"\"": "_",
+		"<":  "_",
+		">":  "_",
+		"|":  "_",
+		" ":  "_",
+		".":  "_",
+	}
+	
+	result := input
+	for old, new := range replacements {
+		result = strings.ReplaceAll(result, old, new)
+	}
+	
+	// Limit length to reasonable filename size
+	if len(result) > 50 {
+		result = result[:50]
+	}
+	
+	return result
+}
+
