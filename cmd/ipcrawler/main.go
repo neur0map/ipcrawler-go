@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
@@ -11,6 +13,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -27,6 +31,7 @@ import (
 	netutil "github.com/shirou/gopsutil/v3/net"
 
 	"github.com/neur0map/ipcrawler/internal/config"
+	"github.com/neur0map/ipcrawler/internal/executor"
 	"github.com/neur0map/ipcrawler/internal/tui/data/loader"
 )
 
@@ -52,6 +57,10 @@ type model struct {
 
 	// Configuration
 	config *config.Config
+
+	// Execution engine components  
+	executionEngine     *executor.ToolExecutionEngine
+	workflowOrchestrator *executor.WorkflowOrchestrator
 
 	// Data source
 	workflows *loader.WorkflowData
@@ -139,8 +148,38 @@ type systemMetrics struct {
 // systemMetricsMsg is sent when system metrics are updated asynchronously
 type systemMetricsMsg systemMetrics
 
+// Workflow execution message types for Bubble Tea async operations
+type workflowStartedMsg struct {
+	WorkflowName string
+	Target       string
+	QueueSize    int
+}
+
+type workflowProgressMsg struct {
+	WorkflowName string
+	Step         string
+	Status       string
+	Output       string
+}
+
+type workflowCompletedMsg struct {
+	WorkflowName string
+	Success      bool
+	Error        string
+	Duration     time.Duration
+}
+
+type workflowQueueUpdatedMsg struct {
+	QueuedWorkflows []string
+	CompletedCount  int
+	TotalCount      int
+}
+
 // metricsTickMsg is sent by the metrics ticker to trigger regular updates
 type metricsTickMsg struct{}
+
+// readinessFallbackMsg is sent to ensure TUI becomes ready even if WindowSizeMsg is delayed
+type readinessFallbackMsg struct{}
 
 // List item implementations for bubbles/list component
 
@@ -608,9 +647,17 @@ func newModel() *model {
 	ti.CharLimit = 256
 	ti.Width = 60
 
+	// Initialize execution engine components
+	executionEngine := executor.NewToolExecutionEngine(cfg, "")
+	workflowExecutor := executor.NewWorkflowExecutor(executionEngine)
+	workflowOrchestrator := executor.NewWorkflowOrchestrator(workflowExecutor, cfg)
+	
+	// Create the model first so we can reference it in the callback
 	m := &model{
-		config:            cfg,
-		workflows:         workflows,
+		config:               cfg,
+		executionEngine:      executionEngine,
+		workflowOrchestrator: workflowOrchestrator,
+		workflows:            workflows,
 		// No session persistence - fresh start each time
 		showTargetModal:   true, // Always show modal on startup
 		targetInput:       ti,
@@ -670,6 +717,32 @@ func newModel() *model {
 
 	// Initialize system metrics with zero timestamp to force immediate first update
 	m.perfData.LastUpdate = time.Time{} // Zero time ensures immediate first update
+	
+	// Set ready to true immediately since we're setting size manually in runTUI()
+	// This prevents getting stuck on "Initializing..." screen
+	m.ready = true
+
+	// Add startup logging for debugging
+	m.logSystemMessage("info", "=== IPCrawler TUI Started ===", "version", "debug", "timestamp", time.Now().Format("15:04:05"))
+	m.logSystemMessage("info", "System initialized", "workflows_loaded", len(workflows.Workflows))
+	m.logSystemMessage("debug", "Press TAB to cycle windows, SPACE to select workflows, ENTER to execute")
+
+	// Set up workflow status callback for real-time updates
+	workflowOrchestrator.SetStatusCallback(func(workflowName, target, status, message string) {
+		// This callback runs in a separate goroutine, so we need to be careful about TUI updates
+		m.logSystemMessage("info", "Workflow status update", 
+			"workflow", workflowName, 
+			"target", target, 
+			"status", status, 
+			"message", message)
+		
+		// Add to live output for immediate visibility
+		if len(m.liveOutput) > 100 { // Prevent memory issues
+			m.liveOutput = m.liveOutput[1:]
+		}
+		m.liveOutput = append(m.liveOutput, fmt.Sprintf("[%s] %s: %s", status, workflowName, message))
+		m.updateLiveOutput()
+	})
 
 	return m
 }
@@ -1061,6 +1134,10 @@ func (m *model) Init() tea.Cmd {
 		tea.Every(refreshInterval, func(t time.Time) tea.Msg {
 			return metricsTickMsg{}
 		}),
+		// Fallback readiness timer - ensures TUI becomes ready even if WindowSizeMsg is delayed
+		tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
+			return readinessFallbackMsg{}
+		}),
 	)
 }
 
@@ -1294,13 +1371,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				// Validate and accept target
 				inputValue := strings.TrimSpace(m.targetInput.Value())
+				m.logSystemMessage("info", "=== TARGET ENTERED ===", "input", inputValue)
 				if err := m.validateTarget(inputValue); err != nil {
 					m.targetError = err.Error()
+					m.logSystemMessage("error", "Target validation failed", "error", err.Error())
 				} else {
 					m.scanTarget = inputValue
 					m.showTargetModal = false
 					m.targetError = ""
 					m.focus = workflowTreeFocus // Set initial focus after modal closes
+					m.logSystemMessage("info", "Target accepted, focus set to workflow tree", "target", inputValue)
 					
 					// Create workspace/target directory structure immediately
 					sanitizedTarget := m.sanitizeTargetForPath(m.scanTarget)
@@ -1384,6 +1464,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				selectedItem := m.workflowTreeList.SelectedItem()
 				if workflowItem, ok := selectedItem.(workflowItem); ok {
 					m.selectedWorkflows[workflowItem.name] = true
+					m.logSystemMessage("info", "Workflow selected", "name", workflowItem.name, "description", workflowItem.description)
 					m.updateWorkflowList()
 					m.updateExecutionQueue()
 
@@ -1413,7 +1494,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								selectedCount++
 							}
 						}
-						m.logSystemMessage("info", "Workflow removed from queue", "workflow", executionItem.name, "total_queued", selectedCount)
+						m.logSystemMessage("info", "Workflow deselected", "workflow", executionItem.name, "total_queued", selectedCount)
 					}
 				}
 			}
@@ -1426,8 +1507,36 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					break
 				}
 			}
+			
+			// Enhanced logging for Enter key debugging - IMMEDIATE DEBUG
+			m.logSystemMessage("info", "=== ENTER KEY PRESSED ===", "focus_window", m.focus, "has_selected_workflows", hasSelectedWorkflows)
+			
+			// Log which workflows are currently selected
+			selectedList := []string{}
+			for workflow, selected := range m.selectedWorkflows {
+				if selected {
+					selectedList = append(selectedList, workflow)
+				}
+			}
+			m.logSystemMessage("info", "Currently selected workflows", "workflows", strings.Join(selectedList, ", "), "count", len(selectedList))
+			
 			if (m.focus == workflowTreeFocus || m.focus == scanOverviewFocus) && hasSelectedWorkflows {
-				m.executeSelectedWorkflows()
+				m.logSystemMessage("info", "Starting workflow execution via command")
+				// Return the command instead of calling synchronously
+				cmd := m.executeWorkflowsCmd()
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+					m.logSystemMessage("info", "Workflow command added to execution queue")
+				} else {
+					m.logSystemMessage("error", "Failed to create workflow command")
+				}
+			} else {
+				focusName := []string{"targetInput", "workflowTree", "scanOverview", "output", "logs", "tools", "perf"}
+				currentFocus := "unknown"
+				if int(m.focus) < len(focusName) {
+					currentFocus = focusName[m.focus]
+				}
+				m.logSystemMessage("warning", "Enter key ignored", "reason", "focus or workflow selection conditions not met", "current_focus", currentFocus, "required_focus", "workflowTree or scanOverview")
 			}
 		case "up":
 			// Handle faster scrolling for viewport windows
@@ -1493,11 +1602,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Received updated system metrics from background goroutine
 		newMetrics := systemMetrics(msg)
 		
-		// Debug: Log that we received the metrics update
-		m.logSystemMessage("debug", "Received system metrics update", 
-			"cpu", fmt.Sprintf("%.1f%%", newMetrics.CPUPercent),
-			"memory", fmt.Sprintf("%.1f%%", newMetrics.MemoryPercent),
-			"timestamp", newMetrics.LastUpdate.Format("15:04:05"))
+		// Remove verbose system metrics debug logging
 
 		// Initialize animated values if this is the first update
 		if m.perfData.AnimationStartTime.IsZero() {
@@ -1518,6 +1623,141 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		newMetrics.AnimationStartTime = time.Now()
 		m.perfData = newMetrics
 
+	case workflowStartedMsg:
+		// Handle workflow started message
+		m.logSystemMessage("info", "Workflows started", "workflows", msg.WorkflowName, "target", msg.Target, "queue_size", msg.QueueSize)
+		
+		// Clear selected workflows and update UI
+		m.selectedWorkflows = make(map[string]bool)
+		m.updateWorkflowList()
+		
+		// Update live output with execution start
+		m.liveOutput = []string{
+			"=== IPCrawler Workflow Execution Starting ===",
+			"",
+			fmt.Sprintf("Target: %s", msg.Target),
+			fmt.Sprintf("Workflows: %s", msg.WorkflowName),
+			fmt.Sprintf("Queue Size: %d", msg.QueueSize),
+			"",
+			"=== Starting Workflow Execution ===",
+			"",
+		}
+		m.updateLiveOutput()
+		
+		// Initialize tools list with queued workflows
+		m.tools = []toolExecution{}
+		workflowNames := strings.Split(msg.WorkflowName, ", ")
+		for _, name := range workflowNames {
+			m.tools = append(m.tools, toolExecution{
+				Name:   fmt.Sprintf("[%s]", name),
+				Status: "running",
+				Output: "",
+			})
+		}
+		
+		// Start monitoring workflow progress
+		cmds = append(cmds, m.monitorWorkflowProgressCmd())
+
+	case workflowProgressMsg:
+		// Handle workflow progress updates
+		m.logSystemMessage("debug", "Workflow progress", "workflow", msg.WorkflowName, "step", msg.Step, "status", msg.Status)
+		
+		// Update live output with progress
+		if msg.Output != "" {
+			m.liveOutput = append(m.liveOutput, fmt.Sprintf("[%s] %s: %s", msg.WorkflowName, msg.Step, msg.Output))
+			m.updateLiveOutput()
+		}
+		
+		// Update tools list status
+		for i, tool := range m.tools {
+			if strings.Contains(tool.Name, msg.WorkflowName) {
+				m.tools[i].Status = msg.Status
+				m.tools[i].Output = msg.Output
+				break
+			}
+		}
+
+	case workflowCompletedMsg:
+		// Handle workflow completion
+		if msg.Success {
+			m.logSystemMessage("info", "Workflow completed successfully", "workflow", msg.WorkflowName, "duration", msg.Duration)
+			m.liveOutput = append(m.liveOutput, 
+				"",
+				fmt.Sprintf("Workflow '%s' completed successfully (Duration: %s)", msg.WorkflowName, msg.Duration),
+				"",
+			)
+		} else {
+			m.logSystemMessage("error", "Workflow failed", "workflow", msg.WorkflowName, "error", msg.Error)
+			m.liveOutput = append(m.liveOutput,
+				"",
+				fmt.Sprintf("Workflow '%s' failed: %s", msg.WorkflowName, msg.Error),
+				"",
+			)
+		}
+		m.updateLiveOutput()
+		
+		// Update tools list status
+		for i, tool := range m.tools {
+			if strings.Contains(tool.Name, msg.WorkflowName) {
+				if msg.Success {
+					m.tools[i].Status = "completed"
+				} else {
+					m.tools[i].Status = "failed"
+					m.tools[i].Output = msg.Error
+				}
+				break
+			}
+		}
+
+	case workflowQueueUpdatedMsg:
+		// Handle workflow queue updates
+		m.logSystemMessage("debug", "Workflow queue updated", "completed", msg.CompletedCount, "total", msg.TotalCount, "queued", len(msg.QueuedWorkflows))
+		
+		// Get actual workflow status to update live output with real progress
+		activeWorkflows := m.workflowOrchestrator.GetActiveWorkflows()
+		
+		// Update live output with current execution status
+		if len(activeWorkflows) > 0 {
+			m.liveOutput = append(m.liveOutput, 
+				fmt.Sprintf("[%s] Active workflows: %d", time.Now().Format("15:04:05"), len(activeWorkflows)),
+			)
+			
+			// Show details of each active workflow
+			for workflowKey, execution := range activeWorkflows {
+				status := "running"
+				switch execution.Status {
+				case 0: status = "queued"
+				case 1: status = "running" 
+				case 2: status = "completed"
+				case 3: status = "failed"
+				case 4: status = "cancelled"
+				}
+				
+				progressPct := 0
+				if execution.TotalSteps > 0 {
+					progressPct = (execution.CompletedSteps * 100) / execution.TotalSteps
+				}
+				
+				m.liveOutput = append(m.liveOutput,
+					fmt.Sprintf("  • %s: %s (%d%% complete, step %d/%d)", 
+						workflowKey, status, progressPct, execution.CompletedSteps, execution.TotalSteps),
+				)
+			}
+			m.updateLiveOutput()
+		}
+		
+		// Check if all workflows are completed
+		if msg.TotalCount > 0 && len(activeWorkflows) == 0 && len(msg.QueuedWorkflows) == 0 {
+			m.liveOutput = append(m.liveOutput,
+				"",
+				"=== All Workflows Completed ===",
+				fmt.Sprintf("Total workflows executed: %d", msg.TotalCount),
+				"Check workspace directory for output files.",
+				"",
+			)
+			m.updateLiveOutput()
+		}
+
 	case spinner.TickMsg:
 		m.spinner, cmd = m.spinner.Update(msg)
 		cmds = append(cmds, cmd)
@@ -1531,9 +1771,35 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		refreshInterval := time.Duration(refreshMs) * time.Millisecond
 		
 		cmds = append(cmds, m.updateSystemMetricsAsync())
+		
+		// Update resource monitor with current system metrics
+		if m.workflowOrchestrator != nil && m.workflowOrchestrator.ResourceMonitor != nil {
+			if err := m.workflowOrchestrator.ResourceMonitor.UpdateResourceUsageFromSystem(); err != nil {
+				m.logSystemMessage("debug", "Failed to update resource usage", "error", err)
+			}
+		}
+		
+		// Log queue status for monitoring (only if there's activity)
+		if m.workflowOrchestrator != nil {
+			queuedCount, activeCount, queuedNames, activeNames := m.workflowOrchestrator.GetExecutionStatus()
+			if queuedCount > 0 || activeCount > 0 {
+				m.logSystemMessage("debug", "Queue status update", 
+					"queued_count", queuedCount, 
+					"active_count", activeCount, 
+					"queued_workflows", strings.Join(queuedNames, ", "), 
+					"active_workflows", strings.Join(activeNames, ", "))
+			}
+		}
+		
 		cmds = append(cmds, tea.Every(refreshInterval, func(t time.Time) tea.Msg {
 			return metricsTickMsg{}
 		}))
+
+	case readinessFallbackMsg:
+		// Fallback to ensure TUI is ready even if WindowSizeMsg is delayed
+		if !m.ready && m.width > 0 && m.height > 0 {
+			m.ready = true
+		}
 	}
 
 	// Update animated values for smooth transitions on every update cycle
@@ -1626,8 +1892,9 @@ func (m *model) renderTargetModal() string {
 }
 
 func (m *model) View() string {
-	if !m.ready || m.width == 0 || m.height == 0 {
-		return "Initializing..."
+	// Simplified ready check - only check if we have minimal dimensions
+	if m.width < 10 || m.height < 5 {
+		return "Initializing... (Terminal too small)"
 	}
 
 	// Show modal if active
@@ -2235,81 +2502,487 @@ func (m *model) getExecutionContext() map[string]string {
 
 // executeSelectedWorkflows prepares execution of selected workflows (no backend yet)
 func (m *model) executeSelectedWorkflows() {
-	// TODO: Implement real tool execution engine
-	// For now, just show the selected workflows and tools that would be executed
+	// Recover from any panics
+	defer func() {
+		if r := recover(); r != nil {
+			m.logSystemMessage("error", "Panic in executeSelectedWorkflows", "panic", r)
+			m.liveOutput = append(m.liveOutput, fmt.Sprintf("ERROR: Unexpected error in workflow execution: %v", r))
+			m.updateLiveOutput()
+		}
+	}()
 	
+	// DEBUG: Confirm function is called
+	m.logSystemMessage("debug", "executeSelectedWorkflows called")
+	
+	// DEBUG: Check if components are initialized
+	if m.workflowOrchestrator == nil {
+		m.logSystemMessage("error", "workflowOrchestrator is nil")
+		return
+	}
+	if m.executionEngine == nil {
+		m.logSystemMessage("error", "executionEngine is nil")
+		return
+	}
+	
+	ctx := context.Background()
+	
+	// Clear previous execution state
 	items := []list.Item{}
 	m.tools = []toolExecution{}
+	m.liveOutput = []string{
+		"=== IPCrawler Workflow Execution Starting ===",
+		"",
+	}
 
-	// Show selected workflows in execution queue
+	// Get the current target from session
+	target := m.getTarget()
+	if target == "" {
+		m.liveOutput = append(m.liveOutput, "ERROR: No target specified. Please restart and enter a target.")
+		m.updateLiveOutput()
+		return
+	}
+
+	m.liveOutput = append(m.liveOutput, fmt.Sprintf("Target: %s", target))
+	m.liveOutput = append(m.liveOutput, "")
+
+	// DEBUG: Show selected workflows
+	m.logSystemMessage("debug", "Selected workflows count", "count", len(m.selectedWorkflows))
+	
+	// Queue selected workflows for execution
+	selectedCount := 0
 	for workflowName, selected := range m.selectedWorkflows {
 		if selected {
-			if workflow, exists := m.workflows.Workflows[workflowName]; exists {
-				items = append(items, executionItem{
-					name:        workflowName,
-					description: fmt.Sprintf("%s (Ready for execution)", workflow.Name),
-					status:      "ready",
-				})
+			selectedCount++
+			// Load the real workflow definition
+			m.logSystemMessage("debug", "Loading workflow definition", "workflow", workflowName)
+			workflow, err := m.loadWorkflowDefinition(workflowName)
+			if err != nil {
+				m.liveOutput = append(m.liveOutput, fmt.Sprintf("ERROR loading workflow %s: %v", workflowName, err))
+				m.logSystemMessage("error", "Failed to load workflow", "workflow", workflowName, "error", err)
+				continue
+			}
 
-				// Add workflow header to tools list
+			// Queue workflow for execution
+			if err := m.workflowOrchestrator.QueueWorkflow(workflow, target); err != nil {
+				m.liveOutput = append(m.liveOutput, fmt.Sprintf("ERROR queueing workflow %s: %v", workflowName, err))
+				continue
+			}
+
+			m.liveOutput = append(m.liveOutput, fmt.Sprintf("✓ Queued workflow: %s", workflow.Name))
+			
+			// Add to execution overview
+			items = append(items, executionItem{
+				name:        workflowName,
+				description: fmt.Sprintf("%s (Queued)", workflow.Name),
+				status:      "queued",
+			})
+
+			// Add workflow header to tools list
+			m.tools = append(m.tools, toolExecution{
+				Name:   fmt.Sprintf("[%s]", workflow.Name),
+				Status: "queued",
+				Output: "",
+			})
+
+			// Add each step from the workflow to the tools list
+			for _, step := range workflow.Steps {
 				m.tools = append(m.tools, toolExecution{
-					Name:   fmt.Sprintf("[%s]", workflow.Name),
-					Status: "ready",
+					Name:   fmt.Sprintf("  → %s (%s)", step.Tool, strings.Join(step.Modes, ",")),
+					Status: "queued",
 					Output: "",
 				})
-
-				// Add each tool from the workflow to the tools list
-				for _, tool := range workflow.Tools {
-					m.tools = append(m.tools, toolExecution{
-						Name:   fmt.Sprintf("  → %s", tool.Name),
-						Status: "ready",
-						Output: "",
-					})
-				}
 			}
 		}
 	}
 
-	// Add execution summary
-	executedCount := len(items)
-	toolCount := len(m.tools) - executedCount // Subtract headers
-	items = append(items, executionItem{
-		name:        fmt.Sprintf("%d workflows prepared", executedCount),
-		description: fmt.Sprintf("%d tools ready for execution", toolCount),
-		status:      "info",
-	})
-
-	m.scanOverviewList.SetItems(items)
-
-	// Update live output with preparation message
-	m.liveOutput = []string{
-		"=== IPCrawler Execution Preparation ===",
-		fmt.Sprintf("Selected %d workflows for execution", executedCount),
-		fmt.Sprintf("Total tools ready: %d", toolCount),
-		"",
-		"Backend execution engine not yet implemented.",
-		"Workflows and tools have been validated and are ready.",
-		"",
+	if selectedCount == 0 {
+		m.liveOutput = append(m.liveOutput, "No workflows selected for execution.")
+		m.updateLiveOutput()
+		return
 	}
 
-	// Log the preparation
-	m.logSystemMessage("info", "Workflow execution prepared", "workflows", executedCount, "tools", toolCount)
+	m.liveOutput = append(m.liveOutput, "")
+	m.liveOutput = append(m.liveOutput, fmt.Sprintf("Queued %d workflows for execution", selectedCount))
+	m.liveOutput = append(m.liveOutput, "")
+	m.liveOutput = append(m.liveOutput, "=== Starting Workflow Execution ===")
+	m.liveOutput = append(m.liveOutput, "")
 
-	// Update viewport with preparation output
-	m.outputViewport.SetContent(strings.Join(m.liveOutput, "\n"))
-	m.outputViewport.GotoBottom()
+	// Update UI with queued state
+	m.scanOverviewList.SetItems(items)
+	m.updateLiveOutput()
+
+	// Start workflow execution asynchronously
+	go m.monitorWorkflowExecution(ctx)
+
+	// Execute queued workflows
+	if err := m.workflowOrchestrator.ExecuteQueuedWorkflows(ctx); err != nil {
+		m.liveOutput = append(m.liveOutput, fmt.Sprintf("ERROR starting workflow execution: %v", err))
+		m.updateLiveOutput()
+	}
 
 	// Clear selected workflows after execution starts
 	m.selectedWorkflows = make(map[string]bool)
 	m.updateWorkflowList()
 
-	m.liveOutput = append(m.liveOutput, "=== Execution in progress ===")
+	// Log the execution start
+	m.logSystemMessage("info", "Workflow execution started", "workflows", selectedCount, "target", target)
+}
 
-	// Update live output viewport with auto-scroll
-	m.updateLiveOutput()
+// executeWorkflowsCmd creates a command to execute selected workflows asynchronously
+func (m *model) executeWorkflowsCmd() tea.Cmd {
+	// Get selected workflows
+	selectedWorkflows := make(map[string]bool)
+	for k, v := range m.selectedWorkflows {
+		if v {
+			selectedWorkflows[k] = v
+		}
+	}
+	
+	m.logSystemMessage("info", "executeWorkflowsCmd called", "selected_count", len(selectedWorkflows))
+	
+	if len(selectedWorkflows) == 0 {
+		m.logSystemMessage("warning", "No workflows selected, returning nil command")
+		return nil
+	}
 
-	// In production, this is where live tool output would be continuously updated
-	// and the auto-scroll would keep the latest output visible
+	// Get target from session
+	target := m.getTarget()
+	m.logSystemMessage("info", "Target retrieved", "target", target)
+	
+	if target == "" {
+		m.logSystemMessage("error", "No target found in session")
+		return func() tea.Msg {
+			return workflowCompletedMsg{
+				WorkflowName: "validation",
+				Success:      false,
+				Error:        "No target specified. Please restart and enter a target.",
+			}
+		}
+	}
+
+	return func() tea.Msg {
+		// Initialize execution state
+		queuedWorkflows := make([]string, 0, len(selectedWorkflows))
+		
+		ctx := context.Background()
+		
+		// Queue workflows for execution
+		for workflowName := range selectedWorkflows {
+			// Load workflow definition
+			workflow, err := m.loadWorkflowDefinitionForCmd(workflowName)
+			if err != nil {
+				return workflowCompletedMsg{
+					WorkflowName: workflowName,
+					Success:      false,
+					Error:        fmt.Sprintf("Failed to load workflow: %v", err),
+				}
+			}
+
+			// Queue workflow
+			if err := m.workflowOrchestrator.QueueWorkflow(workflow, target); err != nil {
+				return workflowCompletedMsg{
+					WorkflowName: workflowName,
+					Success:      false,
+					Error:        fmt.Sprintf("Failed to queue workflow: %v", err),
+				}
+			}
+
+			queuedWorkflows = append(queuedWorkflows, workflowName)
+		}
+
+		// Actually start the workflow execution (this is the key fix!)
+		go func() {
+			// Execute queued workflows - this is the real backend execution
+			if err := m.workflowOrchestrator.ExecuteQueuedWorkflows(ctx); err != nil {
+				m.logSystemMessage("error", "Failed to start workflow execution", "error", err)
+			}
+		}()
+
+		return workflowStartedMsg{
+			WorkflowName: strings.Join(queuedWorkflows, ", "),
+			Target:       target,
+			QueueSize:    len(queuedWorkflows),
+		}
+	}
+}
+
+// loadWorkflowDefinitionForCmd is a safer version for use in commands
+func (m *model) loadWorkflowDefinitionForCmd(workflowKey string) (*executor.Workflow, error) {
+	// Map from description keys to actual workflow files
+	workflowFiles := map[string]string{
+		"reconnaissance": "workflows/reconnaissance/port-scanning.yaml",
+		"dns-enumeration": "workflows/reconnaissance/dns-enumeration.yaml",
+	}
+
+	filePath, exists := workflowFiles[workflowKey]
+	if !exists {
+		return nil, fmt.Errorf("no workflow file mapped for key: %s", workflowKey)
+	}
+
+	// Check if file exists, try alternative locations if not
+	possiblePaths := []string{
+		filePath,
+		filepath.Join(".", filePath),
+		filepath.Join("..", filePath),
+	}
+
+	var data []byte
+	var err error
+	for _, path := range possiblePaths {
+		data, err = os.ReadFile(path)
+		if err == nil {
+			break
+		}
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("workflow file not found in any location: %v", err)
+	}
+
+	// Define a temporary struct with proper YAML tags for unmarshaling
+	type yamlWorkflowStep struct {
+		Name               string            `yaml:"name"`
+		Tool               string            `yaml:"tool"`
+		Description        string            `yaml:"description"`
+		Modes              []string          `yaml:"modes"`
+		Concurrent         bool              `yaml:"concurrent"`
+		CombineResults     bool              `yaml:"combine_results"`
+		DependsOn          string            `yaml:"depends_on"`
+		StepPriority       string            `yaml:"step_priority"`
+		MaxConcurrentTools int               `yaml:"max_concurrent_tools"`
+		Variables          map[string]string `yaml:"variables"`
+	}
+	
+	type yamlWorkflow struct {
+		Name                   string              `yaml:"name"`
+		Description            string              `yaml:"description"`
+		Category               string              `yaml:"category"`
+		ParallelWorkflow       bool                `yaml:"parallel_workflow"`
+		IndependentExecution   bool                `yaml:"independent_execution"`
+		MaxConcurrentWorkflows int                 `yaml:"max_concurrent_workflows"`
+		WorkflowPriority       string              `yaml:"workflow_priority"`
+		Steps                  []yamlWorkflowStep  `yaml:"steps"`
+	}
+
+	var yamlWf yamlWorkflow
+	if err := yaml.Unmarshal(data, &yamlWf); err != nil {
+		return nil, fmt.Errorf("failed to parse workflow YAML: %v", err)
+	}
+
+	// Convert to executor.Workflow
+	workflow := &executor.Workflow{
+		Name:                    yamlWf.Name,
+		Description:             yamlWf.Description,
+		Category:                yamlWf.Category,
+		ParallelWorkflow:        yamlWf.ParallelWorkflow,
+		IndependentExecution:    yamlWf.IndependentExecution,
+		MaxConcurrentWorkflows:  yamlWf.MaxConcurrentWorkflows,
+		WorkflowPriority:        yamlWf.WorkflowPriority,
+		Steps:                   make([]*executor.WorkflowStep, len(yamlWf.Steps)),
+	}
+
+	// Convert steps
+	for i, yamlStep := range yamlWf.Steps {
+		workflow.Steps[i] = &executor.WorkflowStep{
+			Name:               yamlStep.Name,
+			Tool:               yamlStep.Tool,
+			Description:        yamlStep.Description,
+			Modes:              yamlStep.Modes,
+			Concurrent:         yamlStep.Concurrent,
+			CombineResults:     yamlStep.CombineResults,
+			DependsOn:          yamlStep.DependsOn,
+			StepPriority:       yamlStep.StepPriority,
+			MaxConcurrentTools: yamlStep.MaxConcurrentTools,
+			Variables:          yamlStep.Variables,
+		}
+	}
+
+	return workflow, nil
+}
+
+// monitorWorkflowProgressCmd creates a command to monitor workflow progress
+func (m *model) monitorWorkflowProgressCmd() tea.Cmd {
+	return tea.Every(2*time.Second, func(t time.Time) tea.Msg {
+		// Get actual workflow status from orchestrator
+		activeWorkflows := m.workflowOrchestrator.GetActiveWorkflows()
+		queuedWorkflows := m.workflowOrchestrator.GetQueueStatus()
+		
+		// Return queue update message with real data
+		return workflowQueueUpdatedMsg{
+			QueuedWorkflows: func() []string {
+				var workflows []string
+				for _, qw := range queuedWorkflows {
+					workflows = append(workflows, qw.Workflow.Name)
+				}
+				return workflows
+			}(),
+			CompletedCount: func() int {
+				total := 0
+				completed := 0
+				for _, aw := range activeWorkflows {
+					total++
+					if aw.Status == 2 { // WorkflowStatusCompleted
+						completed++
+					}
+				}
+				return completed
+			}(),
+			TotalCount: len(activeWorkflows) + len(queuedWorkflows),
+		}
+	})
+}
+
+// loadWorkflowDefinition loads the actual workflow YAML definition
+func (m *model) loadWorkflowDefinition(workflowKey string) (*executor.Workflow, error) {
+	// Map from description keys to actual workflow files
+	workflowFiles := map[string]string{
+		"reconnaissance": "workflows/reconnaissance/port-scanning.yaml",
+		"dns-enumeration": "workflows/reconnaissance/dns-enumeration.yaml",
+	}
+
+	filePath, exists := workflowFiles[workflowKey]
+	if !exists {
+		return nil, fmt.Errorf("no workflow file mapped for key: %s", workflowKey)
+	}
+
+	// Check if file exists, try alternative locations if not
+	possiblePaths := []string{
+		filePath,
+		filepath.Join(".", filePath),
+		filepath.Join("..", filePath),
+	}
+
+	var data []byte
+	var err error
+	for _, path := range possiblePaths {
+		data, err = os.ReadFile(path)
+		if err == nil {
+			break
+		}
+	}
+
+	if data == nil {
+		return nil, fmt.Errorf("workflow file not found: %s", filePath)
+	}
+
+	// DEBUG: Show loaded YAML data
+	m.logSystemMessage("debug", "YAML data loaded", "size", len(data))
+	
+	// Parse the YAML workflow definition
+	type yamlWorkflow struct {
+		Name                   string `yaml:"name"`
+		Description            string `yaml:"description"`
+		Category               string `yaml:"category"`
+		ParallelWorkflow       bool   `yaml:"parallel_workflow"`
+		IndependentExecution   bool   `yaml:"independent_execution"`
+		MaxConcurrentWorkflows int    `yaml:"max_concurrent_workflows"`
+		WorkflowPriority       string `yaml:"workflow_priority"`
+		Steps                  []struct {
+			Name            string            `yaml:"name"`
+			Tool            string            `yaml:"tool"`
+			Description     string            `yaml:"description"`
+			Modes           []string          `yaml:"modes"`
+			Concurrent      bool              `yaml:"concurrent"`
+			CombineResults  bool              `yaml:"combine_results"`
+			DependsOn       string            `yaml:"depends_on"`
+			StepPriority    string            `yaml:"step_priority"`
+			MaxConcurrent   int               `yaml:"max_concurrent_tools"`
+			Variables       map[string]string `yaml:"variables"`
+		} `yaml:"steps"`
+	}
+
+	var yamlWf yamlWorkflow
+	if err := yaml.Unmarshal(data, &yamlWf); err != nil {
+		return nil, fmt.Errorf("failed to parse workflow YAML: %w", err)
+	}
+
+	// Convert to executor.Workflow format
+	workflow := &executor.Workflow{
+		Name:                    yamlWf.Name,
+		Description:             yamlWf.Description,
+		Category:                yamlWf.Category,
+		ParallelWorkflow:        yamlWf.ParallelWorkflow,
+		IndependentExecution:    yamlWf.IndependentExecution,
+		MaxConcurrentWorkflows:  yamlWf.MaxConcurrentWorkflows,
+		WorkflowPriority:        yamlWf.WorkflowPriority,
+		Steps:                   make([]*executor.WorkflowStep, len(yamlWf.Steps)),
+	}
+
+	// Convert steps
+	for i, yamlStep := range yamlWf.Steps {
+		workflow.Steps[i] = &executor.WorkflowStep{
+			Name:                yamlStep.Name,
+			Tool:                yamlStep.Tool,
+			Description:         yamlStep.Description,
+			Modes:               yamlStep.Modes,
+			Concurrent:          yamlStep.Concurrent,
+			CombineResults:      yamlStep.CombineResults,
+			DependsOn:           yamlStep.DependsOn,
+			StepPriority:        yamlStep.StepPriority,
+			MaxConcurrentTools:  yamlStep.MaxConcurrent,
+			Variables:           yamlStep.Variables,
+		}
+	}
+
+	return workflow, nil
+}
+
+// getTarget retrieves the target from the model (runtime-only, no session files)
+func (m *model) getTarget() string {
+	return m.scanTarget
+}
+
+// monitorWorkflowExecution monitors ongoing workflow executions and updates the UI
+func (m *model) monitorWorkflowExecution(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Get active workflows
+			activeWorkflows := m.workflowOrchestrator.GetActiveWorkflows()
+			queuedWorkflows := m.workflowOrchestrator.GetQueueStatus()
+
+			// Update UI based on workflow states
+			allCompleted := len(activeWorkflows) == 0 && len(queuedWorkflows) == 0
+
+			if allCompleted && len(m.liveOutput) > 0 && !strings.Contains(m.liveOutput[len(m.liveOutput)-1], "=== Execution Complete ===") {
+				m.liveOutput = append(m.liveOutput, "")
+				m.liveOutput = append(m.liveOutput, "=== Execution Complete ===")
+				m.liveOutput = append(m.liveOutput, "All workflows have finished executing.")
+				m.liveOutput = append(m.liveOutput, "Check the workspace directory for output files.")
+				m.updateLiveOutput()
+				return
+			}
+
+			// Update workflow status in tools list
+			for i, tool := range m.tools {
+				// Update status based on execution state
+				if strings.HasPrefix(tool.Name, "[") {
+					// This is a workflow header
+					workflowName := strings.Trim(strings.Split(tool.Name, "]")[0], "[")
+					
+					// Check if this workflow is running
+					running := false
+					for key := range activeWorkflows {
+						if strings.Contains(key, workflowName) {
+							running = true
+							break
+						}
+					}
+					
+					if running {
+						m.tools[i].Status = "running"
+					} else if tool.Status == "running" {
+						m.tools[i].Status = "completed"
+					}
+				}
+			}
+		}
+	}
 }
 
 // updateLiveOutput refreshes the live output viewport with auto-scroll behavior
@@ -2415,6 +3088,8 @@ func (m *model) logSystemMessage(level, message string, keyvals ...interface{}) 
 	if wasAtBottom {
 		m.logsViewport.GotoBottom()
 	}
+	
+	// Keep debug logging only in TUI, not console
 }
 
 // getTerminalSize returns the actual terminal dimensions
@@ -2450,7 +3125,368 @@ func getTerminalSize() (int, int) {
 	return width, height
 }
 
+// loadWorkflowFromPath loads a workflow from a specific file path
+func loadWorkflowFromPath(filePath string) (*executor.Workflow, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read workflow file %s: %v", filePath, err)
+	}
+
+	// Define a temporary struct with proper YAML tags for unmarshaling
+	type yamlWorkflowStep struct {
+		Name               string            `yaml:"name"`
+		Tool               string            `yaml:"tool"`
+		Description        string            `yaml:"description"`
+		Modes              []string          `yaml:"modes"`
+		Concurrent         bool              `yaml:"concurrent"`
+		CombineResults     bool              `yaml:"combine_results"`
+		DependsOn          string            `yaml:"depends_on"`
+		StepPriority       string            `yaml:"step_priority"`
+		MaxConcurrentTools int               `yaml:"max_concurrent_tools"`
+		Variables          map[string]string `yaml:"variables"`
+	}
+	
+	type yamlWorkflow struct {
+		Name                   string              `yaml:"name"`
+		Description            string              `yaml:"description"`
+		Category               string              `yaml:"category"`
+		ParallelWorkflow       bool                `yaml:"parallel_workflow"`
+		IndependentExecution   bool                `yaml:"independent_execution"`
+		MaxConcurrentWorkflows int                 `yaml:"max_concurrent_workflows"`
+		WorkflowPriority       string              `yaml:"workflow_priority"`
+		Steps                  []yamlWorkflowStep  `yaml:"steps"`
+	}
+
+	var yamlWf yamlWorkflow
+	if err := yaml.Unmarshal(data, &yamlWf); err != nil {
+		return nil, fmt.Errorf("failed to parse workflow YAML %s: %v", filePath, err)
+	}
+
+	// Convert to executor.Workflow
+	workflow := &executor.Workflow{
+		Name:                    yamlWf.Name,
+		Description:             yamlWf.Description,
+		Category:                yamlWf.Category,
+		ParallelWorkflow:        yamlWf.ParallelWorkflow,
+		IndependentExecution:    yamlWf.IndependentExecution,
+		MaxConcurrentWorkflows:  yamlWf.MaxConcurrentWorkflows,
+		WorkflowPriority:        yamlWf.WorkflowPriority,
+		Steps:                   make([]*executor.WorkflowStep, len(yamlWf.Steps)),
+	}
+
+	// Convert steps
+	for i, yamlStep := range yamlWf.Steps {
+		workflow.Steps[i] = &executor.WorkflowStep{
+			Name:               yamlStep.Name,
+			Tool:               yamlStep.Tool,
+			Description:        yamlStep.Description,
+			Modes:              yamlStep.Modes,
+			Concurrent:         yamlStep.Concurrent,
+			CombineResults:     yamlStep.CombineResults,
+			DependsOn:          yamlStep.DependsOn,
+			StepPriority:       yamlStep.StepPriority,
+			MaxConcurrentTools: yamlStep.MaxConcurrentTools,
+			Variables:          yamlStep.Variables,
+		}
+	}
+
+	return workflow, nil
+}
+
+// discoverAllWorkflows automatically discovers all workflow files in the workflows directory
+func discoverAllWorkflows() (map[string]*executor.Workflow, error) {
+	workflows := make(map[string]*executor.Workflow)
+	
+	err := filepath.WalkDir("workflows", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		
+		// Skip descriptions.yaml (metadata only)
+		if d.Name() == "descriptions.yaml" {
+			return nil
+		}
+		
+		// Process .yaml files
+		if strings.HasSuffix(d.Name(), ".yaml") {
+			workflow, err := loadWorkflowFromPath(path)
+			if err != nil {
+				log.Warn("Failed to load workflow", "path", path, "error", err)
+				return nil // Continue processing other files
+			}
+			
+			workflowKey := strings.TrimSuffix(d.Name(), ".yaml")
+			workflows[workflowKey] = workflow
+		}
+		
+		return nil
+	})
+	
+	return workflows, err
+}
+
+// runCLI executes all workflows in CLI mode without TUI
+func runCLI(target string) error {
+	// Initialize logger for CLI output
+	logger := log.NewWithOptions(os.Stderr, log.Options{
+		ReportCaller:    false,
+		ReportTimestamp: true,
+		TimeFormat:      time.Kitchen,
+		Prefix:          "IPCrawler CLI",
+	})
+	
+	logger.Info("=== IPCrawler CLI Mode ===", "target", target)
+	
+	// Load configuration
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %v", err)
+	}
+	
+	// Validate target
+	if target == "" {
+		return fmt.Errorf("target cannot be empty")
+	}
+	
+	// Create workspace directory
+	sanitizedTarget := sanitizeTargetForPath(target)
+	timestamp := time.Now().Unix()
+	workspaceDir := filepath.Join(cfg.Output.WorkspaceBase, fmt.Sprintf("%s_%d", sanitizedTarget, timestamp))
+	
+	if err := createWorkspaceStructure(workspaceDir); err != nil {
+		return fmt.Errorf("failed to create workspace: %v", err)
+	}
+	
+	logger.Info("Workspace created", "path", workspaceDir)
+	
+	// Set up workspace file logging
+	debugLogger, infoLogger, rawLogger, err := setupWorkspaceLogging(workspaceDir)
+	if err != nil {
+		return fmt.Errorf("failed to setup workspace logging: %v", err)
+	}
+	// Note: File handles will be closed when the function exits
+	
+	// Make loggers available globally for executors
+	setGlobalLoggers(debugLogger, infoLogger, rawLogger)
+	
+	// Discover all workflows
+	workflows, err := discoverAllWorkflows()
+	if err != nil {
+		return fmt.Errorf("failed to discover workflows: %v", err)
+	}
+	
+	if len(workflows) == 0 {
+		return fmt.Errorf("no workflows found in workflows directory")
+	}
+	
+	// Log discovered workflows
+	workflowNames := make([]string, 0, len(workflows))
+	for name, workflow := range workflows {
+		workflowNames = append(workflowNames, name)
+		logger.Info("Discovered workflow", "name", name, "title", workflow.Name, "description", workflow.Description)
+	}
+	
+	logger.Info("Starting workflow execution", "count", len(workflows), "workflows", strings.Join(workflowNames, ", "))
+	
+	// Initialize execution engine and orchestrator
+	executionEngine := executor.NewToolExecutionEngine(cfg, "")
+	
+	// Set the workspace base directory for consistent path resolution
+	executionEngine.SetWorkspaceBase(workspaceDir)
+	
+	// Set up workspace logging for tool execution engine
+	if err := executionEngine.SetWorkspaceLoggers(workspaceDir); err != nil {
+		return fmt.Errorf("failed to setup tool execution engine logging: %v", err)
+	}
+	
+	workflowExecutor := executor.NewWorkflowExecutor(executionEngine)
+	workflowOrchestrator := executor.NewWorkflowOrchestrator(workflowExecutor, cfg)
+	
+	// Set up workspace logging for workflow orchestrator
+	if err := workflowOrchestrator.SetWorkspaceLoggers(workspaceDir); err != nil {
+		return fmt.Errorf("failed to setup workflow orchestrator logging: %v", err)
+	}
+	
+	// Set up status callback for CLI logging
+	workflowOrchestrator.SetStatusCallback(func(workflowName, target, status, message string) {
+		logger.Info("Workflow status", "workflow", workflowName, "target", target, "status", status, "message", message)
+	})
+	
+	// Queue all workflows
+	var ctx context.Context
+	var cancel context.CancelFunc
+	
+	// Set timeout from configuration
+	if cfg.Tools.CLIMode.ExecutionTimeoutSeconds > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(cfg.Tools.CLIMode.ExecutionTimeoutSeconds)*time.Second)
+		logger.Info("CLI execution timeout set", "seconds", cfg.Tools.CLIMode.ExecutionTimeoutSeconds)
+	} else {
+		ctx, cancel = context.WithCancel(context.Background())
+		logger.Info("CLI execution timeout disabled (unlimited)")
+	}
+	defer cancel()
+	
+	for workflowName, workflow := range workflows {
+		logger.Info("Queueing workflow", "name", workflowName, "title", workflow.Name)
+		if err := workflowOrchestrator.QueueWorkflow(workflow, target); err != nil {
+			logger.Error("Failed to queue workflow", "name", workflowName, "error", err)
+			continue
+		}
+	}
+	
+	// Execute queued workflows
+	logger.Info("Executing queued workflows...")
+	if err := workflowOrchestrator.ExecuteQueuedWorkflows(ctx); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			logger.Warn("Workflow execution timed out", "timeout_seconds", cfg.Tools.CLIMode.ExecutionTimeoutSeconds)
+		}
+		return fmt.Errorf("failed to execute workflows: %v", err)
+	}
+	
+	logger.Info("All workflows completed successfully")
+	return nil
+}
+
+// Helper functions for CLI mode
+func sanitizeTargetForPath(target string) string {
+	// Replace special characters for safe directory names
+	sanitized := strings.ReplaceAll(target, ".", "_")
+	sanitized = strings.ReplaceAll(sanitized, ":", "_")
+	sanitized = strings.ReplaceAll(sanitized, "/", "_")
+	sanitized = strings.ReplaceAll(sanitized, "\\", "_")
+	return sanitized
+}
+
+func createWorkspaceStructure(workspaceDir string) error {
+	// Create base workspace directory
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		return err
+	}
+	
+	// Create subdirectories
+	subdirs := []string{"logs/info", "logs/debug", "logs/error", "logs/warning", "raw", "scans", "reports"}
+	for _, subdir := range subdirs {
+		if err := os.MkdirAll(filepath.Join(workspaceDir, subdir), 0755); err != nil {
+			return err
+		}
+	}
+	
+	return nil
+}
+
+// setupWorkspaceLogging creates file loggers for the workspace
+func setupWorkspaceLogging(workspaceDir string) (*log.Logger, *log.Logger, *log.Logger, error) {
+	// Create debug logger
+	debugFile, err := os.OpenFile(filepath.Join(workspaceDir, "logs/debug/execution.log"), 
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to create debug log file: %v", err)
+	}
+	
+	debugLogger := log.NewWithOptions(debugFile, log.Options{
+		ReportCaller:    false,
+		ReportTimestamp: true,
+		TimeFormat:      time.RFC3339,
+		Prefix:          "DEBUG",
+	})
+	
+	// Create info logger
+	infoFile, err := os.OpenFile(filepath.Join(workspaceDir, "logs/info/workflow.log"),
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to create info log file: %v", err)
+	}
+	
+	infoLogger := log.NewWithOptions(infoFile, log.Options{
+		ReportCaller:    false,
+		ReportTimestamp: true,
+		TimeFormat:      time.RFC3339,
+		Prefix:          "INFO",
+	})
+	
+	// Create raw output logger
+	rawFile, err := os.OpenFile(filepath.Join(workspaceDir, "raw/tool_output.log"),
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to create raw output file: %v", err)
+	}
+	
+	rawLogger := log.NewWithOptions(rawFile, log.Options{
+		ReportCaller:    false,
+		ReportTimestamp: true,
+		TimeFormat:      time.RFC3339,
+		Prefix:          "RAW",
+	})
+	
+	return debugLogger, infoLogger, rawLogger, nil
+}
+
+// Global loggers for executor modules
+var (
+	globalDebugLogger *log.Logger
+	globalInfoLogger  *log.Logger
+	globalRawLogger   *log.Logger
+)
+
+// setGlobalLoggers makes the workspace loggers available to executor modules
+func setGlobalLoggers(debugLogger, infoLogger, rawLogger *log.Logger) {
+	globalDebugLogger = debugLogger
+	globalInfoLogger = infoLogger
+	globalRawLogger = rawLogger
+}
+
+// logDebug writes debug messages to both console and file
+func logDebug(msg string, args ...interface{}) {
+	// Always show on console for CLI mode
+	if len(args) > 0 {
+		fmt.Printf("[DEBUG] "+msg+"\n", args...)
+	} else {
+		fmt.Printf("[DEBUG] %s\n", msg)
+	}
+	
+	// Also write to file if available
+	if globalDebugLogger != nil {
+		if len(args) > 0 {
+			globalDebugLogger.Debugf(msg, args...)
+		} else {
+			globalDebugLogger.Debug(msg)
+		}
+	}
+}
+
+// logRaw writes raw tool output to both console and file
+func logRaw(toolName, mode, output string) {
+	// Always show on console for CLI mode
+	fmt.Printf("\n=== RAW OUTPUT: %s %s ===\n", toolName, mode)
+	fmt.Print(output)
+	fmt.Printf("=== END OUTPUT ===\n\n")
+	
+	// Also write to file if available
+	if globalRawLogger != nil {
+		globalRawLogger.Infof("=== %s %s ===\n%s", toolName, mode, output)
+	}
+}
+
 func main() {
+	// Check for registry command line arguments first
+	if len(os.Args) > 1 && os.Args[1] == "registry" {
+		if err := runRegistryCommand(os.Args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Registry command failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	
+	// Check for no-tui CLI mode
+	if len(os.Args) >= 3 && os.Args[1] == "no-tui" {
+		target := os.Args[2]
+		if err := runCLI(target); err != nil {
+			fmt.Fprintf(os.Stderr, "CLI execution failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	// IPCrawler TUI - Main Entry Point
 	// This should only be called via shell script launcher from 'make run'
 	runTUI()
@@ -2582,11 +3618,21 @@ func checkSudoRequirements() bool {
 		fmt.Println("\n🔐 Restarting IPCrawler with sudo privileges...")
 		fmt.Println("You may be prompted for your password.")
 		
-		// Restart with sudo (using shell script launcher)
-		cmd := exec.Command("sudo", "make", "run")
+		// Get current executable path
+		execPath, err := os.Executable()
+		if err != nil {
+			fmt.Printf("\nFailed to get executable path: %v\n", err)
+			fmt.Println("Fallback: Please run 'sudo make run' manually")
+			os.Exit(1)
+		}
+		
+		// Restart with sudo using the direct binary path (avoid recursive make run)
+		cmd := exec.Command("sudo", execPath)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
+		// Set environment variable to indicate this is a sudo restart
+		cmd.Env = append(os.Environ(), "IPCRAWLER_SUDO_RESTART=1")
 		
 		fmt.Print("\nStarting with elevated privileges...")
 		time.Sleep(1 * time.Second)
@@ -2728,3 +3774,4 @@ func checkUserInGroup(username, groupname string) bool {
 	}
 	return false
 }
+

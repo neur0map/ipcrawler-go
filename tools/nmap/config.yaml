@@ -57,6 +57,37 @@ args:
     - "{{scans_dir}}/{{output_file}}.xml"
     - "{{target}}"
 
+  # Targeted scan mode (uses discovered ports)
+  targeted_scan:
+    - "-sS"
+    - "-sV"
+    - "-p"
+    - "22,80,443,8080,8443"
+    - "-T4"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"
+
+  # Pipeline modes - designed for workflow variable input
+  pipeline_service_scan:
+    - "-sV"
+    - "-p"
+    - "{{combined_ports}}"
+    - "-T4"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"
+
+  pipeline_targeted_scan:
+    - "-sS"
+    - "-sV"
+    - "-p"
+    - "{{combined_ports}}"
+    - "-T4"
+    - "-oX"
+    - "{{scans_dir}}/{{output_file}}.xml"
+    - "{{target}}"
+
   # Privileged modes (require sudo)
   syn_scan:
     - "-sS"

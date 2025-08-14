@@ -1,22 +1,60 @@
 # Tool execution configuration
+# 
+# SECURITY POSTURE: UNLOCKED BY DEFAULT
+# All security restrictions are disabled by default for maximum flexibility.
+# Users can optionally enable restrictions by lowering these values:
+#
+# Example restrictive settings:
+#   resource_limits.max_cpu_usage: 80.0
+#   resource_limits.max_memory_usage: 80.0  
+#   resource_limits.max_active_tools: 15
+#   argv_policy.deny_shell_metachars: true
+#   execution.args_validation: true
+#   execution.exec_validation: true
+#
 tool_execution:
   max_concurrent_executions: 3
   max_parallel_executions: 2
 
-# safe defaults
-default_timeout_seconds: 1800
-retry_attempts: 1
+# Workflow orchestration configuration
+workflow_orchestration:
+  max_concurrent_workflows: 3        # Maximum workflows running simultaneously
+  max_concurrent_tools_per_step: 10  # Maximum tools per workflow step
+  resource_limits:
+    max_cpu_usage: 100.0             # Maximum CPU usage percentage - unlocked by default
+    max_memory_usage: 100.0          # Maximum memory usage percentage - unlocked by default  
+    max_active_tools: 999            # Maximum total active tools system-wide - unlocked by default
+  priority_weights:
+    high: 30                         # Priority boost for high priority workflows
+    medium: 10                       # Priority boost for medium priority workflows
+    low: -10                         # Priority penalty for low priority workflows
+    independent_bonus: 20            # Bonus for independent workflows
+    parallel_bonus: 5                # Bonus for parallel-capable workflows
+  scheduling:
+    queue_check_interval_ms: 500     # How often to check the workflow queue
+    resource_check_interval_ms: 1000 # How often to check system resources
 
-# argv policy
+# safe defaults - unlocked by default
+default_timeout_seconds: 3600    # Increased timeout - unlocked by default
+retry_attempts: 3               # Increased retries - unlocked by default
+
+# CLI mode configuration
+cli_mode:
+  execution_timeout_seconds: 300  # Total CLI execution timeout - much longer for port scans
+  workflow_timeout_seconds: 180   # Individual workflow timeout  
+  step_timeout_seconds: 150       # Individual step timeout - much longer for port scans
+  validate_output: false          # Validate that tools create expected output files - disabled for speed
+
+# argv policy - unlocked by default  
 argv_policy:
-  max_args: 64
-  max_arg_bytes: 512
-  max_argv_bytes: 16384
-  deny_shell_metachars: true
-  allowed_char_classes: [alnum, "-", "_", ".", ":", "/", "=", ","]
+  max_args: 1000              # Increased limit - unlocked by default
+  max_arg_bytes: 8192         # Increased limit - unlocked by default
+  max_argv_bytes: 65536       # Increased limit - unlocked by default
+  deny_shell_metachars: false # Disabled by default - unlocked
+  allowed_char_classes: []    # Empty = allow all characters - unlocked by default
 
-# execution
+# execution - unlocked by default
 execution:
-  tools_path: ""                # leave empty to allow system PATH, or set to restrict to specific dir
-  args_validation: true       # validate scripts before execution
-  exec_validation: true       # validate executables before execution
+  tools_path: ""                # leave empty to allow system PATH - unlocked by default
+  args_validation: false      # disabled by default - unlocked
+  exec_validation: false      # disabled by default - unlocked

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/neur0map/ipcrawler/internal/config"
 )
 
@@ -47,12 +49,22 @@ type ToolExecutionEngine struct {
 	globalConfig     *config.Config
 	toolsPath        string
 	validator        *SecurityValidator
+	magicVarManager  *MagicVariableManager
+	workspaceBase    string // Base workspace directory for this execution session
 	
 	// Concurrency control
 	concurrentSem    chan struct{}
 	parallelSem      chan struct{}
 	runningMutex     sync.RWMutex
 	runningTools     map[string]int // toolName -> count
+	
+	// Execution tracking for magic variables
+	completedTools   map[string]*ExecutionResult
+	completedMutex   sync.RWMutex
+	
+	// Loggers for different output types
+	debugLogger *log.Logger
+	infoLogger  *log.Logger
 }
 
 // NewToolExecutionEngine creates a new tool execution engine  
@@ -76,23 +88,166 @@ func NewToolExecutionEngine(globalConfig *config.Config, toolsPath string) *Tool
 	// Config loader always uses "./tools" for config files
 	configToolsPath := "./tools"
 	
+	// Initialize magic variable manager and register parsers
+	magicVarManager := NewMagicVariableManager()
+	RegisterAllParsers(magicVarManager)
+	
+	// Setup default loggers (will be overridden when workspace is set)
+	debugLogger := log.New(os.Stderr)
+	debugLogger.SetLevel(log.DebugLevel)
+	
+	infoLogger := log.New(os.Stderr) 
+	infoLogger.SetLevel(log.InfoLevel)
+	
 	return &ToolExecutionEngine{
 		configLoader:     NewToolConfigLoader(configToolsPath),
 		templateResolver: NewTemplateResolver(globalConfig),
 		globalConfig:     globalConfig,
 		toolsPath:        toolsPath, // This can be empty for system PATH
 		validator:        NewSecurityValidator(globalConfig),
+		magicVarManager:  magicVarManager,
+		workspaceBase:    "", // Will be set by SetWorkspaceBase if needed
+		debugLogger:      debugLogger,
+		infoLogger:       infoLogger,
 		
 		// Initialize concurrency control
 		concurrentSem:    make(chan struct{}, maxConcurrent),
 		parallelSem:      make(chan struct{}, maxParallel),
 		runningTools:     make(map[string]int),
+		
+		// Initialize execution tracking
+		completedTools:   make(map[string]*ExecutionResult),
 	}
 }
 
-// ExecuteTool executes a tool with the specified parameters
+// SetWorkspaceBase sets the base workspace directory for this execution session
+func (tee *ToolExecutionEngine) SetWorkspaceBase(workspaceDir string) {
+	tee.workspaceBase = workspaceDir
+}
+
+// SetWorkspaceLoggers sets up loggers that write to workspace log files
+func (tee *ToolExecutionEngine) SetWorkspaceLoggers(workspaceDir string) error {
+	debugsDir := filepath.Join(workspaceDir, "logs", "debug")
+	infoDir := filepath.Join(workspaceDir, "logs", "info")
+	
+	// Create log directories
+	if err := os.MkdirAll(debugsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create debug log directory: %v", err)
+	}
+	if err := os.MkdirAll(infoDir, 0755); err != nil {
+		return fmt.Errorf("failed to create info log directory: %v", err)
+	}
+	
+	// Setup debug logger to write to both console and file
+	debugFile, err := os.OpenFile(filepath.Join(debugsDir, "tools.log"), 
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open debug log file: %v", err)
+	}
+	
+	// Create MultiWriter to write to both stderr and file
+	debugMultiWriter := io.MultiWriter(os.Stderr, debugFile)
+	tee.debugLogger = log.New(debugMultiWriter)
+	tee.debugLogger.SetReportCaller(false)
+	tee.debugLogger.SetReportTimestamp(true)
+	tee.debugLogger.SetLevel(log.DebugLevel)
+	
+	// Setup info logger to write to both console and file  
+	infoFile, err := os.OpenFile(filepath.Join(infoDir, "tools.log"),
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open info log file: %v", err)
+	}
+	
+	// Create MultiWriter to write to both stderr and file
+	infoMultiWriter := io.MultiWriter(os.Stderr, infoFile)
+	tee.infoLogger = log.New(infoMultiWriter)
+	tee.infoLogger.SetReportCaller(false)
+	tee.infoLogger.SetReportTimestamp(true)
+	tee.infoLogger.SetLevel(log.InfoLevel)
+	
+	return nil
+}
+
+// writeRawOutput writes tool output to the raw output log file
+func (tee *ToolExecutionEngine) writeRawOutput(toolName, mode, outputType, content string) {
+	if tee.workspaceBase == "" {
+		return // No workspace set
+	}
+	
+	rawLogPath := filepath.Join(tee.workspaceBase, "raw", "tool_output.log")
+	
+	// Create raw directory if it doesn't exist
+	if err := os.MkdirAll(filepath.Dir(rawLogPath), 0755); err != nil {
+		if tee.debugLogger != nil {
+			tee.debugLogger.Error("Failed to create raw log directory", "error", err)
+		}
+		return
+	}
+	
+	// Open log file in append mode
+	file, err := os.OpenFile(rawLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		if tee.debugLogger != nil {
+			tee.debugLogger.Error("Failed to open raw log file", "error", err)
+		}
+		return
+	}
+	defer file.Close()
+	
+	// Write timestamped entry
+	timestamp := time.Now().Format(time.RFC3339)
+	header := fmt.Sprintf("\n[%s] === %s: %s %s ===\n", timestamp, outputType, toolName, mode)
+	footer := fmt.Sprintf("=== END %s ===\n", outputType)
+	
+	file.WriteString(header)
+	file.WriteString(content)
+	file.WriteString(footer)
+}
+
+// writeDebugLog writes debug messages to the debug log file
+func (tee *ToolExecutionEngine) writeDebugLog(message string, args ...interface{}) {
+	if tee.workspaceBase == "" {
+		return // No workspace set
+	}
+	
+	debugLogPath := filepath.Join(tee.workspaceBase, "logs", "debug", "execution.log")
+	
+	// Create debug directory if it doesn't exist
+	if err := os.MkdirAll(filepath.Dir(debugLogPath), 0755); err != nil {
+		return // Silent failure to avoid infinite loops
+	}
+	
+	// Open log file in append mode
+	file, err := os.OpenFile(debugLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return // Silent failure
+	}
+	defer file.Close()
+	
+	// Write timestamped entry
+	timestamp := time.Now().Format(time.RFC3339)
+	var logMessage string
+	if len(args) > 0 {
+		logMessage = fmt.Sprintf(message, args...)
+	} else {
+		logMessage = message
+	}
+	
+	file.WriteString(fmt.Sprintf("[%s] %s\n", timestamp, logMessage))
+}
+
+// ExecuteTool executes a tool with the specified parameters (legacy interface)
 func (tee *ToolExecutionEngine) ExecuteTool(ctx context.Context, toolName, mode, target string, options *ExecutionOptions) (*ExecutionResult, error) {
+	return tee.ExecuteToolWithContext(ctx, toolName, mode, target, "", "", options)
+}
+
+// ExecuteToolWithContext executes a tool with workflow context for unique filename generation
+func (tee *ToolExecutionEngine) ExecuteToolWithContext(ctx context.Context, toolName, mode, target, workflowName, stepName string, options *ExecutionOptions) (*ExecutionResult, error) {
 	startTime := time.Now()
+	
+	tee.debugLogger.Debug("Starting tool execution", "tool", toolName, "mode", mode, "target", target)
+	tee.writeDebugLog("Starting tool execution: %s mode=%s target=%s", toolName, mode, target)
 
 	result := &ExecutionResult{
 		ToolName:  toolName,
@@ -149,13 +304,18 @@ func (tee *ToolExecutionEngine) ExecuteTool(ctx context.Context, toolName, mode,
 	}()
 
 	// Load tool configuration
+	tee.debugLogger.Debug("Loading config for tool", "tool", toolName)
+	tee.writeDebugLog("Loading config for tool: %s", toolName)
 	toolConfig, err := tee.configLoader.LoadToolConfig(toolName)
 	if err != nil {
+		tee.debugLogger.Error("Failed to load tool config", "tool", toolName, "error", err)
 		result.ErrorMessage = fmt.Sprintf("failed to load tool config: %v", err)
 		result.EndTime = time.Now()
 		result.Duration = result.EndTime.Sub(result.StartTime)
 		return result, err
 	}
+	tee.debugLogger.Debug("Tool config loaded successfully", "tool", toolName)
+	tee.writeDebugLog("Tool config loaded successfully")
 
 
 	// Get tool arguments for the specified mode
@@ -168,11 +328,21 @@ func (tee *ToolExecutionEngine) ExecuteTool(ctx context.Context, toolName, mode,
 	}
 
 	// Create execution context
-	execCtx := tee.templateResolver.CreateExecutionContext(target, toolName, mode)
+	execCtx := tee.templateResolver.CreateExecutionContextWithWorkflow(target, toolName, mode, workflowName, stepName)
 
-	// Generate workspace paths
-	sanitizedTarget := sanitizeForFilename(target)
-	workspaceDir := filepath.Join("./workspace", sanitizedTarget)
+	// Generate workspace paths - use workspaceBase if set, otherwise generate from target
+	var workspaceDir string
+	if tee.workspaceBase != "" {
+		// Use the pre-created workspace directory from CLI
+		workspaceDir = tee.workspaceBase
+		tee.debugLogger.Debug("Using preset workspace", "workspace", workspaceDir)
+	} else {
+		// Generate workspace path from target (fallback for TUI mode)
+		sanitizedTarget := sanitizeForFilename(target)
+		workspaceDir = filepath.Join("./workspace", sanitizedTarget)
+		tee.debugLogger.Debug("Generated workspace", "workspace", workspaceDir)
+	}
+	
 	execCtx.Workspace = workspaceDir
 	execCtx.OutputDir = workspaceDir
 	execCtx.ScansDir = filepath.Join(workspaceDir, "scans")
@@ -265,6 +435,14 @@ func (tee *ToolExecutionEngine) ExecuteTool(ctx context.Context, toolName, mode,
 	// Store the expected output path
 	if outputPath, exists := vars["output_path"]; exists {
 		result.OutputPath = outputPath
+		
+		// For certain tools, we need to append the file extension that they use
+		// This is needed because the template resolves to base path but tools add extensions
+		if toolName == "naabu" && !strings.HasSuffix(outputPath, ".json") {
+			result.OutputPath = outputPath + ".json"
+		} else if toolName == "nmap" && !strings.HasSuffix(outputPath, ".xml") {
+			result.OutputPath = outputPath + ".xml"
+		}
 	}
 
 	// Prepare output buffers
@@ -285,6 +463,8 @@ func (tee *ToolExecutionEngine) ExecuteTool(ctx context.Context, toolName, mode,
 		}
 
 		// Create a new command for each attempt
+		tee.debugLogger.Debug("Executing command", "executable", toolExecutable, "args", resolvedArgs)
+		tee.writeDebugLog("Executing command: %s %v", toolExecutable, resolvedArgs)
 		execCmd := exec.CommandContext(execContext, toolExecutable, resolvedArgs...)
 		
 		// Set working directory
@@ -300,17 +480,32 @@ func (tee *ToolExecutionEngine) ExecuteTool(ctx context.Context, toolName, mode,
 
 		// Capture output if requested
 		if options.CaptureOutput {
-			execCmd.Stdout = &stdoutBuf
-			execCmd.Stderr = &stderrBuf
+			// Use MultiWriter to show output in real-time AND capture it
+			stdoutMultiWriter := io.MultiWriter(os.Stdout, &stdoutBuf)
+			stderrMultiWriter := io.MultiWriter(os.Stderr, &stderrBuf)
+			execCmd.Stdout = stdoutMultiWriter
+			execCmd.Stderr = stderrMultiWriter
 		}
 
 		// Run the command
+		tee.debugLogger.Debug("Running command", "attempt", attempt+1, "max_attempts", retryAttempts+1)
+		tee.writeDebugLog("Running command (attempt %d/%d)...", attempt+1, retryAttempts+1)
 		lastErr = execCmd.Run()
+		tee.debugLogger.Debug("Command completed", "error", lastErr)
+		tee.writeDebugLog("Command completed with error: %v", lastErr)
 
 		// Store captured output in result
 		if options.CaptureOutput {
 			result.Stdout = stdoutBuf.String()
 			result.Stderr = stderrBuf.String()
+			
+			// Write captured output to raw output files (real-time display already handled above)
+			if result.Stdout != "" {
+				tee.writeRawOutput(toolName, mode, "STDOUT", result.Stdout)
+			}
+			if result.Stderr != "" {
+				tee.writeRawOutput(toolName, mode, "STDERR", result.Stderr)
+			}
 		}
 
 		result.EndTime = time.Now()
@@ -349,6 +544,19 @@ func (tee *ToolExecutionEngine) ExecuteTool(ctx context.Context, toolName, mode,
 		}
 	}
 
+	// Save captured stdout to file if tool succeeded and has output but no file was created
+	if result.Success && options.CaptureOutput && result.Stdout != "" && result.OutputPath != "" {
+		if _, err := os.Stat(result.OutputPath); os.IsNotExist(err) {
+			// Tool didn't create output file, so save captured stdout
+			tee.debugLogger.Debug("Saving captured stdout", "path", result.OutputPath)
+			if err := os.WriteFile(result.OutputPath, []byte(result.Stdout), 0644); err != nil {
+				tee.debugLogger.Error("Failed to save stdout", "error", err)
+			} else {
+				tee.debugLogger.Debug("Successfully saved stdout", "bytes", len(result.Stdout))
+			}
+		}
+	}
+
 	// Validate output file was created if requested
 	if options.ValidateOutput && result.OutputPath != "" {
 		if _, err := os.Stat(result.OutputPath); os.IsNotExist(err) {
@@ -358,7 +566,99 @@ func (tee *ToolExecutionEngine) ExecuteTool(ctx context.Context, toolName, mode,
 		}
 	}
 
+	// Store completed tool result for magic variable processing
+	tee.completedMutex.Lock()
+	tee.completedTools[toolName] = result
+	tee.completedMutex.Unlock()
+
+	// Auto-process magic variables if tool succeeded
+	if result.Success && result.OutputPath != "" {
+		if err := tee.processToolOutputForMagicVariables(toolName, []string{result.OutputPath}); err != nil {
+			// Log warning but don't fail the execution
+			fmt.Printf("Warning: Failed to process magic variables for %s: %v\n", toolName, err)
+		}
+	}
+
 	return result, nil
+}
+
+// ExecuteWithDependencies executes a tool with dependency handling and magic variables
+func (tee *ToolExecutionEngine) ExecuteWithDependencies(ctx context.Context, toolName, mode, target, dependsOn string, options *ExecutionOptions) (*ExecutionResult, error) {
+	// Process dependencies and create magic variables
+	if dependsOn != "" {
+		if err := tee.processDependencies(dependsOn); err != nil {
+			return nil, fmt.Errorf("dependency processing failed: %w", err)
+		}
+	}
+
+	// Execute the tool normally (magic variables are automatically available)
+	return tee.ExecuteTool(ctx, toolName, mode, target, options)
+}
+
+// processDependencies processes completed tool outputs and creates magic variables
+func (tee *ToolExecutionEngine) processDependencies(dependsOn string) error {
+	// Get the completed tool result
+	tee.completedMutex.RLock()
+	completedResult, exists := tee.completedTools[dependsOn]
+	tee.completedMutex.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("dependency tool '%s' has not completed yet", dependsOn)
+	}
+
+	if !completedResult.Success {
+		return fmt.Errorf("dependency tool '%s' failed: %s", dependsOn, completedResult.ErrorMessage)
+	}
+
+	// Find output files from the completed tool
+	outputFiles := []string{}
+	if completedResult.OutputPath != "" {
+		outputFiles = append(outputFiles, completedResult.OutputPath)
+	}
+
+	// Process magic variables using the generic system
+	magicVars := tee.magicVarManager.ProcessToolOutput(dependsOn, outputFiles)
+
+	// Add magic variables to the template resolver
+	for varName, varValue := range magicVars {
+		tee.templateResolver.AddVariable(varName, varValue)
+	}
+
+	return nil
+}
+
+// processToolOutputForMagicVariables processes tool output and creates magic variables automatically
+func (tee *ToolExecutionEngine) processToolOutputForMagicVariables(toolName string, outputFiles []string) error {
+	// Process magic variables using the generic system
+	magicVars := tee.magicVarManager.ProcessToolOutput(toolName, outputFiles)
+
+	// Add magic variables to the template resolver
+	for varName, varValue := range magicVars {
+		tee.templateResolver.AddVariable(varName, varValue)
+	}
+
+	return nil
+}
+
+// ExecuteToolWithWorkflowVariables executes a tool with workflow-defined variable mapping
+func (tee *ToolExecutionEngine) ExecuteToolWithWorkflowVariables(ctx context.Context, toolName, mode, target string, workflowVars map[string]string, options *ExecutionOptions) (*ExecutionResult, error) {
+	// Add workflow variables to template resolver before execution
+	for varName, varValue := range workflowVars {
+		tee.templateResolver.AddVariable(varName, varValue)
+	}
+
+	// Execute tool normally with enhanced variable context
+	return tee.ExecuteTool(ctx, toolName, mode, target, options)
+}
+
+// GetMagicVariables returns the current magic variables (useful for debugging)
+func (tee *ToolExecutionEngine) GetMagicVariables() map[string]string {
+	return tee.templateResolver.GetAllVariables()
+}
+
+// GetTemplateResolver returns the template resolver for workflow variable mapping
+func (tee *ToolExecutionEngine) GetTemplateResolver() *TemplateResolver {
+	return tee.templateResolver
 }
 
 // findToolExecutable locates the executable for a tool
@@ -439,6 +739,11 @@ func (tee *ToolExecutionEngine) ValidateToolConfiguration(toolName string) error
 
 // PreviewCommand generates the command that would be executed without actually running it
 func (tee *ToolExecutionEngine) PreviewCommand(toolName, mode, target string) ([]string, error) {
+	return tee.PreviewCommandWithContext(toolName, mode, target, "", "")
+}
+
+// PreviewCommandWithContext generates the command with workflow context
+func (tee *ToolExecutionEngine) PreviewCommandWithContext(toolName, mode, target, workflowName, stepName string) ([]string, error) {
 	// Load tool configuration
 	toolConfig, err := tee.configLoader.LoadToolConfig(toolName)
 	if err != nil {
@@ -452,7 +757,7 @@ func (tee *ToolExecutionEngine) PreviewCommand(toolName, mode, target string) ([
 	}
 
 	// Create execution context
-	execCtx := tee.templateResolver.CreateExecutionContext(target, toolName, mode)
+	execCtx := tee.templateResolver.CreateExecutionContextWithWorkflow(target, toolName, mode, workflowName, stepName)
 
 	// Set custom output file if tool config specifies one
 	if toolConfig.File != "" {

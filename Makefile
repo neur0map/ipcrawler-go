@@ -12,8 +12,9 @@ RED := \033[31m
 RESET := \033[0m
 
 help: ## Show this help message
-	@echo "$(BLUE)IPCrawler TUI - 5-Card Dynamic Dashboard$(RESET)"
-	@echo "$(YELLOW)Main entry point: make run$(RESET)"
+	@echo "$(BLUE)IPCrawler - Security Testing Tool$(RESET)"
+	@echo "$(YELLOW)TUI Mode: make run$(RESET)"
+	@echo "$(YELLOW)CLI Mode: make run-cli TARGET=<target>$(RESET)"
 	@echo "$(YELLOW)Available targets:$(RESET)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-12s$(RESET) %s\n", $$1, $$2}'
 
@@ -31,7 +32,7 @@ clean: ## Clean build artifacts
 build: deps ## Build the IPCrawler TUI application
 	@echo "$(BLUE)Building IPCrawler TUI...$(RESET)"
 	mkdir -p bin
-	go build -o bin/ipcrawler ./cmd/ipcrawler/main.go
+	go build -o bin/ipcrawler ./cmd/ipcrawler
 	@echo "$(GREEN)Build completed: bin/ipcrawler$(RESET)"
 
 
@@ -95,6 +96,18 @@ run: build ## Launch IPCrawler TUI with optimal setup (main entry point)
 	else \
 		./scripts/tui-launch-window.sh; \
 	fi
+
+run-cli: build ## Run all workflows in CLI mode: make run-cli TARGET=example.com
+ifndef TARGET
+	@echo "$(RED)Error: TARGET variable required$(RESET)"
+	@echo "$(YELLOW)Usage: make run-cli TARGET=<target>$(RESET)"
+	@echo "$(YELLOW)Example: make run-cli TARGET=example.com$(RESET)"
+	@exit 1
+endif
+	@echo "$(BLUE)IPCrawler CLI Mode$(RESET)"
+	@echo "$(YELLOW)Target: $(TARGET)$(RESET)"
+	@echo "$(GREEN)Executing all workflows automatically...$(RESET)"
+	@./bin/ipcrawler no-tui $(TARGET)
 
 
 dev: ## Development mode with auto-rebuild

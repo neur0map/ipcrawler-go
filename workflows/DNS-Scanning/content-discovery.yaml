@@ -1,0 +1,40 @@
+name: "DNS Information Gathering"
+description: "Comprehensive DNS reconnaissance and domain information discovery"
+category: "dns-enumeration"
+
+# Enhanced workflow-level parallelism controls
+parallel_workflow: true        # Can run simultaneously with other workflows
+independent_execution: true    # Doesn't need to wait for external dependencies
+max_concurrent_workflows: 2    # Limit parallel workflows
+workflow_priority: "high"      # High priority execution
+
+steps:
+  - name: "Complete DNS Reconnaissance"
+    tool: "nslookup"
+    description: "Maximum parallelism DNS reconnaissance - all query types simultaneously"
+    modes: ["default_lookup", "a_record", "aaaa_record", "mx_record", "ns_record", "txt_record", "cname_record", "authoritative_ns"]
+    concurrent: true
+    combine_results: true
+    
+    # Enhanced step-level parallelism controls
+    step_priority: "high"         # High priority execution
+    max_concurrent_tools: 9       # Run up to 9 nslookup instances simultaneously
+    
+    outputs:
+      variables:
+        - name: "dns_a_records"
+          source: "a_records"
+        - name: "dns_aaaa_records"
+          source: "aaaa_records"
+        - name: "dns_mx_records"
+          source: "mx_records"
+        - name: "dns_ns_records"
+          source: "ns_records"
+        - name: "dns_txt_records"
+          source: "txt_records"
+        - name: "dns_cname_records"
+          source: "cname_records"
+        - name: "dns_all_records"
+          source: "all_records"
+        - name: "dns_authoritative_ns"
+          source: "auth_ns"

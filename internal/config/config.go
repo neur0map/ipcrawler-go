@@ -227,16 +227,45 @@ type RawSinkConfig struct {
 
 // ToolsConfig for tools.yaml configuration
 type ToolsConfig struct {
-	ToolExecution  ToolExecutionConfig `mapstructure:"tool_execution"`
-	DefaultTimeout int                 `mapstructure:"default_timeout_seconds"`
-	RetryAttempts  int                 `mapstructure:"retry_attempts"`
-	ArgvPolicy     ArgvPolicyConfig    `mapstructure:"argv_policy"`
-	Execution      ExecutionConfig     `mapstructure:"execution"`
+	ToolExecution         ToolExecutionConfig         `mapstructure:"tool_execution"`
+	WorkflowOrchestration WorkflowOrchestrationConfig `mapstructure:"workflow_orchestration"`
+	DefaultTimeout        int                         `mapstructure:"default_timeout_seconds"`
+	RetryAttempts         int                         `mapstructure:"retry_attempts"`
+	ArgvPolicy            ArgvPolicyConfig            `mapstructure:"argv_policy"`
+	Execution             ExecutionConfig             `mapstructure:"execution"`
+	CLIMode               CLIModeConfig               `mapstructure:"cli_mode"`
 }
 
 type ToolExecutionConfig struct {
 	MaxConcurrentExecutions int `mapstructure:"max_concurrent_executions"`
 	MaxParallelExecutions   int `mapstructure:"max_parallel_executions"`
+}
+
+type WorkflowOrchestrationConfig struct {
+	MaxConcurrentWorkflows   int                    `mapstructure:"max_concurrent_workflows"`
+	MaxConcurrentToolsPerStep int                   `mapstructure:"max_concurrent_tools_per_step"`
+	ResourceLimits           ResourceLimitsConfig   `mapstructure:"resource_limits"`
+	PriorityWeights          PriorityWeightsConfig  `mapstructure:"priority_weights"`
+	Scheduling               SchedulingConfig       `mapstructure:"scheduling"`
+}
+
+type ResourceLimitsConfig struct {
+	MaxCPUUsage     float64 `mapstructure:"max_cpu_usage"`
+	MaxMemoryUsage  float64 `mapstructure:"max_memory_usage"`
+	MaxActiveTools  int     `mapstructure:"max_active_tools"`
+}
+
+type PriorityWeightsConfig struct {
+	High             int `mapstructure:"high"`
+	Medium           int `mapstructure:"medium"`
+	Low              int `mapstructure:"low"`
+	IndependentBonus int `mapstructure:"independent_bonus"`
+	ParallelBonus    int `mapstructure:"parallel_bonus"`
+}
+
+type SchedulingConfig struct {
+	QueueCheckIntervalMs    int `mapstructure:"queue_check_interval_ms"`
+	ResourceCheckIntervalMs int `mapstructure:"resource_check_interval_ms"`
 }
 
 type ArgvPolicyConfig struct {
@@ -251,6 +280,13 @@ type ExecutionConfig struct {
 	ToolsPath       string `mapstructure:"tools_path"`
 	ArgsValidation  bool   `mapstructure:"args_validation"`
 	ExecValidation  bool   `mapstructure:"exec_validation"`
+}
+
+type CLIModeConfig struct {
+	ExecutionTimeoutSeconds int  `mapstructure:"execution_timeout_seconds"`
+	WorkflowTimeoutSeconds  int  `mapstructure:"workflow_timeout_seconds"`
+	StepTimeoutSeconds      int  `mapstructure:"step_timeout_seconds"`
+	ValidateOutput          bool `mapstructure:"validate_output"`
 }
 
 // Persistence config removed (not used)
@@ -550,6 +586,44 @@ func setToolsDefaults(tools *ToolsConfig) {
 	}
 	if tools.RetryAttempts == 0 {
 		tools.RetryAttempts = 1
+	}
+	
+	// Set defaults for workflow orchestration
+	if tools.WorkflowOrchestration.MaxConcurrentWorkflows == 0 {
+		tools.WorkflowOrchestration.MaxConcurrentWorkflows = 3
+	}
+	if tools.WorkflowOrchestration.MaxConcurrentToolsPerStep == 0 {
+		tools.WorkflowOrchestration.MaxConcurrentToolsPerStep = 10
+	}
+	if tools.WorkflowOrchestration.ResourceLimits.MaxCPUUsage == 0 {
+		tools.WorkflowOrchestration.ResourceLimits.MaxCPUUsage = 80.0
+	}
+	if tools.WorkflowOrchestration.ResourceLimits.MaxMemoryUsage == 0 {
+		tools.WorkflowOrchestration.ResourceLimits.MaxMemoryUsage = 80.0
+	}
+	if tools.WorkflowOrchestration.ResourceLimits.MaxActiveTools == 0 {
+		tools.WorkflowOrchestration.ResourceLimits.MaxActiveTools = 15
+	}
+	if tools.WorkflowOrchestration.PriorityWeights.High == 0 {
+		tools.WorkflowOrchestration.PriorityWeights.High = 30
+	}
+	if tools.WorkflowOrchestration.PriorityWeights.Medium == 0 {
+		tools.WorkflowOrchestration.PriorityWeights.Medium = 10
+	}
+	if tools.WorkflowOrchestration.PriorityWeights.Low == 0 {
+		tools.WorkflowOrchestration.PriorityWeights.Low = -10
+	}
+	if tools.WorkflowOrchestration.PriorityWeights.IndependentBonus == 0 {
+		tools.WorkflowOrchestration.PriorityWeights.IndependentBonus = 20
+	}
+	if tools.WorkflowOrchestration.PriorityWeights.ParallelBonus == 0 {
+		tools.WorkflowOrchestration.PriorityWeights.ParallelBonus = 5
+	}
+	if tools.WorkflowOrchestration.Scheduling.QueueCheckIntervalMs == 0 {
+		tools.WorkflowOrchestration.Scheduling.QueueCheckIntervalMs = 500
+	}
+	if tools.WorkflowOrchestration.Scheduling.ResourceCheckIntervalMs == 0 {
+		tools.WorkflowOrchestration.Scheduling.ResourceCheckIntervalMs = 1000
 	}
 	
 	// Set defaults for argv policy

@@ -5,38 +5,51 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/neur0map/ipcrawler/internal/config"
+	"github.com/neur0map/ipcrawler/internal/registry"
 )
 
 // ExecutionContext holds the runtime context for template resolution
 type ExecutionContext struct {
-	Target     string            // The target being scanned (IP, domain, etc.)
-	OutputDir  string            // Base output directory from config
-	Workspace  string            // Workspace directory (workspace/target)
-	LogsDir    string            // Logs directory path
-	ScansDir   string            // Scans directory path
-	ReportsDir string            // Reports directory path
-	RawDir     string            // Raw output directory path
-	OutputFile string            // Specific output filename for this execution
-	Timestamp  string            // Execution timestamp
-	SessionID  string            // Unique session identifier
-	ToolName   string            // Name of the tool being executed
-	Mode       string            // Execution mode (aggressive, quick_scan, etc.)
-	CustomVars map[string]string // Additional custom variables
+	Target       string            // The target being scanned (IP, domain, etc.)
+	OutputDir    string            // Base output directory from config
+	Workspace    string            // Workspace directory (workspace/target)
+	LogsDir      string            // Logs directory path
+	ScansDir     string            // Scans directory path
+	ReportsDir   string            // Reports directory path
+	RawDir       string            // Raw output directory path
+	OutputFile   string            // Specific output filename for this execution
+	Timestamp    string            // Execution timestamp
+	SessionID    string            // Unique session identifier
+	ToolName     string            // Name of the tool being executed
+	Mode         string            // Execution mode (aggressive, quick_scan, etc.)
+	WorkflowName string            // Name of the workflow (for unique filenames)
+	StepName     string            // Name of the workflow step (for unique filenames)
+	CustomVars   map[string]string // Additional custom variables
 }
 
 // TemplateResolver resolves template variables in tool configurations
 type TemplateResolver struct {
-	config *config.Config
+	config         *config.Config
+	magicVars      map[string]string
+	magicMutex     sync.RWMutex
+	registryManager registry.RegistryManager // Optional registry for auto-detection
 }
 
 // NewTemplateResolver creates a new template resolver with the given configuration
 func NewTemplateResolver(cfg *config.Config) *TemplateResolver {
 	return &TemplateResolver{
-		config: cfg,
+		config:    cfg,
+		magicVars: make(map[string]string),
 	}
+}
+
+// SetRegistryManager sets the registry manager for auto-detection
+func (tr *TemplateResolver) SetRegistryManager(manager registry.RegistryManager) {
+	tr.registryManager = manager
 }
 
 // ResolveArguments resolves template variables in tool arguments
@@ -120,20 +133,30 @@ func (tr *TemplateResolver) buildVariableMap(ctx *ExecutionContext) map[string]s
 		
 		// Handle different output modes
 		outputMode := tr.config.Output.ScanOutputMode
+		
+		// Create unique identifier from workflow and step names
+		workflowID := ""
+		if ctx.WorkflowName != "" {
+			workflowID = "_" + strings.ReplaceAll(strings.ToLower(ctx.WorkflowName), " ", "-")
+		}
+		if ctx.StepName != "" {
+			workflowID += "_" + strings.ReplaceAll(strings.ToLower(ctx.StepName), " ", "-")
+		}
+		
 		switch outputMode {
 		case "overwrite":
 			// No timestamp - same filename always overwrites
-			vars["output_file"] = fmt.Sprintf("%s_%s", ctx.ToolName, sanitizedTarget)
+			vars["output_file"] = fmt.Sprintf("%s_%s%s", ctx.ToolName, sanitizedTarget, workflowID)
 		case "timestamp":
 			// Include timestamp for unique files
-			vars["output_file"] = fmt.Sprintf("%s_%s_%s", ctx.ToolName, sanitizedTarget, timestamp)
+			vars["output_file"] = fmt.Sprintf("%s_%s%s_%s", ctx.ToolName, sanitizedTarget, workflowID, timestamp)
 		case "both":
 			// Default to timestamped, but we'll also create a latest link
-			vars["output_file"] = fmt.Sprintf("%s_%s_%s", ctx.ToolName, sanitizedTarget, timestamp)
-			vars["output_file_latest"] = fmt.Sprintf("%s_%s_latest", ctx.ToolName, sanitizedTarget)
+			vars["output_file"] = fmt.Sprintf("%s_%s%s_%s", ctx.ToolName, sanitizedTarget, workflowID, timestamp)
+			vars["output_file_latest"] = fmt.Sprintf("%s_%s%s_latest", ctx.ToolName, sanitizedTarget, workflowID)
 		default:
 			// Fallback to timestamp mode
-			vars["output_file"] = fmt.Sprintf("%s_%s_%s", ctx.ToolName, sanitizedTarget, timestamp)
+			vars["output_file"] = fmt.Sprintf("%s_%s%s_%s", ctx.ToolName, sanitizedTarget, workflowID, timestamp)
 		}
 	} else {
 		vars["output_file"] = ctx.OutputFile
@@ -158,8 +181,23 @@ func (tr *TemplateResolver) buildVariableMap(ctx *ExecutionContext) map[string]s
 		vars[key] = value
 	}
 
-	// Derived variables
-	if outputDir, exists := vars["output_dir"]; exists {
+	// Magic variables from completed tools
+	tr.magicMutex.RLock()
+	for key, value := range tr.magicVars {
+		vars[key] = value
+	}
+	tr.magicMutex.RUnlock()
+
+	// Derived variables - handle scans_dir specifically for better path resolution
+	if scansDir, exists := vars["scans_dir"]; exists {
+		if outputFile, exists := vars["output_file"]; exists {
+			vars["output_path"] = filepath.Join(scansDir, outputFile)
+		}
+		if outputFileLatest, exists := vars["output_file_latest"]; exists {
+			vars["output_path_latest"] = filepath.Join(scansDir, outputFileLatest)
+		}
+	} else if outputDir, exists := vars["output_dir"]; exists {
+		// Fallback to output_dir if scans_dir not available
 		if outputFile, exists := vars["output_file"]; exists {
 			vars["output_path"] = filepath.Join(outputDir, outputFile)
 		}
@@ -233,16 +271,22 @@ func (tr *TemplateResolver) GetAvailableVariables() []string {
 
 // CreateExecutionContext creates a basic execution context with configurable defaults
 func (tr *TemplateResolver) CreateExecutionContext(target, toolName, mode string) *ExecutionContext {
+	return tr.CreateExecutionContextWithWorkflow(target, toolName, mode, "", "")
+}
+
+func (tr *TemplateResolver) CreateExecutionContextWithWorkflow(target, toolName, mode, workflowName, stepName string) *ExecutionContext {
 	timestamp := time.Now().Format("20060102_150405")
 	sessionID := fmt.Sprintf("session_%s", timestamp)
 
 	return &ExecutionContext{
-		Target:     target,
-		ToolName:   toolName,
-		Mode:       mode,
-		Timestamp:  timestamp,
-		SessionID:  sessionID,
-		CustomVars: make(map[string]string),
+		Target:       target,
+		ToolName:     toolName,
+		Mode:         mode,
+		WorkflowName: workflowName,
+		StepName:     stepName,
+		Timestamp:    timestamp,
+		SessionID:    sessionID,
+		CustomVars:   make(map[string]string),
 	}
 }
 
@@ -271,4 +315,73 @@ func (tr *TemplateResolver) CreateLatestSymlink(timestampedPath, latestPath stri
 	}
 
 	return nil
+}
+
+// AddVariable adds a magic variable for template resolution
+func (tr *TemplateResolver) AddVariable(name, value string) {
+	tr.magicMutex.Lock()
+	defer tr.magicMutex.Unlock()
+	tr.magicVars[name] = value
+	
+	// Auto-register with registry if available
+	if tr.registryManager != nil {
+		context := registry.DetectionContext{
+			FilePath:   "runtime",
+			LineNumber: 0,
+			Context:    fmt.Sprintf("Variable added at runtime: %s = %s", name, value),
+			Source:     registry.ExecutionContextSource,
+			Tool:       "",
+			Timestamp:  time.Now(),
+		}
+		
+		// Attempt to auto-register (ignore errors to avoid disrupting execution)
+		tr.registryManager.AutoRegisterVariable(name, context)
+	}
+}
+
+// GetAllVariables returns all current variables (regular + magic)
+func (tr *TemplateResolver) GetAllVariables() map[string]string {
+	tr.magicMutex.RLock()
+	defer tr.magicMutex.RUnlock()
+	
+	// Create a copy to avoid race conditions
+	result := make(map[string]string)
+	for k, v := range tr.magicVars {
+		result[k] = v
+	}
+	return result
+}
+
+// ClearMagicVariables clears all magic variables (useful for testing)
+func (tr *TemplateResolver) ClearMagicVariables() {
+	tr.magicMutex.Lock()
+	defer tr.magicMutex.Unlock()
+	tr.magicVars = make(map[string]string)
+}
+
+// MapWorkflowVariable maps a workflow variable from source to target name
+// This allows workflows to define how tool outputs map to tool inputs
+func (tr *TemplateResolver) MapWorkflowVariable(sourceVar, targetVar string) {
+	tr.magicMutex.RLock()
+	sourceValue, exists := tr.magicVars[sourceVar]
+	tr.magicMutex.RUnlock()
+	
+	if exists {
+		tr.AddVariable(targetVar, sourceValue)
+		
+		// Track workflow variable mapping in registry
+		if tr.registryManager != nil {
+			context := registry.DetectionContext{
+				FilePath:   "workflow",
+				LineNumber: 0,
+				Context:    fmt.Sprintf("Workflow mapping: %s -> %s", sourceVar, targetVar),
+				Source:     registry.WorkflowFileSource,
+				Tool:       "",
+				Timestamp:  time.Now(),
+			}
+			
+			// Register both the mapping and the target variable
+			tr.registryManager.AutoRegisterVariable(targetVar, context)
+		}
+	}
 }

@@ -1,0 +1,3013 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-08-12T23:40:15.178601-04:00",
+  "variables": {
+    "{{\") || !strings.HasSuffix(varName, \"}}": {
+      "name": "{{\") || !strings.HasSuffix(varName, \"}}",
+      "type": "template",
+      "category": "core",
+      "description": "Auto-detected variable: \") || !strings.HasSuffix(varName, \"",
+      "data_type": "string",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": null,
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/cmd/ipcrawler/registry.go",
+          "line": 170,
+          "context": "if !strings.HasPrefix(varName, \"{{\") || !strings.HasSuffix(varName, \"}}\") {"
+        }
+      ],
+      "first_detected": "2025-08-12T23:40:15.177894-04:00",
+      "last_seen": "2025-08-12T23:40:15.177894-04:00",
+      "usage_count": 1,
+      "auto_detected": true,
+      "required_by": null,
+      "depends_on": null,
+      "tags": null,
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": ""
+    },
+    "{{%s}}": {
+      "name": "{{%s}}",
+      "type": "template",
+      "category": "core",
+      "description": "Auto-detected variable: %s",
+      "data_type": "string",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": null,
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/executor/magic_variables.go",
+          "line": 82,
+          "context": "mvm.registryManager.AutoRegisterVariable(fmt.Sprintf(\"{{%s}}\", magicVarName), context)"
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/executor/template_resolver.go",
+          "line": 206,
+          "context": "placeholder := fmt.Sprintf(\"{{%s}}\", varName)"
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/scanners/auto_detector.go",
+          "line": 108,
+          "context": "varName := fmt.Sprintf(\"{{%s}}\", match[1])"
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/cmd/ipcrawler/registry.go",
+          "line": 171,
+          "context": "varName = fmt.Sprintf(\"{{%s}}\", varName)"
+        }
+      ],
+      "first_detected": "2025-08-12T23:40:15.056824-04:00",
+      "last_seen": "2025-08-12T23:40:15.178601-04:00",
+      "usage_count": 4,
+      "auto_detected": true,
+      "required_by": null,
+      "depends_on": null,
+      "tags": null,
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": ""
+    },
+    "{{combined_high_coverage_ports}}": {
+      "name": "{{combined_high_coverage_ports}}",
+      "type": "combined",
+      "category": "analysis",
+      "description": "Ports found by multiple scan modes (high confidence)",
+      "data_type": "port_list",
+      "source": "result_combiner",
+      "tool_name": "naabu",
+      "example_values": [
+        "22,80,443"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 5,
+          "context": "\"{{combined_high_coverage_ports}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 6,
+          "context": "\"name\": \"{{combined_high_coverage_ports}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1314,
+          "context": "\"{{combined_high_coverage_ports}}\","
+        }
+      ],
+      "first_detected": "2024-08-13T02:45:00Z",
+      "last_seen": "2025-08-12T23:40:15.153786-04:00",
+      "usage_count": 5,
+      "auto_detected": true,
+      "required_by": [],
+      "depends_on": [
+        "{{combined_ports}}"
+      ],
+      "tags": [
+        "combined",
+        "analysis",
+        "confidence"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Ports with high confidence (found by multiple modes)"
+    },
+    "{{combined_ports}}": {
+      "name": "{{combined_ports}}",
+      "type": "combined",
+      "category": "port",
+      "description": "Combined ports from multiple scan modes",
+      "data_type": "port_list",
+      "source": "result_combiner",
+      "tool_name": "naabu",
+      "example_values": [
+        "22,80,443,5432,8080",
+        "445,22,5432,8021,7000,5000"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 24,
+          "context": "\"{{combined_ports}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 35,
+          "context": "\"{{combined_ports}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 36,
+          "context": "\"name\": \"{{combined_ports}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1315,
+          "context": "\"{{combined_ports}}\","
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/types.go",
+          "line": 13,
+          "context": "CombinedVariable   VariableType = \"combined\"   // Generated by result combiners like {{combined_ports}}"
+        }
+      ],
+      "first_detected": "2024-08-13T02:45:00Z",
+      "last_seen": "2025-08-12T23:40:15.170174-04:00",
+      "usage_count": 9,
+      "auto_detected": true,
+      "required_by": [],
+      "depends_on": [
+        "{{naabu_ports}}"
+      ],
+      "tags": [
+        "combined",
+        "ports",
+        "aggregated"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Deduplicated ports from multiple scan modes"
+    },
+    "{{logs_dir}}": {
+      "name": "{{logs_dir}}",
+      "type": "template",
+      "category": "directory",
+      "description": "Directory for application and tool logs",
+      "data_type": "path",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "./workspace/192_168_1_1/logs"
+      ],
+      "default_value": "{{workspace}}/logs/",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "configs/output.yaml",
+          "line": 22,
+          "context": "info log directory"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 66,
+          "context": "\"{{logs_dir}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 67,
+          "context": "\"name\": \"{{logs_dir}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1271,
+          "context": "\"{{logs_dir}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1356,
+          "context": "\"name\": \"{{logs_dir}}\","
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/cmd/ipcrawler/main.go",
+          "line": 1243,
+          "context": "- {{logs_dir}} - logs/"
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.174214-04:00",
+      "usage_count": 20,
+      "auto_detected": false,
+      "required_by": [],
+      "depends_on": [
+        "{{workspace}}"
+      ],
+      "tags": [
+        "directory",
+        "logging"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Contains subdirectories for different log levels"
+    },
+    "{{mode}}": {
+      "name": "{{mode}}",
+      "type": "template",
+      "category": "metadata",
+      "description": "Execution mode/profile for the tool",
+      "data_type": "string",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "aggressive",
+        "quick_scan",
+        "stealth",
+        "all_ports"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 102,
+          "context": "\"{{mode}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 103,
+          "context": "\"name\": \"{{mode}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1316,
+          "context": "\"{{mode}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1364,
+          "context": "\"name\": \"{{mode}}\","
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.166878-04:00",
+      "usage_count": 16,
+      "auto_detected": false,
+      "required_by": [],
+      "depends_on": [],
+      "tags": [
+        "metadata",
+        "mode"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Tool execution mode or profile"
+    },
+    "{{naabu_port_count}}": {
+      "name": "{{naabu_port_count}}",
+      "type": "magic",
+      "category": "port",
+      "description": "Number of ports discovered by naabu",
+      "data_type": "integer",
+      "source": "tool_parser",
+      "tool_name": "naabu",
+      "example_values": [
+        "4",
+        "6",
+        "12"
+      ],
+      "default_value": "0",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 132,
+          "context": "\"{{naabu_port_count}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 133,
+          "context": "\"name\": \"{{naabu_port_count}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1317,
+          "context": "\"{{naabu_port_count}}\","
+        }
+      ],
+      "first_detected": "2024-08-13T02:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.155059-04:00",
+      "usage_count": 8,
+      "auto_detected": true,
+      "required_by": [],
+      "depends_on": [],
+      "tags": [
+        "naabu",
+        "count",
+        "statistics"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Count of discovered ports"
+    },
+    "{{naabu_ports}}": {
+      "name": "{{naabu_ports}}",
+      "type": "magic",
+      "category": "port",
+      "description": "Discovered ports from naabu scan",
+      "data_type": "port_list",
+      "source": "tool_parser",
+      "tool_name": "naabu",
+      "example_values": [
+        "22,80,443,8080",
+        "5000,22,5432,445"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 55,
+          "context": "\"{{naabu_ports}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 162,
+          "context": "\"{{naabu_ports}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 163,
+          "context": "\"name\": \"{{naabu_ports}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1318,
+          "context": "\"{{naabu_ports}}\","
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/types.go",
+          "line": 12,
+          "context": "MagicVariable      VariableType = \"magic\"      // Generated by tool parsers like {{naabu_ports}}"
+        }
+      ],
+      "first_detected": "2024-08-13T02:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.169721-04:00",
+      "usage_count": 15,
+      "auto_detected": true,
+      "required_by": [],
+      "depends_on": [],
+      "tags": [
+        "naabu",
+        "ports",
+        "discovery"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Comma-separated list of ports discovered by naabu"
+    },
+    "{{nmap_products}}": {
+      "name": "{{nmap_products}}",
+      "type": "magic",
+      "category": "service",
+      "description": "Product names identified by nmap",
+      "data_type": "string_list",
+      "source": "tool_parser",
+      "tool_name": "nmap",
+      "example_values": [
+        "OpenSSH,Apache",
+        "OpenSSH,PostgreSQL DB"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 191,
+          "context": "\"{{nmap_products}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 192,
+          "context": "\"name\": \"{{nmap_products}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1319,
+          "context": "\"{{nmap_products}}\","
+        }
+      ],
+      "first_detected": "2024-08-13T02:30:00Z",
+      "last_seen": "2025-08-12T23:40:15.155905-04:00",
+      "usage_count": 9,
+      "auto_detected": true,
+      "required_by": [],
+      "depends_on": [],
+      "tags": [
+        "nmap",
+        "products",
+        "versions"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Product names and versions from nmap"
+    },
+    "{{nmap_services}}": {
+      "name": "{{nmap_services}}",
+      "type": "magic",
+      "category": "service",
+      "description": "Services identified by nmap",
+      "data_type": "string_list",
+      "source": "tool_parser",
+      "tool_name": "nmap",
+      "example_values": [
+        "ssh,http,https",
+        "ssh,microsoft-ds,postgresql"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 220,
+          "context": "\"{{nmap_services}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 221,
+          "context": "\"name\": \"{{nmap_services}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1320,
+          "context": "\"{{nmap_services}}\","
+        }
+      ],
+      "first_detected": "2024-08-13T02:30:00Z",
+      "last_seen": "2025-08-12T23:40:15.156352-04:00",
+      "usage_count": 11,
+      "auto_detected": true,
+      "required_by": [],
+      "depends_on": [],
+      "tags": [
+        "nmap",
+        "services",
+        "identification"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Service names identified by nmap"
+    },
+    "{{output_dir}}": {
+      "name": "{{output_dir}}",
+      "type": "template",
+      "category": "directory",
+      "description": "Alias for workspace - maintained for backward compatibility",
+      "data_type": "path",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "./workspace/192_168_1_1"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 249,
+          "context": "\"{{output_dir}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 250,
+          "context": "\"name\": \"{{output_dir}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1321,
+          "context": "\"{{output_dir}}\","
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.15678-04:00",
+      "usage_count": 8,
+      "auto_detected": false,
+      "required_by": [],
+      "depends_on": [
+        "{{workspace}}"
+      ],
+      "tags": [
+        "compatibility",
+        "deprecated"
+      ],
+      "deprecated": true,
+      "replaced_by": "{{workspace}}",
+      "notes": "Use {{workspace}} instead"
+    },
+    "{{output_file_latest}}": {
+      "name": "{{output_file_latest}}",
+      "type": "template",
+      "category": "file",
+      "description": "Latest version filename (only available when scan_output_mode is 'both')",
+      "data_type": "string",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "nmap_192_168_1_1_latest"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 278,
+          "context": "\"{{output_file_latest}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 279,
+          "context": "\"name\": \"{{output_file_latest}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 529,
+          "context": "\"{{output_file_latest}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1322,
+          "context": "\"{{output_file_latest}}\","
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.157236-04:00",
+      "usage_count": 14,
+      "auto_detected": false,
+      "required_by": [],
+      "depends_on": [
+        "{{target}}",
+        "{{tool_name}}"
+      ],
+      "tags": [
+        "file",
+        "symlink"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Symlink to latest timestamped output"
+    },
+    "{{output_file}}": {
+      "name": "{{output_file}}",
+      "type": "template",
+      "category": "file",
+      "description": "Generated filename for tool output (behavior depends on scan_output_mode)",
+      "data_type": "string",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "nmap_192_168_1_1",
+        "nmap_192_168_1_1_20240112_143052"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "tools/naabu/config.yaml",
+          "line": 16,
+          "context": "output filename"
+        },
+        {
+          "type": "config",
+          "path": "tools/nmap/config.yaml",
+          "line": 14,
+          "context": "output filename"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 16,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 28,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 37,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 46,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 57,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 69,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 83,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 96,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 106,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 121,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 130,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 14,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 23,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 32,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 38,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 48,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 57,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 68,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 78,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 88,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 98,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 110,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 120,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 129,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 140,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 149,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 308,
+          "context": "\"{{output_file}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 309,
+          "context": "\"name\": \"{{output_file}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 338,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 344,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 350,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 356,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 362,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 368,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 374,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 380,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 386,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 392,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 398,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 404,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 410,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 416,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 422,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 428,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 434,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 440,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 446,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 452,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 458,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 464,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 470,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 476,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 482,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 488,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 560,
+          "context": "\"{{output_file}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 724,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 730,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 736,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 742,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 748,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 754,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 760,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 766,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 772,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 778,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 784,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 790,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 796,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 802,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 808,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 814,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 820,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 826,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 832,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 838,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 844,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 850,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 856,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 862,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 868,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 874,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1154,
+          "context": "\"{{output_file}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1185,
+          "context": "\"{{output_file}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1336,
+          "context": "\"name\": \"{{output_file}}\","
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.161421-04:00",
+      "usage_count": 124,
+      "auto_detected": false,
+      "required_by": [],
+      "depends_on": [
+        "{{target}}",
+        "{{tool_name}}",
+        "{{timestamp}}"
+      ],
+      "tags": [
+        "file",
+        "output"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Filename pattern depends on scan_output_mode configuration"
+    },
+    "{{output_path_latest}}": {
+      "name": "{{output_path_latest}}",
+      "type": "template",
+      "category": "file",
+      "description": "Full path to latest version file (when available)",
+      "data_type": "path",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "./workspace/192_168_1_1/scans/nmap_192_168_1_1_latest.xml"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 509,
+          "context": "\"{{output_path_latest}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 510,
+          "context": "\"name\": \"{{output_path_latest}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1323,
+          "context": "\"{{output_path_latest}}\","
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.157678-04:00",
+      "usage_count": 8,
+      "auto_detected": false,
+      "required_by": [],
+      "depends_on": [
+        "{{scans_dir}}",
+        "{{output_file_latest}}"
+      ],
+      "tags": [
+        "file",
+        "path",
+        "symlink"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Complete path to latest symlink"
+    },
+    "{{output_path}}": {
+      "name": "{{output_path}}",
+      "type": "template",
+      "category": "file",
+      "description": "Full file path combining directory and filename",
+      "data_type": "path",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "./workspace/192_168_1_1/scans/nmap_192_168_1_1_20240112_143052.xml"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 540,
+          "context": "\"{{output_path}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 541,
+          "context": "\"name\": \"{{output_path}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1324,
+          "context": "\"{{output_path}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1352,
+          "context": "\"name\": \"{{output_path}}\","
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.164266-04:00",
+      "usage_count": 24,
+      "auto_detected": false,
+      "required_by": [],
+      "depends_on": [
+        "{{scans_dir}}",
+        "{{output_file}}"
+      ],
+      "tags": [
+        "file",
+        "path"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Complete path to output file"
+    },
+    "{{ports}}": {
+      "name": "{{ports}}",
+      "type": "pipeline",
+      "category": "port",
+      "description": "Generic port variable for pipeline tools",
+      "data_type": "port_list",
+      "source": "workflow_file",
+      "tool_name": "",
+      "example_values": [
+        "80,443,8080",
+        "22,80,443,8080,8443"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "tools/nmap/config.yaml",
+          "line": 75,
+          "context": "pipeline_service_scan mode"
+        },
+        {
+          "type": "config",
+          "path": "tools/nmap/config.yaml",
+          "line": 85,
+          "context": "pipeline_targeted_scan mode"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 75,
+          "context": "- \"{{ports}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 85,
+          "context": "- \"{{ports}}\""
+        },
+        {
+          "type": "workflow",
+          "path": "/Users/carlosm/Documents/ipcrawler/workflows/reconnaissance/port-scanning.yaml",
+          "line": 30,
+          "context": "target_variable: \"ports\"  # Maps combined ports to {{ports}} variable"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 570,
+          "context": "\"{{ports}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 571,
+          "context": "\"name\": \"{{ports}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 600,
+          "context": "\"context\": \"- \\\"{{ports}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 606,
+          "context": "\"context\": \"- \\\"{{ports}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 612,
+          "context": "\"context\": \"target_variable: \\\"ports\\\"  # Maps combined ports to {{ports}} variable\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1368,
+          "context": "\"name\": \"{{ports}}\","
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/types.go",
+          "line": 16,
+          "context": "PipelineVariable   VariableType = \"pipeline\"   // Pipeline modes like {{ports}}"
+        }
+      ],
+      "first_detected": "2024-08-13T02:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.171993-04:00",
+      "usage_count": 18,
+      "auto_detected": false,
+      "required_by": [],
+      "depends_on": [],
+      "tags": [
+        "pipeline",
+        "generic",
+        "ports"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Generic port variable for workflow pipeline modes"
+    },
+    "{{raw_dir}}": {
+      "name": "{{raw_dir}}",
+      "type": "template",
+      "category": "directory",
+      "description": "Directory for raw tool output and temporary files",
+      "data_type": "path",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "./workspace/192_168_1_1/raw"
+      ],
+      "default_value": "{{workspace}}/raw/",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "configs/output.yaml",
+          "line": 42,
+          "context": "raw output directory"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 630,
+          "context": "\"{{raw_dir}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 631,
+          "context": "\"name\": \"{{raw_dir}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1273,
+          "context": "\"{{raw_dir}}\""
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/cmd/ipcrawler/main.go",
+          "line": 1246,
+          "context": "- {{raw_dir}} - raw/"
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.176525-04:00",
+      "usage_count": 12,
+      "auto_detected": false,
+      "required_by": [],
+      "depends_on": [
+        "{{workspace}}"
+      ],
+      "tags": [
+        "directory",
+        "temporary"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Raw, unprocessed tool outputs"
+    },
+    "{{reports_dir}}": {
+      "name": "{{reports_dir}}",
+      "type": "template",
+      "category": "directory",
+      "description": "Directory for generated reports and summaries",
+      "data_type": "path",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "./workspace/192_168_1_1/reports"
+      ],
+      "default_value": "{{workspace}}/reports/",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 666,
+          "context": "\"{{reports_dir}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 667,
+          "context": "\"name\": \"{{reports_dir}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1272,
+          "context": "\"{{reports_dir}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1325,
+          "context": "\"{{reports_dir}}\","
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/cmd/ipcrawler/main.go",
+          "line": 1245,
+          "context": "- {{reports_dir}} - reports/"
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.175818-04:00",
+      "usage_count": 10,
+      "auto_detected": false,
+      "required_by": [],
+      "depends_on": [
+        "{{workspace}}"
+      ],
+      "tags": [
+        "directory",
+        "reports"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Future use for generated reports"
+    },
+    "{{scans_dir}}": {
+      "name": "{{scans_dir}}",
+      "type": "template",
+      "category": "directory",
+      "description": "Directory for scan results and tool output",
+      "data_type": "path",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "./workspace/192_168_1_1/scans"
+      ],
+      "default_value": "{{workspace}}/scans/",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "tools/naabu/config.yaml",
+          "line": 16,
+          "context": "output file path"
+        },
+        {
+          "type": "config",
+          "path": "tools/nmap/config.yaml",
+          "line": 14,
+          "context": "output file path"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 16,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 28,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 37,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 46,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 57,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 69,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 83,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 96,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 106,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 121,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 130,
+          "context": "- \"{{scans_dir}}/{{output_file}}.json\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 14,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 23,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 32,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 38,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 48,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 57,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 68,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 78,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 88,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 98,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 110,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 120,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 129,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 140,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 149,
+          "context": "- \"{{scans_dir}}/{{output_file}}.xml\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 338,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 344,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 350,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 356,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 362,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 368,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 374,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 380,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 386,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 392,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 398,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 404,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 410,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 416,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 422,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 428,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 434,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 440,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 446,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 452,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 458,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 464,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 470,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 476,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 482,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 488,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 528,
+          "context": "\"{{scans_dir}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 559,
+          "context": "\"{{scans_dir}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 695,
+          "context": "\"{{scans_dir}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 696,
+          "context": "\"name\": \"{{scans_dir}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 724,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 730,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 736,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 742,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 748,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 754,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 760,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 766,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 772,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 778,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 784,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.json\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 790,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 796,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 802,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 808,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 814,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 820,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 826,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 832,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 838,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 844,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 850,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 856,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 862,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 868,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 874,
+          "context": "\"context\": \"- \\\"{{scans_dir}}/{{output_file}}.xml\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1270,
+          "context": "\"{{scans_dir}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1340,
+          "context": "\"name\": \"{{scans_dir}}\","
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/cmd/ipcrawler/main.go",
+          "line": 1244,
+          "context": "- {{scans_dir}} - scans/"
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.17491-04:00",
+      "usage_count": 115,
+      "auto_detected": false,
+      "required_by": [],
+      "depends_on": [
+        "{{workspace}}"
+      ],
+      "tags": [
+        "directory",
+        "output"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Primary directory for tool scan outputs"
+    },
+    "{{session_id}}": {
+      "name": "{{session_id}}",
+      "type": "template",
+      "category": "metadata",
+      "description": "Unique session identifier for this execution",
+      "data_type": "string",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "session_1705072232"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 893,
+          "context": "\"{{session_id}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 894,
+          "context": "\"name\": \"{{session_id}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1326,
+          "context": "\"{{session_id}}\","
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.159171-04:00",
+      "usage_count": 11,
+      "auto_detected": false,
+      "required_by": [],
+      "depends_on": [],
+      "tags": [
+        "metadata",
+        "session"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Unique identifier for execution session"
+    },
+    "{{target}}": {
+      "name": "{{target}}",
+      "type": "template",
+      "category": "core",
+      "description": "Target being scanned (IP address, hostname, or CIDR range)",
+      "data_type": "ip",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "192.168.1.1",
+        "example.com",
+        "192.168.1.0/24"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "tool",
+          "path": "naabu",
+          "line": 0,
+          "context": "scan target"
+        },
+        {
+          "type": "tool",
+          "path": "nmap",
+          "line": 0,
+          "context": "scan target"
+        },
+        {
+          "type": "config",
+          "path": "tools/naabu/config.yaml",
+          "line": 9,
+          "context": "host argument"
+        },
+        {
+          "type": "config",
+          "path": "tools/nmap/config.yaml",
+          "line": 15,
+          "context": "target argument"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 9,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 21,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 32,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 41,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 50,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 62,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 74,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 87,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 100,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 110,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/naabu/config.yaml",
+          "line": 125,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 15,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 24,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 33,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 39,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 49,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 58,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 69,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 79,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 89,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 99,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 111,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 121,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 130,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 141,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/tools/nmap/config.yaml",
+          "line": 150,
+          "context": "- \"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/configs/output.yaml",
+          "line": 2,
+          "context": "# Output will be organized under workspace/{{target}}/ directory structure"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 297,
+          "context": "\"{{target}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 497,
+          "context": "\"{{target}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 920,
+          "context": "\"{{target}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 921,
+          "context": "\"name\": \"{{target}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 963,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 969,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 975,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 981,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 987,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 993,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 999,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1005,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1011,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1017,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1023,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1029,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1035,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1041,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1047,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1053,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1059,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1065,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1071,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1077,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1083,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1089,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1095,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1101,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1107,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1113,
+          "context": "\"context\": \"- \\\"{{target}}\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1119,
+          "context": "\"context\": \"# Output will be organized under workspace/{{target}}/ directory structure\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1276,
+          "context": "\"{{target}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1332,
+          "context": "\"name\": \"{{target}}\","
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/types.go",
+          "line": 11,
+          "context": "TemplateVariable   VariableType = \"template\"   // Core template variables like {{target}}"
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/cmd/ipcrawler/registry.go",
+          "line": 66,
+          "context": "fmt.Println(\"  ipcrawler registry show \\\"{{target}}\\\"\")"
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.177152-04:00",
+      "usage_count": 112,
+      "auto_detected": false,
+      "required_by": [],
+      "depends_on": [],
+      "tags": [
+        "core",
+        "essential"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Most fundamental variable in IPCrawler"
+    },
+    "{{timestamp}}": {
+      "name": "{{timestamp}}",
+      "type": "template",
+      "category": "metadata",
+      "description": "Execution timestamp in YYYYMMDD_HHMMSS format",
+      "data_type": "string",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "20240112_143052"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 499,
+          "context": "\"{{timestamp}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1136,
+          "context": "\"{{timestamp}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1137,
+          "context": "\"name\": \"{{timestamp}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1327,
+          "context": "\"{{timestamp}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1348,
+          "context": "\"name\": \"{{timestamp}}\","
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.16354-04:00",
+      "usage_count": 30,
+      "auto_detected": false,
+      "required_by": [
+        "{{output_file}}"
+      ],
+      "depends_on": [],
+      "tags": [
+        "metadata",
+        "timestamp"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Used for timestamped output files"
+    },
+    "{{tool_name}}": {
+      "name": "{{tool_name}}",
+      "type": "template",
+      "category": "metadata",
+      "description": "Name of the currently executing tool",
+      "data_type": "string",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "nmap",
+        "naabu",
+        "gobuster"
+      ],
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 298,
+          "context": "\"{{tool_name}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 498,
+          "context": "\"{{tool_name}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1165,
+          "context": "\"{{tool_name}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1166,
+          "context": "\"name\": \"{{tool_name}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1328,
+          "context": "\"{{tool_name}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1360,
+          "context": "\"name\": \"{{tool_name}}\","
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.165951-04:00",
+      "usage_count": 21,
+      "auto_detected": false,
+      "required_by": [
+        "{{output_file}}"
+      ],
+      "depends_on": [],
+      "tags": [
+        "metadata",
+        "tool"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Current tool being executed"
+    },
+    "{{variable}}": {
+      "name": "{{variable}}",
+      "type": "template",
+      "category": "core",
+      "description": "Auto-detected variable: variable",
+      "data_type": "string",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": null,
+      "default_value": "",
+      "used_in": [
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/executor/template_resolver.go",
+          "line": 204,
+          "context": "// Replace all {{variable}} patterns"
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/scanners/auto_detector.go",
+          "line": 22,
+          "context": "// Regex to match {{variable}} patterns"
+        }
+      ],
+      "first_detected": "2025-08-12T23:40:15.057059-04:00",
+      "last_seen": "2025-08-12T23:40:15.168355-04:00",
+      "usage_count": 2,
+      "auto_detected": true,
+      "required_by": null,
+      "depends_on": null,
+      "tags": null,
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": ""
+    },
+    "{{workspace}}": {
+      "name": "{{workspace}}",
+      "type": "template",
+      "category": "directory",
+      "description": "Base workspace directory for the current target",
+      "data_type": "path",
+      "source": "execution_context",
+      "tool_name": "",
+      "example_values": [
+        "./workspace/192_168_1_1",
+        "./workspace/example_com"
+      ],
+      "default_value": "./workspace/{sanitized_target}/",
+      "used_in": [
+        {
+          "type": "config",
+          "path": "configs/output.yaml",
+          "line": 22,
+          "context": "log directory"
+        },
+        {
+          "type": "config",
+          "path": "configs/output.yaml",
+          "line": 42,
+          "context": "raw directory"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/configs/output.yaml",
+          "line": 22,
+          "context": "directory: \"{{workspace}}/logs/info/\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/configs/output.yaml",
+          "line": 27,
+          "context": "directory: \"{{workspace}}/logs/error/\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/configs/output.yaml",
+          "line": 32,
+          "context": "directory: \"{{workspace}}/logs/warning/\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/configs/output.yaml",
+          "line": 37,
+          "context": "directory: \"{{workspace}}/logs/debug/\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/configs/output.yaml",
+          "line": 42,
+          "context": "directory: \"{{workspace}}/raw/\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/configs/output.yaml",
+          "line": 46,
+          "context": "directory: \"{{workspace}}/scans/\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/configs/output.yaml",
+          "line": 50,
+          "context": "directory: \"{{workspace}}/reports/\""
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/config/config.go",
+          "line": 203,
+          "context": "//\tinfo: { directory: \"{{workspace}}/logs/info/\", level: \"info\" }"
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/config/config.go",
+          "line": 512,
+          "context": "out.Info.Directory = \"{{workspace}}/logs/info/\""
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/config/config.go",
+          "line": 518,
+          "context": "out.Error.Directory = \"{{workspace}}/logs/error/\""
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/config/config.go",
+          "line": 524,
+          "context": "out.Warning.Directory = \"{{workspace}}/logs/warning/\""
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/config/config.go",
+          "line": 530,
+          "context": "out.Debug.Directory = \"{{workspace}}/logs/debug/\""
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/config/config.go",
+          "line": 536,
+          "context": "out.Raw.Directory = \"{{workspace}}/raw/\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 77,
+          "context": "\"default_value\": \"{{workspace}}/logs/\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 92,
+          "context": "\"{{workspace}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 268,
+          "context": "\"{{workspace}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 275,
+          "context": "\"replaced_by\": \"{{workspace}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 276,
+          "context": "\"notes\": \"Use {{workspace}} instead\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 641,
+          "context": "\"default_value\": \"{{workspace}}/raw/\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 656,
+          "context": "\"{{workspace}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 677,
+          "context": "\"default_value\": \"{{workspace}}/reports/\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 685,
+          "context": "\"{{workspace}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 706,
+          "context": "\"default_value\": \"{{workspace}}/scans/\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 883,
+          "context": "\"{{workspace}}\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1196,
+          "context": "\"{{workspace}}\": {"
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1197,
+          "context": "\"name\": \"{{workspace}}\","
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1226,
+          "context": "\"context\": \"directory: \\\"{{workspace}}/logs/info/\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1232,
+          "context": "\"context\": \"directory: \\\"{{workspace}}/logs/error/\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1238,
+          "context": "\"context\": \"directory: \\\"{{workspace}}/logs/warning/\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1244,
+          "context": "\"context\": \"directory: \\\"{{workspace}}/logs/debug/\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1250,
+          "context": "\"context\": \"directory: \\\"{{workspace}}/raw/\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1256,
+          "context": "\"context\": \"directory: \\\"{{workspace}}/scans/\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1262,
+          "context": "\"context\": \"directory: \\\"{{workspace}}/reports/\\\"\""
+        },
+        {
+          "type": "config",
+          "path": "/Users/carlosm/Documents/ipcrawler/internal/registry/database/variables.json",
+          "line": 1344,
+          "context": "\"name\": \"{{workspace}}\","
+        },
+        {
+          "type": "code",
+          "path": "/Users/carlosm/Documents/ipcrawler/cmd/ipcrawler/main.go",
+          "line": 1242,
+          "context": "- {{workspace}} - This directory"
+        }
+      ],
+      "first_detected": "2024-01-01T00:00:00Z",
+      "last_seen": "2025-08-12T23:40:15.173493-04:00",
+      "usage_count": 60,
+      "auto_detected": false,
+      "required_by": [
+        "{{scans_dir}}",
+        "{{logs_dir}}",
+        "{{reports_dir}}",
+        "{{raw_dir}}"
+      ],
+      "depends_on": [
+        "{{target}}"
+      ],
+      "tags": [
+        "core",
+        "directory"
+      ],
+      "deprecated": false,
+      "replaced_by": "",
+      "notes": "Base directory for all target-specific output"
+    }
+  },
+  "statistics": {
+    "total_variables": 25,
+    "variables_by_type": {
+      "combined": 2,
+      "magic": 4,
+      "pipeline": 1,
+      "template": 18
+    },
+    "variables_by_category": {
+      "analysis": 1,
+      "core": 4,
+      "directory": 6,
+      "file": 4,
+      "metadata": 4,
+      "port": 4,
+      "service": 2
+    },
+    "variables_by_source": {
+      "execution_context": 18,
+      "result_combiner": 2,
+      "tool_parser": 4,
+      "workflow_file": 1
+    },
+    "auto_detected_count": 9,
+    "manually_added_count": 16,
+    "deprecated_count": 1,
+    "unused_variables": null,
+    "most_used_variables": [
+      {
+        "name": "{{output_file}}",
+        "usage_count": 124
+      },
+      {
+        "name": "{{scans_dir}}",
+        "usage_count": 115
+      },
+      {
+        "name": "{{target}}",
+        "usage_count": 112
+      },
+      {
+        "name": "{{workspace}}",
+        "usage_count": 60
+      },
+      {
+        "name": "{{timestamp}}",
+        "usage_count": 30
+      },
+      {
+        "name": "{{output_path}}",
+        "usage_count": 24
+      },
+      {
+        "name": "{{tool_name}}",
+        "usage_count": 21
+      },
+      {
+        "name": "{{logs_dir}}",
+        "usage_count": 20
+      },
+      {
+        "name": "{{ports}}",
+        "usage_count": 18
+      },
+      {
+        "name": "{{mode}}",
+        "usage_count": 16
+      }
+    ]
+  }
+}

@@ -1,0 +1,118 @@
+tool: "nslookup"
+description: "DNS lookup utility for network reconnaissance and domain information gathering"
+format: "text"
+
+# Generic args structure - nslookup outputs text format for DNS queries
+args:
+  # Basic DNS record queries
+  default_lookup:
+    - "{{target}}"
+    
+  # Specific record type queries
+  a_record:
+    - "-type=A"
+    - "{{target}}"
+    
+  aaaa_record:
+    - "-type=AAAA"
+    - "{{target}}"
+    
+  mx_record:
+    - "-type=MX"
+    - "{{target}}"
+    
+  ns_record:
+    - "-type=NS"
+    - "{{target}}"
+    
+  txt_record:
+    - "-type=TXT"
+    - "{{target}}"
+    
+  cname_record:
+    - "-type=CNAME"
+    - "{{target}}"
+    
+  ptr_record:
+    - "-type=PTR"
+    - "{{target}}"
+    
+  soa_record:
+    - "-type=SOA"
+    - "{{target}}"
+    
+  srv_record:
+    - "-type=SRV"
+    - "{{target}}"
+
+  # DNS server specific queries
+  authoritative_ns:
+    - "-type=NS"
+    - "-debug"
+    - "{{target}}"
+    
+  # Reverse DNS lookup
+  reverse_lookup:
+    - "-type=PTR"
+    - "{{target}}"
+    
+  # All records query (ANY type deprecated, use multiple specific queries instead)
+  # any_record:
+  #   - "-type=ANY"
+  #   - "{{target}}"
+    
+  # DNS trace for debugging
+  trace_lookup:
+    - "-d2"
+    - "{{target}}"
+    
+  # Custom DNS server queries
+  dns_server_query:
+    - "{{target}}"
+    - "8.8.8.8"
+    
+  # Domain zone transfer attempt (for authorized domains)
+  zone_transfer:
+    - "-ls"
+    - "-d"
+    - "{{target}}"
+    
+  # Comprehensive DNS enumeration
+  comprehensive_dns:
+    - "-type=ANY"
+    - "-debug"
+    - "{{target}}"
+    
+  # Fast DNS lookup for multiple record types
+  multi_record:
+    - "-type=A"
+    - "{{target}}"
+    
+  # DNS security checks
+  dnssec_check:
+    - "-type=DNSKEY"
+    - "{{target}}"
+    
+  # Mail server discovery
+  mail_servers:
+    - "-type=MX"
+    - "-debug"
+    - "{{target}}"
+    
+  # Name server discovery
+  name_servers:
+    - "-type=NS"
+    - "-debug"
+    - "{{target}}"
+
+# Tool-specific configuration
+timeout: 30
+retry_count: 3
+output_format: "text"
+
+# Usage notes:
+# - nslookup is available on most systems by default
+# - Some queries may require specific DNS server access
+# - Zone transfers typically only work for authorized domains
+# - Use different DNS servers (8.8.8.8, 1.1.1.1) for comparison
+# - PTR queries work best with IP addresses as targets

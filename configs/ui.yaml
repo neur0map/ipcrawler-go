@@ -178,6 +178,25 @@ ui:
     confirm_execute: true    # Confirm before execution
     stop_on_error: false     # Stop workflow on first error
     parallel_tools: 3        # Max parallel tool executions
+    
+    # Multi-workflow execution settings
+    parallel_workflows:
+      enabled: true          # Allow multiple workflows to run simultaneously
+      max_concurrent: 3      # Override for UI-specific workflow limits
+      show_parallel_progress: true  # Show progress for multiple workflows
+      auto_start_independent: true  # Auto-start independent workflows
+    
+    # Workflow queue management
+    queue_management:
+      auto_prioritize: true  # Automatically prioritize based on workflow settings
+      show_dependencies: true # Show workflow dependencies in UI
+      max_queue_size: 10     # Maximum workflows in queue
+      
+    # Resource monitoring in UI
+    resource_monitoring:
+      show_resource_usage: true     # Display CPU/memory usage
+      warn_on_high_usage: true      # Show warnings for high resource usage
+      resource_threshold_warning: 75.0  # Percentage to show warnings
 
 
   # Modal configuration
