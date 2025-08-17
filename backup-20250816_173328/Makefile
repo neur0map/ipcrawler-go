@@ -55,11 +55,14 @@ test-keyboard: ## Test keyboard interactions
 	@echo "  - q: Quit application"
 	@echo "  - g/G: Go to top/bottom of logs"
 
+test-static: ## Static check: exactly one tea.NewProgram
 	@echo "$(BLUE)Static analysis: checking for exactly 1 tea.Program...$(RESET)"
 	@PROGRAMS=$$(grep -r "tea\.NewProgram" . --include="*.go" --exclude-dir=".external" | grep -v test | wc -l | tr -d ' '); \
 	if [ "$$PROGRAMS" -eq "1" ]; then \
+		echo "$(GREEN)✓ Found exactly 1 tea.NewProgram instance (production)$(RESET)"; \
 		echo "  - cmd/ipcrawler/main.go (production)"; \
 	else \
+		echo "$(RED)✗ Found $$PROGRAMS tea.NewProgram instances (expected 1)$(RESET)"; \
 		grep -r "tea\.NewProgram" . --include="*.go" --exclude-dir=".external" | grep -v test; \
 		exit 1; \
 	fi
@@ -89,7 +92,9 @@ run: build ## Launch IPCrawler TUI with optimal setup (main entry point)
 	@echo "$(YELLOW)Controls: Tab=cycle cards, 1-5=direct focus, q=quit$(RESET)"
 	@if [ "$$EUID" -eq 0 ] || [ -n "$$SUDO_UID" ]; then \
 		echo "$(GREEN)Running with elevated privileges$(RESET)"; \
+		PRESERVE_SUDO=1 ./scripts/tui-launch-window.sh; \
 	else \
+		./scripts/tui-launch-window.sh; \
 	fi
 
 run-cli: build ## Run all workflows in CLI mode: make run-cli TARGET=example.com
