@@ -37,6 +37,10 @@ type TemplateResolver struct {
 	magicVars      map[string]string
 	magicMutex     sync.RWMutex
 	registryManager registry.RegistryManager // Optional registry for auto-detection
+	
+	// Performance optimization: cache resolved arguments
+	argCache       map[string][]string  // key = toolName:mode:target, value = resolved args
+	cacheMutex     sync.RWMutex
 }
 
 // NewTemplateResolver creates a new template resolver with the given configuration
@@ -44,6 +48,7 @@ func NewTemplateResolver(cfg *config.Config) *TemplateResolver {
 	return &TemplateResolver{
 		config:    cfg,
 		magicVars: make(map[string]string),
+		argCache:  make(map[string][]string),
 	}
 }
 
@@ -63,6 +68,19 @@ func (tr *TemplateResolver) ResolveArguments(args []string, ctx *ExecutionContex
 		return nil, fmt.Errorf("invalid execution context: %w", err)
 	}
 
+	// Generate cache key for performance optimization
+	cacheKey := fmt.Sprintf("%s:%s:%s", ctx.ToolName, ctx.Mode, ctx.Target)
+	
+	// Check cache first (only for basic args, not with workflow context)
+	if ctx.WorkflowName == "" && ctx.StepName == "" && len(ctx.CustomVars) == 0 {
+		tr.cacheMutex.RLock()
+		if cached, exists := tr.argCache[cacheKey]; exists {
+			tr.cacheMutex.RUnlock()
+			return cached, nil
+		}
+		tr.cacheMutex.RUnlock()
+	}
+
 	// Prepare the variable map
 	vars := tr.buildVariableMap(ctx)
 
@@ -70,6 +88,13 @@ func (tr *TemplateResolver) ResolveArguments(args []string, ctx *ExecutionContex
 	resolved := make([]string, len(args))
 	for i, arg := range args {
 		resolved[i] = tr.resolveString(arg, vars)
+	}
+
+	// Cache result for future use (only basic contexts to avoid memory bloat)
+	if ctx.WorkflowName == "" && ctx.StepName == "" && len(ctx.CustomVars) == 0 {
+		tr.cacheMutex.Lock()
+		tr.argCache[cacheKey] = resolved
+		tr.cacheMutex.Unlock()
 	}
 
 	return resolved, nil
@@ -145,18 +170,18 @@ func (tr *TemplateResolver) buildVariableMap(ctx *ExecutionContext) map[string]s
 		
 		switch outputMode {
 		case "overwrite":
-			// No timestamp - same filename always overwrites
-			vars["output_file"] = fmt.Sprintf("%s_%s%s", ctx.ToolName, sanitizedTarget, workflowID)
+			// No timestamp - same filename always overwrites (include mode for uniqueness)
+			vars["output_file"] = fmt.Sprintf("%s_%s_%s%s", ctx.ToolName, ctx.Mode, sanitizedTarget, workflowID)
 		case "timestamp":
-			// Include timestamp for unique files
-			vars["output_file"] = fmt.Sprintf("%s_%s%s_%s", ctx.ToolName, sanitizedTarget, workflowID, timestamp)
+			// Include timestamp for unique files (include mode for uniqueness)
+			vars["output_file"] = fmt.Sprintf("%s_%s_%s%s_%s", ctx.ToolName, ctx.Mode, sanitizedTarget, workflowID, timestamp)
 		case "both":
-			// Default to timestamped, but we'll also create a latest link
-			vars["output_file"] = fmt.Sprintf("%s_%s%s_%s", ctx.ToolName, sanitizedTarget, workflowID, timestamp)
-			vars["output_file_latest"] = fmt.Sprintf("%s_%s%s_latest", ctx.ToolName, sanitizedTarget, workflowID)
+			// Default to timestamped, but we'll also create a latest link (include mode for uniqueness)
+			vars["output_file"] = fmt.Sprintf("%s_%s_%s%s_%s", ctx.ToolName, ctx.Mode, sanitizedTarget, workflowID, timestamp)
+			vars["output_file_latest"] = fmt.Sprintf("%s_%s_%s%s_latest", ctx.ToolName, ctx.Mode, sanitizedTarget, workflowID)
 		default:
-			// Fallback to timestamp mode
-			vars["output_file"] = fmt.Sprintf("%s_%s%s_%s", ctx.ToolName, sanitizedTarget, workflowID, timestamp)
+			// Fallback to timestamp mode (include mode for uniqueness)
+			vars["output_file"] = fmt.Sprintf("%s_%s_%s%s_%s", ctx.ToolName, ctx.Mode, sanitizedTarget, workflowID, timestamp)
 		}
 	} else {
 		vars["output_file"] = ctx.OutputFile
@@ -357,6 +382,13 @@ func (tr *TemplateResolver) ClearMagicVariables() {
 	tr.magicMutex.Lock()
 	defer tr.magicMutex.Unlock()
 	tr.magicVars = make(map[string]string)
+}
+
+// ClearArgumentCache clears the resolved argument cache (useful for testing or memory management)
+func (tr *TemplateResolver) ClearArgumentCache() {
+	tr.cacheMutex.Lock()
+	defer tr.cacheMutex.Unlock()
+	tr.argCache = make(map[string][]string)
 }
 
 // MapWorkflowVariable maps a workflow variable from source to target name

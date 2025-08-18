@@ -13,8 +13,8 @@
 #   execution.exec_validation: true
 #
 tool_execution:
-  max_concurrent_executions: 3
-  max_parallel_executions: 2
+  max_concurrent_executions: 8
+  max_parallel_executions: 8
 
 # Workflow orchestration configuration
 workflow_orchestration:
@@ -42,7 +42,7 @@ retry_attempts: 3               # Increased retries - unlocked by default
 cli_mode:
   execution_timeout_seconds: 300  # Total CLI execution timeout - much longer for port scans
   workflow_timeout_seconds: 180   # Individual workflow timeout  
-  step_timeout_seconds: 150       # Individual step timeout - much longer for port scans
+  step_timeout_seconds: 300       # Individual step timeout - much longer for port scans
   validate_output: false          # Validate that tools create expected output files - disabled for speed
 
 # argv policy - unlocked by default  

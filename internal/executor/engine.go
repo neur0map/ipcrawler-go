@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -14,7 +15,140 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/neur0map/ipcrawler/internal/config"
+	"github.com/neur0map/ipcrawler/internal/output"
 )
+
+// ANSI color codes for terminal output
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue   = "\033[34m"
+	colorCyan   = "\033[36m"
+	colorGray   = "\033[90m"
+	colorBold   = "\033[1m"
+)
+
+// ToolError represents a tool execution error with context
+type ToolError struct {
+	ToolName    string    `json:"tool_name"`
+	Mode        string    `json:"mode"`
+	Target      string    `json:"target"`
+	Command     []string  `json:"command"`
+	ExitCode    int       `json:"exit_code"`
+	Stderr      string    `json:"stderr"`
+	Stdout      string    `json:"stdout"`
+	ErrorMsg    string    `json:"error_message"`
+	Timestamp   time.Time `json:"timestamp"`
+	Duration    time.Duration `json:"duration"`
+}
+
+// ErrorHandler manages tool error reporting and logging
+type ErrorHandler struct {
+	workspaceDir string
+	outputMode   output.OutputMode
+	errorLogger  *log.Logger
+	mutex        sync.Mutex
+}
+
+// NewErrorHandler creates a new error handler
+func NewErrorHandler(workspaceDir string, outputMode output.OutputMode) *ErrorHandler {
+	return &ErrorHandler{
+		workspaceDir: workspaceDir,
+		outputMode:   outputMode,
+	}
+}
+
+// SetupErrorLogging initializes error logging to workspace
+func (eh *ErrorHandler) SetupErrorLogging() error {
+	if eh.workspaceDir == "" {
+		return nil // No workspace set yet
+	}
+	
+	eh.mutex.Lock()
+	defer eh.mutex.Unlock()
+	
+	// Create error log directory
+	errorDir := filepath.Join(eh.workspaceDir, "logs", "errors")
+	if err := os.MkdirAll(errorDir, 0755); err != nil {
+		return fmt.Errorf("failed to create error log directory: %w", err)
+	}
+	
+	// Open error log file
+	errorLogPath := filepath.Join(errorDir, "error.log")
+	errorFile, err := os.OpenFile(errorLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open error log file: %w", err)
+	}
+	
+	// Create error logger
+	eh.errorLogger = log.New(errorFile)
+	eh.errorLogger.SetReportCaller(false)
+	eh.errorLogger.SetReportTimestamp(true)
+	eh.errorLogger.SetLevel(log.ErrorLevel)
+	
+	return nil
+}
+
+// HandleToolError processes and reports tool execution errors
+func (eh *ErrorHandler) HandleToolError(toolErr *ToolError) {
+	eh.mutex.Lock()
+	defer eh.mutex.Unlock()
+	
+	// Log to error file if available
+	if eh.errorLogger != nil {
+		eh.errorLogger.Error("Tool execution failed",
+			"tool", toolErr.ToolName,
+			"mode", toolErr.Mode,
+			"target", toolErr.Target,
+			"exit_code", toolErr.ExitCode,
+			"duration", toolErr.Duration,
+			"error", toolErr.ErrorMsg,
+			"stderr", toolErr.Stderr)
+	}
+	
+	// Display to user based on output mode
+	switch eh.outputMode {
+	case output.OutputModeNormal:
+		// Short error message for normal mode
+		eh.displayShortError(toolErr)
+	case output.OutputModeVerbose, output.OutputModeDebug:
+		// Detailed error message for verbose/debug mode
+		eh.displayDetailedError(toolErr)
+	}
+}
+
+// displayShortError shows a brief error message for normal mode
+func (eh *ErrorHandler) displayShortError(toolErr *ToolError) {
+	fmt.Printf("\n%s⚠️  %s [%s] failed%s\n", colorYellow, toolErr.ToolName, toolErr.Mode, colorReset)
+}
+
+// displayDetailedError shows comprehensive error information for verbose/debug mode
+func (eh *ErrorHandler) displayDetailedError(toolErr *ToolError) {
+	fmt.Printf("\n%s════════════════════════════════════════════════════════════════════════════════%s\n", colorRed, colorReset)
+	fmt.Printf("%s%s⚠️  ERROR: %s [%s] failed%s%s\n", colorBold, colorRed, toolErr.ToolName, toolErr.Mode, colorReset, colorReset)
+	fmt.Printf("%s════════════════════════════════════════════════════════════════════════════════%s\n", colorRed, colorReset)
+	
+	fmt.Printf("%sTarget:%s %s\n", colorCyan, colorReset, toolErr.Target)
+	fmt.Printf("%sCommand:%s %s\n", colorCyan, colorReset, strings.Join(toolErr.Command, " "))
+	fmt.Printf("%sExit Code:%s %d\n", colorCyan, colorReset, toolErr.ExitCode)
+	fmt.Printf("%sDuration:%s %v\n", colorCyan, colorReset, toolErr.Duration)
+	
+	if toolErr.ErrorMsg != "" {
+		fmt.Printf("%sError:%s %s\n", colorCyan, colorReset, toolErr.ErrorMsg)
+	}
+	
+	if toolErr.Stderr != "" {
+		fmt.Printf("%sStderr:%s\n%s\n", colorCyan, colorReset, toolErr.Stderr)
+	}
+	
+	if toolErr.Stdout != "" && len(toolErr.Stdout) < 500 {
+		fmt.Printf("%sStdout:%s\n%s\n", colorCyan, colorReset, toolErr.Stdout)
+	}
+	
+	fmt.Printf("%s────────────────────────────────────────────────────────────────────────────────%s\n", colorGray, colorReset)
+}
 
 // ExecutionResult represents the result of a tool execution
 type ExecutionResult struct {
@@ -40,6 +174,7 @@ type ExecutionOptions struct {
 	Environment    map[string]string // Additional environment variables
 	CaptureOutput  bool              // Whether to capture stdout/stderr
 	ValidateOutput bool              // Whether to validate output file was created
+	Priority       int               // Execution priority for concurrency queue (higher = more priority)
 }
 
 // ToolExecutionEngine orchestrates tool execution with template resolution
@@ -52,7 +187,10 @@ type ToolExecutionEngine struct {
 	magicVarManager  *MagicVariableManager
 	workspaceBase    string // Base workspace directory for this execution session
 	
-	// Concurrency control
+	// Dynamic concurrency control
+	concurrencyManager *ConcurrencyManager
+	
+	// Legacy concurrency control (deprecated but kept for compatibility)
 	concurrentSem    chan struct{}
 	parallelSem      chan struct{}
 	runningMutex     sync.RWMutex
@@ -65,10 +203,16 @@ type ToolExecutionEngine struct {
 	// Loggers for different output types
 	debugLogger *log.Logger
 	infoLogger  *log.Logger
+	
+	// Output controller for console display
+	outputController *output.OutputController
+	
+	// Error handling
+	errorHandler *ErrorHandler
 }
 
 // NewToolExecutionEngine creates a new tool execution engine  
-func NewToolExecutionEngine(globalConfig *config.Config, toolsPath string) *ToolExecutionEngine {
+func NewToolExecutionEngine(globalConfig *config.Config, toolsPath string, outputMode output.OutputMode) *ToolExecutionEngine {
 	// If toolsPath is empty, use the configured tools path or default to allowing system PATH
 	if toolsPath == "" && globalConfig != nil {
 		toolsPath = globalConfig.Tools.Execution.ToolsPath
@@ -85,6 +229,15 @@ func NewToolExecutionEngine(globalConfig *config.Config, toolsPath string) *Tool
 		maxParallel = globalConfig.Tools.ToolExecution.MaxParallelExecutions
 	}
 	
+	// Create dynamic concurrency limits based on total concurrent limit
+	// Fast tools get more slots, heavy tools get fewer
+	fastLimit := maxConcurrent * 2     // 2x multiplier for fast tools
+	mediumLimit := maxConcurrent       // 1x multiplier for medium tools  
+	heavyLimit := maxConcurrent / 2    // 0.5x multiplier for heavy tools
+	if heavyLimit < 1 {
+		heavyLimit = 1 // Always allow at least 1 heavy tool
+	}
+	
 	// Config loader always uses "./tools" for config files
 	configToolsPath := "./tools"
 	
@@ -99,6 +252,17 @@ func NewToolExecutionEngine(globalConfig *config.Config, toolsPath string) *Tool
 	infoLogger := log.New(os.Stderr) 
 	infoLogger.SetLevel(log.InfoLevel)
 	
+	// Create error handler  
+	errorHandler := NewErrorHandler("", outputMode)
+	
+	// Create dynamic concurrency manager
+	concurrencyLimits := ConcurrencyLimits{
+		FastToolLimit:   fastLimit,
+		MediumToolLimit: mediumLimit,
+		HeavyToolLimit:  heavyLimit,
+	}
+	concurrencyManager := NewConcurrencyManager(concurrencyLimits, debugLogger)
+	
 	return &ToolExecutionEngine{
 		configLoader:     NewToolConfigLoader(configToolsPath),
 		templateResolver: NewTemplateResolver(globalConfig),
@@ -109,8 +273,15 @@ func NewToolExecutionEngine(globalConfig *config.Config, toolsPath string) *Tool
 		workspaceBase:    "", // Will be set by SetWorkspaceBase if needed
 		debugLogger:      debugLogger,
 		infoLogger:       infoLogger,
+		outputController: output.NewOutputController(outputMode),
 		
-		// Initialize concurrency control
+		// Dynamic concurrency control
+		concurrencyManager: concurrencyManager,
+		
+		// Error handling
+		errorHandler: errorHandler,
+		
+		// Legacy concurrency control (kept for compatibility)
 		concurrentSem:    make(chan struct{}, maxConcurrent),
 		parallelSem:      make(chan struct{}, maxParallel),
 		runningTools:     make(map[string]int),
@@ -123,6 +294,45 @@ func NewToolExecutionEngine(globalConfig *config.Config, toolsPath string) *Tool
 // SetWorkspaceBase sets the base workspace directory for this execution session
 func (tee *ToolExecutionEngine) SetWorkspaceBase(workspaceDir string) {
 	tee.workspaceBase = workspaceDir
+	
+	// Setup error logging for this workspace
+	if tee.errorHandler != nil {
+		tee.errorHandler.workspaceDir = workspaceDir
+		if err := tee.errorHandler.SetupErrorLogging(); err != nil {
+			// Log setup error but don't fail
+			if tee.debugLogger != nil {
+				tee.debugLogger.Error("Failed to setup error logging", "error", err)
+			}
+		}
+	}
+}
+
+// SetOutputMode configures the output mode for logging
+func (tee *ToolExecutionEngine) SetOutputMode(mode output.OutputMode) {
+	// Update the output controller if it exists
+	if tee.outputController != nil {
+		tee.outputController = output.NewOutputController(mode)
+	}
+	
+	// Update error handler output mode
+	if tee.errorHandler != nil {
+		tee.errorHandler.outputMode = mode
+	}
+	
+	// Update concurrency manager logger level based on output mode
+	if tee.concurrencyManager != nil {
+		switch mode {
+		case output.OutputModeDebug:
+			// Debug mode: show debug messages
+			tee.concurrencyManager.SetLogLevel(log.DebugLevel)
+		case output.OutputModeVerbose:
+			// Verbose mode: show info and above
+			tee.concurrencyManager.SetLogLevel(log.InfoLevel)
+		default:
+			// Normal mode: suppress debug messages
+			tee.concurrencyManager.SetLogLevel(log.WarnLevel)
+		}
+	}
 }
 
 // SetWorkspaceLoggers sets up loggers that write to workspace log files
@@ -145,8 +355,15 @@ func (tee *ToolExecutionEngine) SetWorkspaceLoggers(workspaceDir string) error {
 		return fmt.Errorf("failed to open debug log file: %v", err)
 	}
 	
-	// Create MultiWriter to write to both stderr and file
-	debugMultiWriter := io.MultiWriter(os.Stderr, debugFile)
+	// Create MultiWriter based on output mode (check if outputController exists to get mode)
+	var debugMultiWriter io.Writer
+	if tee.outputController != nil && (tee.outputController.ShouldShowLogs()) {
+		// In verbose/debug mode, write to both stderr and file
+		debugMultiWriter = io.MultiWriter(os.Stderr, debugFile)
+	} else {
+		// In normal mode, write only to file
+		debugMultiWriter = debugFile
+	}
 	tee.debugLogger = log.New(debugMultiWriter)
 	tee.debugLogger.SetReportCaller(false)
 	tee.debugLogger.SetReportTimestamp(true)
@@ -159,8 +376,15 @@ func (tee *ToolExecutionEngine) SetWorkspaceLoggers(workspaceDir string) error {
 		return fmt.Errorf("failed to open info log file: %v", err)
 	}
 	
-	// Create MultiWriter to write to both stderr and file
-	infoMultiWriter := io.MultiWriter(os.Stderr, infoFile)
+	// Create MultiWriter based on output mode
+	var infoMultiWriter io.Writer
+	if tee.outputController != nil && (tee.outputController.ShouldShowLogs()) {
+		// In verbose/debug mode, write to both stderr and file
+		infoMultiWriter = io.MultiWriter(os.Stderr, infoFile)
+	} else {
+		// In normal mode, write only to file
+		infoMultiWriter = infoFile
+	}
 	tee.infoLogger = log.New(infoMultiWriter)
 	tee.infoLogger.SetReportCaller(false)
 	tee.infoLogger.SetReportTimestamp(true)
@@ -257,50 +481,37 @@ func (tee *ToolExecutionEngine) ExecuteToolWithContext(ctx context.Context, tool
 		Success:   false,
 	}
 
-	// Acquire concurrent execution semaphore
-	select {
-	case tee.concurrentSem <- struct{}{}:
-		defer func() { <-tee.concurrentSem }()
-	case <-ctx.Done():
-		result.ErrorMessage = "execution cancelled while waiting for concurrent slot"
+	// Determine priority from options or use default
+	priority := 100 // Default medium priority
+	if options != nil && options.Priority > 0 {
+		priority = options.Priority
+	}
+	
+	// Debug: Log the priority being used (only in debug mode)
+	if tee.debugLogger.GetLevel() <= log.DebugLevel {
+		tee.debugLogger.Debug("Requesting execution slot", "tool", toolName, "mode", mode, "priority", priority)
+	}
+	
+	// Request execution slot from dynamic concurrency manager
+	executionRequest, err := tee.concurrencyManager.RequestExecution(ctx, toolName, priority)
+	if err != nil {
+		result.ErrorMessage = fmt.Sprintf("failed to request execution slot: %v", err)
 		result.EndTime = time.Now()
 		result.Duration = result.EndTime.Sub(result.StartTime)
-		return result, ctx.Err()
-	}
-
-	// Check if we can run this tool in parallel (based on tool-specific limits)
-	tee.runningMutex.Lock()
-	currentRunning := tee.runningTools[toolName]
-	
-	// If this tool is already running and we're at the parallel limit, acquire parallel semaphore
-	needsParallelSem := currentRunning >= 1
-	
-	if needsParallelSem {
-		tee.runningMutex.Unlock()
-		select {
-		case tee.parallelSem <- struct{}{}:
-			defer func() { <-tee.parallelSem }()
-		case <-ctx.Done():
-			result.ErrorMessage = "execution cancelled while waiting for parallel slot"
-			result.EndTime = time.Now()
-			result.Duration = result.EndTime.Sub(result.StartTime)
-			return result, ctx.Err()
-		}
-		tee.runningMutex.Lock()
+		return result, err
 	}
 	
-	// Track this execution
-	tee.runningTools[toolName]++
-	tee.runningMutex.Unlock()
+	// Wait for execution slot to become available
+	if err := executionRequest.WaitForExecution(); err != nil {
+		result.ErrorMessage = "execution cancelled while waiting for slot"
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(result.StartTime)
+		return result, err
+	}
 	
-	// Ensure we decrement the counter when done
+	// Ensure we release the execution slot when done
 	defer func() {
-		tee.runningMutex.Lock()
-		tee.runningTools[toolName]--
-		if tee.runningTools[toolName] <= 0 {
-			delete(tee.runningTools, toolName)
-		}
-		tee.runningMutex.Unlock()
+		tee.concurrencyManager.ReleaseExecution(executionRequest)
 	}()
 
 	// Load tool configuration
@@ -409,7 +620,7 @@ func (tee *ToolExecutionEngine) ExecuteToolWithContext(ctx context.Context, tool
 	execContext, cancel := context.WithTimeout(ctx, options.Timeout)
 	defer cancel()
 
-	// Ensure all workspace directories exist
+	// Only create directories that don't already exist (performance optimization)
 	dirsToCreate := []string{
 		execCtx.Workspace,
 		execCtx.ScansDir,
@@ -420,11 +631,14 @@ func (tee *ToolExecutionEngine) ExecuteToolWithContext(ctx context.Context, tool
 	
 	for _, dir := range dirsToCreate {
 		if dir != "" {
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				result.ErrorMessage = fmt.Sprintf("failed to create directory %s: %v", dir, err)
-				result.EndTime = time.Now()
-				result.Duration = result.EndTime.Sub(result.StartTime)
-				return result, err
+			// Check if directory already exists before creating (CLI mode pre-creates these)
+			if _, err := os.Stat(dir); os.IsNotExist(err) {
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					result.ErrorMessage = fmt.Sprintf("failed to create directory %s: %v", dir, err)
+					result.EndTime = time.Now()
+					result.Duration = result.EndTime.Sub(result.StartTime)
+					return result, err
+				}
 			}
 		}
 	}
@@ -432,17 +646,9 @@ func (tee *ToolExecutionEngine) ExecuteToolWithContext(ctx context.Context, tool
 	// Build variable map for template resolution
 	vars := tee.templateResolver.buildVariableMap(execCtx)
 
-	// Store the expected output path
+	// Store the expected output path (remove hardcoded tool-specific extensions)
 	if outputPath, exists := vars["output_path"]; exists {
 		result.OutputPath = outputPath
-		
-		// For certain tools, we need to append the file extension that they use
-		// This is needed because the template resolves to base path but tools add extensions
-		if toolName == "naabu" && !strings.HasSuffix(outputPath, ".json") {
-			result.OutputPath = outputPath + ".json"
-		} else if toolName == "nmap" && !strings.HasSuffix(outputPath, ".xml") {
-			result.OutputPath = outputPath + ".xml"
-		}
 	}
 
 	// Prepare output buffers
@@ -478,21 +684,101 @@ func (tee *ToolExecutionEngine) ExecuteToolWithContext(ctx context.Context, tool
 			execCmd.Env = append(execCmd.Env, fmt.Sprintf("%s=%s", key, value))
 		}
 
-		// Capture output if requested
+		// Set up pipes for real-time output streaming
+		var stdoutPipe, stderrPipe io.ReadCloser
 		if options.CaptureOutput {
-			// Use MultiWriter to show output in real-time AND capture it
-			stdoutMultiWriter := io.MultiWriter(os.Stdout, &stdoutBuf)
-			stderrMultiWriter := io.MultiWriter(os.Stderr, &stderrBuf)
-			execCmd.Stdout = stdoutMultiWriter
-			execCmd.Stderr = stderrMultiWriter
+			stdoutPipe, _ = execCmd.StdoutPipe()
+			stderrPipe, _ = execCmd.StderrPipe()
+		} else {
+			// If not capturing, just connect directly to console
+			execCmd.Stdout = os.Stdout
+			execCmd.Stderr = os.Stderr
 		}
 
-		// Run the command
-		tee.debugLogger.Debug("Running command", "attempt", attempt+1, "max_attempts", retryAttempts+1)
-		tee.writeDebugLog("Running command (attempt %d/%d)...", attempt+1, retryAttempts+1)
-		lastErr = execCmd.Run()
+		// Start the command
+		tee.debugLogger.Debug("Starting command", "attempt", attempt+1, "max_attempts", retryAttempts+1)
+		tee.writeDebugLog("Starting command (attempt %d/%d)...", attempt+1, retryAttempts+1)
+		
+		// We'll print the separator later with the output to avoid mixed outputs
+		
+		if err := execCmd.Start(); err != nil {
+			lastErr = err
+			tee.debugLogger.Debug("Failed to start command", "error", lastErr)
+			continue
+		}
+
+		// Buffer output instead of streaming in real-time to avoid mixed outputs
+		if options.CaptureOutput {
+			var wg sync.WaitGroup
+			wg.Add(2)
+
+			// Buffer stdout
+			go func() {
+				defer wg.Done()
+				scanner := bufio.NewScanner(stdoutPipe)
+				for scanner.Scan() {
+					line := scanner.Text()
+					stdoutBuf.WriteString(line + "\n") // Just buffer, don't display yet
+				}
+			}()
+
+			// Buffer stderr
+			go func() {
+				defer wg.Done()
+				scanner := bufio.NewScanner(stderrPipe)
+				for scanner.Scan() {
+					line := scanner.Text()
+					stderrBuf.WriteString(line + "\n") // Just buffer, don't display yet
+				}
+			}()
+
+			// Wait for command to complete
+			lastErr = execCmd.Wait()
+			wg.Wait() // Wait for output buffering to complete
+			
+			// Now display the complete output atomically using the synchronized method
+			// Display output if there's actual content or if it's the successful attempt
+			stdout := stdoutBuf.String()
+			stderr := stderrBuf.String()
+			hasOutput := stdout != "" || stderr != ""
+			
+			if hasOutput || lastErr == nil {
+				hasError := lastErr != nil
+				tee.outputController.PrintCompleteToolOutput(toolName, mode, stdout, stderr, hasError)
+			}
+		} else {
+			// Just wait for command if not capturing
+			lastErr = execCmd.Wait()
+		}
+
 		tee.debugLogger.Debug("Command completed", "error", lastErr)
 		tee.writeDebugLog("Command completed with error: %v", lastErr)
+
+		// Handle tool errors if execution failed
+		if lastErr != nil {
+			toolErr := &ToolError{
+				ToolName:  toolName,
+				Mode:      mode,
+				Target:    target,
+				Command:   append([]string{toolExecutable}, resolvedArgs...),
+				ExitCode:  -1, // Will be updated below if possible
+				Stderr:    stderrBuf.String(),
+				Stdout:    stdoutBuf.String(),
+				ErrorMsg:  lastErr.Error(),
+				Timestamp: time.Now(),
+				Duration:  time.Since(startTime),
+			}
+			
+			// Extract exit code if available
+			if exitErr, ok := lastErr.(*exec.ExitError); ok {
+				toolErr.ExitCode = exitErr.ExitCode()
+			}
+			
+			// Report the error
+			if tee.errorHandler != nil {
+				tee.errorHandler.HandleToolError(toolErr)
+			}
+		}
 
 		// Store captured output in result
 		if options.CaptureOutput {
@@ -515,6 +801,7 @@ func (tee *ToolExecutionEngine) ExecuteToolWithContext(ctx context.Context, tool
 			// Success
 			result.Success = true
 			result.ExitCode = 0
+			// Tool end marker is now handled in PrintCompleteToolOutput
 			break
 		}
 
@@ -575,7 +862,7 @@ func (tee *ToolExecutionEngine) ExecuteToolWithContext(ctx context.Context, tool
 	if result.Success && result.OutputPath != "" {
 		if err := tee.processToolOutputForMagicVariables(toolName, []string{result.OutputPath}); err != nil {
 			// Log warning but don't fail the execution
-			fmt.Printf("Warning: Failed to process magic variables for %s: %v\n", toolName, err)
+			tee.outputController.PrintWarning("Failed to process magic variables for %s: %v", toolName, err)
 		}
 	}
 
@@ -781,23 +1068,31 @@ func (tee *ToolExecutionEngine) PreviewCommandWithContext(toolName, mode, target
 
 // GetExecutionStatus returns information about current executions
 func (tee *ToolExecutionEngine) GetExecutionStatus() map[string]interface{} {
+	// Get dynamic concurrency status
+	dynamicStatus := tee.concurrencyManager.GetStatus()
+	
+	// Add legacy status for compatibility
 	tee.runningMutex.RLock()
 	defer tee.runningMutex.RUnlock()
 	
-	status := map[string]interface{}{
+	legacyStatus := map[string]interface{}{
 		"concurrent_slots_available": cap(tee.concurrentSem) - len(tee.concurrentSem),
 		"concurrent_slots_total":     cap(tee.concurrentSem),
 		"parallel_slots_available":   cap(tee.parallelSem) - len(tee.parallelSem),
 		"parallel_slots_total":       cap(tee.parallelSem),
-		"running_tools":              make(map[string]int),
+		"running_tools_legacy":       make(map[string]int),
 	}
 	
-	// Copy running tools map
+	// Copy legacy running tools map
 	runningTools := make(map[string]int)
 	for tool, count := range tee.runningTools {
 		runningTools[tool] = count
 	}
-	status["running_tools"] = runningTools
+	legacyStatus["running_tools_legacy"] = runningTools
+	
+	// Merge dynamic and legacy status
+	status := dynamicStatus
+	status["legacy"] = legacyStatus
 	
 	return status
 }

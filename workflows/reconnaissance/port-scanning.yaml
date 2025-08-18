@@ -12,13 +12,13 @@ steps:
   - name: "Multi-Mode Port Discovery"
     tool: "naabu"
     description: "Parallel execution of multiple naabu scan modes for comprehensive coverage"
-    modes: ["fast_scan", "common_ports"]
+    modes: ["fast_scan"]
     concurrent: true               # Run all modes in parallel
     combine_results: true          # Combine results from all modes
     
     # Enhanced step-level parallelism controls
     step_priority: "high"          # High priority for port discovery
-    max_concurrent_tools: 2        # Run up to 2 naabu instances simultaneously
+    max_concurrent_tools: 1       # Run up to 2 naabu instances simultaneously
     
     outputs:
       variables:

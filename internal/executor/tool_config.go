@@ -94,8 +94,7 @@ func (tcl *ToolConfigLoader) LoadAllToolConfigs() (map[string]*ToolConfig, error
 		toolName := entry.Name()
 		config, err := tcl.LoadToolConfig(toolName)
 		if err != nil {
-			// Log error but continue with other tools
-			fmt.Printf("Warning: failed to load config for tool %s: %v\n", toolName, err)
+			// Log error but continue with other tools - silently continue to avoid console spam
 			continue
 		}
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -13,11 +14,12 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+	"github.com/spf13/pflag"
 
 	"github.com/charmbracelet/log"
-
 	"github.com/neur0map/ipcrawler/internal/config"
 	"github.com/neur0map/ipcrawler/internal/executor"
+	"github.com/neur0map/ipcrawler/internal/output"
 )
 
 // isValidHostname performs basic hostname validation
@@ -194,7 +196,8 @@ func discoverAllWorkflows() (map[string]*executor.Workflow, error) {
 		if strings.HasSuffix(d.Name(), ".yaml") {
 			workflow, err := loadWorkflowFromPath(path)
 			if err != nil {
-				log.Warn("Failed to load workflow", "path", path, "error", err)
+				// Log warning using simple fmt for now (logger will be enhanced separately)
+				fmt.Fprintf(os.Stderr, "WARN: Failed to load workflow %s: %v\n", path, err)
 				return nil // Continue processing other files
 			}
 			
@@ -208,15 +211,27 @@ func discoverAllWorkflows() (map[string]*executor.Workflow, error) {
 	return workflows, err
 }
 
+
 // runCLI executes all workflows in CLI mode without TUI
-func runCLI(target string) error {
-	// Initialize logger for CLI output
-	logger := log.NewWithOptions(os.Stderr, log.Options{
-		ReportCaller:    false,
-		ReportTimestamp: true,
-		TimeFormat:      time.Kitchen,
-		Prefix:          "IPCrawler CLI",
-	})
+func runCLI(target string, outputMode output.OutputMode) error {
+	// Initialize logger for CLI output - suppress if not in verbose/debug mode
+	var logger *log.Logger
+	if outputMode == output.OutputModeVerbose || outputMode == output.OutputModeDebug {
+		logger = log.NewWithOptions(os.Stderr, log.Options{
+			ReportCaller:    false,
+			ReportTimestamp: true,
+			TimeFormat:      time.Kitchen,
+			Prefix:          "IPCrawler CLI",
+		})
+	} else {
+		// In normal mode, create a silent logger (sends to /dev/null)
+		logger = log.NewWithOptions(io.Discard, log.Options{
+			ReportCaller:    false,
+			ReportTimestamp: true,
+			TimeFormat:      time.Kitchen,
+			Prefix:          "IPCrawler CLI",
+		})
+	}
 	
 	logger.Info("=== IPCrawler CLI Mode ===", "target", target)
 	
@@ -262,6 +277,13 @@ func runCLI(target string) error {
 		return fmt.Errorf("no workflows found in workflows directory")
 	}
 	
+	// Initialize output controller for tree display
+	outputController := output.NewOutputController(outputMode)
+	globalOutputController = outputController
+	
+	// Display workflow tree (always shown regardless of output mode)
+	outputController.PrintWorkflowTree("workflows", nil)
+	
 	// Log discovered workflows
 	workflowNames := make([]string, 0, len(workflows))
 	for name, workflow := range workflows {
@@ -272,10 +294,13 @@ func runCLI(target string) error {
 	logger.Info("Starting workflow execution", "count", len(workflows), "workflows", strings.Join(workflowNames, ", "))
 	
 	// Initialize execution engine and orchestrator
-	executionEngine := executor.NewToolExecutionEngine(cfg, "")
+	executionEngine := executor.NewToolExecutionEngine(cfg, "", outputMode)
 	
 	// Set the workspace base directory for consistent path resolution
 	executionEngine.SetWorkspaceBase(workspaceDir)
+	
+	// Set output mode explicitly (in case it's needed)
+	executionEngine.SetOutputMode(outputMode)
 	
 	// Set up workspace logging for tool execution engine
 	if err := executionEngine.SetWorkspaceLoggers(workspaceDir); err != nil {
@@ -284,6 +309,9 @@ func runCLI(target string) error {
 	
 	workflowExecutor := executor.NewWorkflowExecutor(executionEngine)
 	workflowOrchestrator := executor.NewWorkflowOrchestrator(workflowExecutor, cfg)
+	
+	// Set output mode before setting up loggers
+	workflowOrchestrator.SetOutputMode(outputMode)
 	
 	// Set up workspace logging for workflow orchestrator
 	if err := workflowOrchestrator.SetWorkspaceLoggers(workspaceDir); err != nil {
@@ -418,13 +446,21 @@ func setGlobalLoggers(debugLogger, infoLogger, rawLogger *log.Logger) {
 	globalRawLogger = rawLogger
 }
 
+// Global output controller for use across the application
+var globalOutputController *output.OutputController
+
 // logDebug writes debug messages to both console and file
 func logDebug(msg string, args ...interface{}) {
-	// Always show on console for CLI mode
-	if len(args) > 0 {
-		fmt.Printf("[DEBUG] "+msg+"\n", args...)
+	// Use output controller if available, otherwise fallback to direct printing
+	if globalOutputController != nil {
+		globalOutputController.PrintLog("DEBUG", msg, args...)
 	} else {
-		fmt.Printf("[DEBUG] %s\n", msg)
+		// Fallback for when output controller is not yet set
+		if len(args) > 0 {
+			fmt.Printf("[DEBUG] "+msg+"\n", args...)
+		} else {
+			fmt.Printf("[DEBUG] %s\n", msg)
+		}
 	}
 	
 	// Also write to file if available
@@ -439,10 +475,15 @@ func logDebug(msg string, args ...interface{}) {
 
 // logRaw writes raw tool output to both console and file
 func logRaw(toolName, mode, output string) {
-	// Always show on console for CLI mode
-	fmt.Printf("\n=== RAW OUTPUT: %s %s ===\n", toolName, mode)
-	fmt.Print(output)
-	fmt.Printf("=== END OUTPUT ===\n\n")
+	// Use output controller if available, otherwise fallback to direct printing
+	if globalOutputController != nil {
+		globalOutputController.PrintRawSection(toolName, mode, output)
+	} else {
+		// Fallback for when output controller is not yet set
+		fmt.Printf("\n=== RAW OUTPUT: %s %s ===\n", toolName, mode)
+		fmt.Print(output)
+		fmt.Printf("=== END OUTPUT ===\n\n")
+	}
 	
 	// Also write to file if available
 	if globalRawLogger != nil {
@@ -451,29 +492,73 @@ func logRaw(toolName, mode, output string) {
 }
 
 func main() {
-	// Check for registry command line arguments first
-	if len(os.Args) > 1 && os.Args[1] == "registry" {
-		if err := runRegistryCommand(os.Args[1:]); err != nil {
+	// Define flags
+	var (
+		verbose = pflag.BoolP("verbose", "v", false, "Show both logs and raw tool output")
+		debug   = pflag.BoolP("debug", "d", false, "Show only logs, no raw tool output")
+		help    = pflag.BoolP("help", "h", false, "Show this help message")
+	)
+	
+	// Parse flags
+	pflag.Parse()
+	
+	// Show help if requested
+	if *help {
+		fmt.Fprintf(os.Stderr, "Usage: %s [FLAGS] <target>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "       %s registry <command>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\nFlags:\n")
+		pflag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nOutput Modes:\n")
+		fmt.Fprintf(os.Stderr, "  Normal (default): Only raw tool output\n")
+		fmt.Fprintf(os.Stderr, "  -v, --verbose:    Both logs and raw tool output\n")
+		fmt.Fprintf(os.Stderr, "  -d, --debug:      Only logs, no raw tool output\n")
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  %s google.com\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -v 192.168.1.1\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s --debug example.com\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s registry list\n", os.Args[0])
+		os.Exit(0)
+	}
+	
+	// Get remaining arguments after flag parsing
+	args := pflag.Args()
+	
+	// Check for registry command
+	if len(args) > 0 && args[0] == "registry" {
+		if err := runRegistryCommand(args); err != nil {
 			fmt.Fprintf(os.Stderr, "Registry command failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 	
-	// CLI mode is now the default - require target argument
-	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: %s <target>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "       %s registry <command>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "\nExamples:\n")
-		fmt.Fprintf(os.Stderr, "  %s google.com\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s 192.168.1.1\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s registry list\n", os.Args[0])
+	// Require target argument
+	if len(args) < 1 {
+		fmt.Fprintf(os.Stderr, "Error: target argument is required\n")
+		fmt.Fprintf(os.Stderr, "Usage: %s [FLAGS] <target>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Use --help for more information\n")
 		os.Exit(1)
 	}
 	
-	// Run CLI with target
-	target := os.Args[1]
-	if err := runCLI(target); err != nil {
+	// Determine output mode
+	var outputMode output.OutputMode
+	if *debug && *verbose {
+		fmt.Fprintf(os.Stderr, "Error: cannot use both --debug and --verbose flags together\n")
+		os.Exit(1)
+	} else if *debug {
+		outputMode = output.OutputModeDebug
+	} else if *verbose {
+		outputMode = output.OutputModeVerbose
+	} else {
+		outputMode = output.OutputModeNormal
+	}
+	
+	// Set global output controller before running CLI
+	globalOutputController = output.NewOutputController(outputMode)
+	
+	// Run CLI with target and output mode
+	target := args[0]
+	if err := runCLI(target, outputMode); err != nil {
 		fmt.Fprintf(os.Stderr, "CLI execution failed: %v\n", err)
 		os.Exit(1)
 	}

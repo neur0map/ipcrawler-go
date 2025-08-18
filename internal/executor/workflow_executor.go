@@ -6,16 +6,19 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/neur0map/ipcrawler/internal/config"
+	"github.com/neur0map/ipcrawler/internal/output"
 	"github.com/neur0map/ipcrawler/internal/tools/naabu"
 	"github.com/neur0map/ipcrawler/internal/tools/nmap"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/mem"
 )
+
 
 // Workflow represents a complete workflow definition with enhanced parallelism support
 type Workflow struct {
@@ -65,6 +68,20 @@ type WorkflowExecutor struct {
 	combiners map[string]interface{} // tool -> result combiner
 }
 
+// getPriorityFromString converts string priority to numeric priority for concurrency queue
+func getPriorityFromString(priority string) int {
+	switch strings.ToLower(strings.TrimSpace(priority)) {
+	case "high":
+		return 200 // High priority tools execute first
+	case "low": 
+		return 50  // Low priority tools execute last
+	case "medium", "":
+		return 100 // Default medium priority
+	default:
+		return 100 // Fallback to medium for unknown values
+	}
+}
+
 // WorkflowStatusCallback is a callback function for workflow status updates
 type WorkflowStatusCallback func(workflowName, target, status, message string)
 
@@ -83,6 +100,9 @@ type WorkflowOrchestrator struct {
 	// Loggers for different output types
 	debugLogger *log.Logger
 	infoLogger  *log.Logger
+	
+	// Output mode for controlling console logging
+	outputMode   output.OutputMode
 }
 
 // WorkflowExecution tracks the execution state of a workflow
@@ -202,6 +222,11 @@ func (wo *WorkflowOrchestrator) SetStatusCallback(callback WorkflowStatusCallbac
 	wo.statusCallback = callback
 }
 
+// SetOutputMode configures the output mode for logging
+func (wo *WorkflowOrchestrator) SetOutputMode(mode output.OutputMode) {
+	wo.outputMode = mode
+}
+
 // SetWorkspaceLoggers sets up loggers that write to workspace log files
 func (wo *WorkflowOrchestrator) SetWorkspaceLoggers(workspaceDir string) error {
 	debugsDir := filepath.Join(workspaceDir, "logs", "debug")
@@ -222,8 +247,15 @@ func (wo *WorkflowOrchestrator) SetWorkspaceLoggers(workspaceDir string) error {
 		return fmt.Errorf("failed to open debug log file: %v", err)
 	}
 	
-	// Create MultiWriter to write to both stderr and file
-	debugMultiWriter := io.MultiWriter(os.Stderr, debugFile)
+	// Create MultiWriter based on output mode
+	var debugMultiWriter io.Writer
+	if wo.outputMode == output.OutputModeVerbose || wo.outputMode == output.OutputModeDebug {
+		// In verbose/debug mode, write to both stderr and file
+		debugMultiWriter = io.MultiWriter(os.Stderr, debugFile)
+	} else {
+		// In normal mode, write only to file
+		debugMultiWriter = debugFile
+	}
 	wo.debugLogger = log.New(debugMultiWriter)
 	wo.debugLogger.SetReportCaller(false)
 	wo.debugLogger.SetReportTimestamp(true)
@@ -236,8 +268,15 @@ func (wo *WorkflowOrchestrator) SetWorkspaceLoggers(workspaceDir string) error {
 		return fmt.Errorf("failed to open info log file: %v", err)
 	}
 	
-	// Create MultiWriter to write to both stderr and file
-	infoMultiWriter := io.MultiWriter(os.Stderr, infoFile)
+	// Create MultiWriter based on output mode
+	var infoMultiWriter io.Writer
+	if wo.outputMode == output.OutputModeVerbose || wo.outputMode == output.OutputModeDebug {
+		// In verbose/debug mode, write to both stderr and file
+		infoMultiWriter = io.MultiWriter(os.Stderr, infoFile)
+	} else {
+		// In normal mode, write only to file
+		infoMultiWriter = infoFile
+	}
 	wo.infoLogger = log.New(infoMultiWriter)
 	wo.infoLogger.SetReportCaller(false)
 	wo.infoLogger.SetReportTimestamp(true)
@@ -681,6 +720,31 @@ func (we *WorkflowExecutor) ExecuteStepWithWorkflow(ctx context.Context, step *W
 		Results:      []*ExecutionResult{},
 		CombinedVars: make(map[string]string),
 	}
+	
+	// Create a copy of options to modify without affecting the original
+	var stepOptions *ExecutionOptions
+	if options != nil {
+		// Copy existing options
+		stepOptions = &ExecutionOptions{
+			Timeout:        options.Timeout,
+			WorkingDir:     options.WorkingDir,
+			Environment:    options.Environment,
+			CaptureOutput:  options.CaptureOutput,
+			ValidateOutput: options.ValidateOutput,
+			Priority:       options.Priority,
+		}
+	} else {
+		stepOptions = &ExecutionOptions{
+			CaptureOutput: true,
+		}
+	}
+	
+	// Override priority based on step's priority setting
+	if step.StepPriority != "" {
+		stepOptions.Priority = getPriorityFromString(step.StepPriority)
+	} else if stepOptions.Priority == 0 {
+		stepOptions.Priority = 100 // Default medium priority
+	}
 
 	// Apply variable mappings for this step
 	if step.Variables != nil {
@@ -691,7 +755,7 @@ func (we *WorkflowExecutor) ExecuteStepWithWorkflow(ctx context.Context, step *W
 
 	if step.Concurrent && len(step.Modes) > 1 {
 		// Execute all modes in parallel
-		results, err := we.executeModesParallelWithWorkflow(ctx, step, target, workflowName, options)
+		results, err := we.executeModesParallelWithWorkflow(ctx, step, target, workflowName, stepOptions)
 		if err != nil {
 			result.ErrorMessage = err.Error()
 			result.Duration = time.Since(startTime)
@@ -701,7 +765,7 @@ func (we *WorkflowExecutor) ExecuteStepWithWorkflow(ctx context.Context, step *W
 	} else {
 		// Execute modes sequentially
 		for _, mode := range step.Modes {
-			execResult, err := we.engine.ExecuteToolWithContext(ctx, step.Tool, mode, target, workflowName, step.Name, options)
+			execResult, err := we.engine.ExecuteToolWithContext(ctx, step.Tool, mode, target, workflowName, step.Name, stepOptions)
 			if err != nil {
 				result.ErrorMessage = fmt.Sprintf("mode %s failed: %v", mode, err)
 				result.Duration = time.Since(startTime)
