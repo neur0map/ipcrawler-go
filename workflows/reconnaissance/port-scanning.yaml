@@ -41,7 +41,6 @@ steps:
     step_priority: "medium"        # Medium priority for service analysis
     max_concurrent_tools: 1        # Single nmap instance (resource intensive)
     
-    inputs:
-      variables:
-        - name: "combined_naabu_ports"
-          target_variable: "ports"  # Maps combined ports to {{ports}} variable
+    # Variable mapping for pipeline (maps combined_ports from naabu to nmap's expected variable)
+    variables:
+      combined_ports: "combined_ports"  # Use the combined ports from naabu result combiner

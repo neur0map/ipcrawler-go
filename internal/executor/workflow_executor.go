@@ -422,8 +422,8 @@ func (wo *WorkflowOrchestrator) executeWorkflowAsync(ctx context.Context, queueI
 		callback(queueItem.Workflow.Name, queueItem.Target, "started", "Workflow execution started")
 	}
 
-	// Execute workflow steps
-	wo.debugLogger.Printf("Workflow has %d steps", len(queueItem.Workflow.Steps))
+	// Execute workflow steps IN PARALLEL for true simultaneous execution
+	wo.debugLogger.Printf("Workflow has %d steps - executing ALL SIMULTANEOUSLY", len(queueItem.Workflow.Steps))
 	
 	// Check if context is already cancelled
 	select {
@@ -437,40 +437,120 @@ func (wo *WorkflowOrchestrator) executeWorkflowAsync(ctx context.Context, queueI
 		// Continue
 	}
 	
+	// SMART PARALLEL EXECUTION: Respect dependencies while maximizing parallelism
+	stepResults := make([]*WorkflowResult, len(queueItem.Workflow.Steps))
+	stepErrors := make([]error, len(queueItem.Workflow.Steps))
+	stepCompleted := make([]bool, len(queueItem.Workflow.Steps))
+	stepCompletionChans := make([]chan bool, len(queueItem.Workflow.Steps))
+	
+	// Initialize completion channels for each step
+	for i := range queueItem.Workflow.Steps {
+		stepCompletionChans[i] = make(chan bool, 1)
+	}
+	
+	var stepWg sync.WaitGroup
+	
+	// Start all independent steps immediately, dependent steps wait for their dependencies
 	for i, step := range queueItem.Workflow.Steps {
-		execution.CurrentStep = i
-		
-		wo.debugLogger.Printf("Executing step %d/%d: %s (tool: %s, modes: %v)", i+1, len(queueItem.Workflow.Steps), step.Name, step.Tool, step.Modes)
-		
-		// Execute step with default options - get validation setting from config
-		validateOutput := false // Default fallback
-		if wo.config != nil && wo.config.Tools.CLIMode.ValidateOutput {
-			validateOutput = wo.config.Tools.CLIMode.ValidateOutput
-		}
-		
-		options := &ExecutionOptions{
-			CaptureOutput:  true,
-			ValidateOutput: validateOutput,
-		}
-
-		result, err := wo.executor.ExecuteStepWithWorkflow(ctx, step, queueItem.Target, queueItem.Workflow.Name, options)
-		if err != nil {
-			wo.debugLogger.Printf("Step failed: %s - Error: %v", step.Name, err)
-			execution.Error = err
-			execution.Status = WorkflowStatusFailed
-			if callback != nil {
-				callback(queueItem.Workflow.Name, queueItem.Target, "failed", fmt.Sprintf("Step '%s' failed: %v", step.Name, err))
+		stepWg.Add(1)
+		go func(stepIndex int, workflowStep *WorkflowStep) {
+			defer stepWg.Done()
+			defer func() {
+				// Signal completion for dependent steps
+				stepCompletionChans[stepIndex] <- true
+			}()
+			
+			// Wait for dependencies if any
+			if workflowStep.DependsOn != "" {
+				wo.debugLogger.Printf("Step %d (%s) waiting for dependency: %s", stepIndex+1, workflowStep.Name, workflowStep.DependsOn)
+				
+				// Find the dependency step
+				depIndex := -1
+				for j, depStep := range queueItem.Workflow.Steps {
+					if depStep.Name == workflowStep.DependsOn {
+						depIndex = j
+						break
+					}
+				}
+				
+				if depIndex != -1 {
+					// Wait for dependency to complete
+					<-stepCompletionChans[depIndex]
+					wo.debugLogger.Printf("Dependency satisfied for step %d (%s)", stepIndex+1, workflowStep.Name)
+				} else {
+					wo.debugLogger.Printf("WARNING: Dependency '%s' not found for step %d (%s)", workflowStep.DependsOn, stepIndex+1, workflowStep.Name)
+				}
+			} else {
+				wo.debugLogger.Printf("STARTING IMMEDIATELY: Step %d: %s (tool: %s, modes: %v) - NO DEPENDENCIES", stepIndex+1, workflowStep.Name, workflowStep.Tool, workflowStep.Modes)
+				if callback != nil {
+					callback(queueItem.Workflow.Name, queueItem.Target, "step_started", 
+						fmt.Sprintf("Started step %d/%d: %s", stepIndex+1, len(queueItem.Workflow.Steps), workflowStep.Name))
+				}
 			}
-			break
-		}
+			
+			wo.debugLogger.Printf("EXECUTING: Step %d: %s", stepIndex+1, workflowStep.Name)
+			
+			// Execute step with default options - get validation setting from config
+			validateOutput := false // Default fallback
+			if wo.config != nil && wo.config.Tools.CLIMode.ValidateOutput {
+				validateOutput = wo.config.Tools.CLIMode.ValidateOutput
+			}
+			
+			options := &ExecutionOptions{
+				CaptureOutput:  true,
+				ValidateOutput: validateOutput,
+			}
 
-		execution.StepResults = append(execution.StepResults, result)
-		execution.CompletedSteps++
-		
-		// Notify step completion
+			result, err := wo.executor.ExecuteStepWithWorkflow(ctx, workflowStep, queueItem.Target, queueItem.Workflow.Name, options)
+			stepResults[stepIndex] = result
+			stepErrors[stepIndex] = err
+			stepCompleted[stepIndex] = true
+			
+			if err != nil {
+				wo.debugLogger.Printf("Step FAILED: %s - Error: %v", workflowStep.Name, err)
+			} else {
+				wo.debugLogger.Printf("Step COMPLETED: %s", workflowStep.Name)
+			}
+			
+			// Notify step completion immediately when it finishes
+			if callback != nil {
+				if err != nil {
+					callback(queueItem.Workflow.Name, queueItem.Target, "step_failed", 
+						fmt.Sprintf("Failed step %d/%d: %s - Error: %v", stepIndex+1, len(queueItem.Workflow.Steps), workflowStep.Name, err))
+				} else {
+					callback(queueItem.Workflow.Name, queueItem.Target, "step_completed", 
+						fmt.Sprintf("Completed step %d/%d: %s", stepIndex+1, len(queueItem.Workflow.Steps), workflowStep.Name))
+				}
+			}
+		}(i, step)
+	}
+	
+	// Wait for ALL steps to complete
+	wo.debugLogger.Printf("Waiting for all %d steps to complete (with dependencies)...", len(queueItem.Workflow.Steps))
+	stepWg.Wait()
+	wo.debugLogger.Printf("All steps completed!")
+	
+	// Process results and check for failures
+	var firstError error
+	for i, result := range stepResults {
+		if result != nil {
+			execution.StepResults = append(execution.StepResults, result)
+			if result.Success {
+				execution.CompletedSteps++
+			}
+		}
+		if stepErrors[i] != nil && firstError == nil {
+			firstError = stepErrors[i]
+		}
+	}
+	
+	// Set overall execution status
+	if firstError != nil {
+		execution.Error = firstError
+		execution.Status = WorkflowStatusFailed
+		wo.debugLogger.Printf("Workflow failed with error: %v", firstError)
 		if callback != nil {
-			callback(queueItem.Workflow.Name, queueItem.Target, "progress", 
-				fmt.Sprintf("Completed step %d/%d: %s", i+1, len(queueItem.Workflow.Steps), step.Name))
+			callback(queueItem.Workflow.Name, queueItem.Target, "failed", fmt.Sprintf("Workflow failed: %v", firstError))
 		}
 	}
 
@@ -775,8 +855,8 @@ func (we *WorkflowExecutor) ExecuteStepWithWorkflow(ctx context.Context, step *W
 		}
 	}
 
-	// Combine results if requested and tool has a combiner
-	if step.CombineResults && len(result.Results) > 1 {
+	// Combine results if requested and tool has a combiner (even for single results to create magic variables)
+	if step.CombineResults && len(result.Results) >= 1 {
 		combinedVars, err := we.combineToolResults(step.Tool, result.Results)
 		if err != nil {
 			result.ErrorMessage = fmt.Sprintf("result combining failed: %v", err)
@@ -815,11 +895,24 @@ func (we *WorkflowExecutor) executeModesParallelWithWorkflow(ctx context.Context
 	results := make([]*ExecutionResult, len(step.Modes))
 	errors := make([]error, len(step.Modes))
 
-	// Execute each mode in a separate goroutine
+	// Enforce MaxConcurrentTools limit - this prevents any step from consuming all semaphore slots
+	maxConcurrent := len(step.Modes) // Default: run all modes in parallel
+	if step.MaxConcurrentTools > 0 && step.MaxConcurrentTools < len(step.Modes) {
+		maxConcurrent = step.MaxConcurrentTools
+	}
+	
+	// Create semaphore to limit concurrent executions within this step
+	semaphore := make(chan struct{}, maxConcurrent)
+
+	// Execute each mode in a separate goroutine with concurrency control
 	for i, mode := range step.Modes {
 		wg.Add(1)
 		go func(index int, modeName string) {
 			defer wg.Done()
+			
+			// Acquire semaphore slot
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
 			
 			// Execute this mode
 			execResult, err := we.engine.ExecuteToolWithContext(ctx, step.Tool, modeName, target, workflowName, step.Name, options)

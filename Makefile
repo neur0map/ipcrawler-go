@@ -13,9 +13,16 @@ RESET := \033[0m
 
 help: ## Show this help message
 	@echo "$(BLUE)IPCrawler - Security Testing Tool$(RESET)"
-	@echo "$(YELLOW)TUI Mode: make run$(RESET)"
-	@echo "$(YELLOW)CLI Mode: make run-cli TARGET=<target>$(RESET)"
-	@echo "$(YELLOW)Available targets:$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)⭐ QUICK START:$(RESET)"
+	@echo "  $(GREEN)make easy$(RESET)     - Set up ipcrawler command (one-time setup with sudo)"
+	@echo "  $(GREEN)ipcrawler <target>$(RESET) - Run IPCrawler after setup"
+	@echo ""
+	@echo "$(YELLOW)Alternative modes:$(RESET)"
+	@echo "  $(GREEN)make run$(RESET)      - Test run without installation"
+	@echo "  $(GREEN)make run-cli TARGET=<target>$(RESET) - Old CLI mode (deprecated)"
+	@echo ""
+	@echo "$(YELLOW)Available commands:$(RESET)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-12s$(RESET) %s\n", $$1, $$2}'
 
 deps: ## Install/update Charmbracelet dependencies
@@ -82,6 +89,22 @@ install: build ## Install IPCrawler TUI to $GOPATH/bin
 	go install ./cmd/ipcrawler
 	@echo "$(GREEN)Installed to $$(go env GOPATH)/bin/ipcrawler$(RESET)"
 
+easy: build ## Create symlink for easy access (primary user entry point)
+	@echo "$(BLUE)Setting up IPCrawler for easy access...$(RESET)"
+	@echo "$(YELLOW)Creating symlink in /usr/local/bin...$(RESET)"
+	@if [ -L /usr/local/bin/ipcrawler ]; then \
+		echo "$(YELLOW)Removing existing symlink...$(RESET)"; \
+		sudo rm /usr/local/bin/ipcrawler; \
+	fi
+	@sudo ln -s $(PWD)/bin/ipcrawler /usr/local/bin/ipcrawler
+	@echo "$(GREEN)✓ Symlink created successfully$(RESET)"
+	@echo "$(GREEN)You can now run IPCrawler from anywhere with: ipcrawler <target>$(RESET)"
+	@echo "$(YELLOW)Examples:$(RESET)"
+	@echo "  ipcrawler google.com          # Run with default output"
+	@echo "  ipcrawler -v example.com      # Verbose mode"  
+	@echo "  ipcrawler --debug scanme.org  # Debug mode"
+	@echo "  ipcrawler registry list       # List registry"
+
 run: build ## Launch IPCrawler TUI with optimal setup (main entry point)
 	@echo "$(BLUE)IPCrawler TUI - 5-Card Horizontal Dashboard$(RESET)"
 	@echo "$(YELLOW)Cross-platform launcher - detects your OS automatically$(RESET)"
@@ -89,7 +112,6 @@ run: build ## Launch IPCrawler TUI with optimal setup (main entry point)
 	@echo "$(YELLOW)Controls: Tab=cycle cards, 1-5=direct focus, q=quit$(RESET)"
 	@if [ "$$EUID" -eq 0 ] || [ -n "$$SUDO_UID" ]; then \
 		echo "$(GREEN)Running with elevated privileges$(RESET)"; \
-	else \
 	fi
 
 run-cli: build ## Run all workflows in CLI mode: make run-cli TARGET=example.com

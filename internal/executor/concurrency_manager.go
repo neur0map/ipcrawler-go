@@ -307,12 +307,12 @@ func (cm *ConcurrencyManager) ReleaseExecution(request *ExecutionRequest) {
 	cm.logger.Debug("Execution slot released", "tool", request.ToolName, "profile", request.Profile)
 }
 
-// processQueue checks if any queued tools can now be executed
+// processQueue checks if any queued tools can now be executed - prioritizes by priority, not profile
 func (cm *ConcurrencyManager) processQueue(releasedProfile ToolPerformanceProfile) {
 	cm.queueMutex.Lock()
 	defer cm.queueMutex.Unlock()
 	
-	// Look for tools that can use the released slot type
+	// Look for highest priority tools that can use ANY available slot (not just the released type)
 	for i, request := range cm.executionQueue {
 		// Check if request context is still valid
 		if request.Context.Err() != nil {
@@ -321,12 +321,12 @@ func (cm *ConcurrencyManager) processQueue(releasedProfile ToolPerformanceProfil
 			continue
 		}
 		
-		// Try to acquire slot for this request
-		if request.Profile == releasedProfile && cm.tryAcquireSlot(request) {
+		// Try to acquire slot for this request (regardless of profile - priority wins)
+		if cm.tryAcquireSlot(request) {
 			// Remove from queue and signal start
 			cm.executionQueue = append(cm.executionQueue[:i], cm.executionQueue[i+1:]...)
 			close(request.StartChan)
-			cm.logger.Debug("Queued tool starting", "tool", request.ToolName, "waited_slots", i+1)
+			cm.logger.Debug("Queued tool starting", "tool", request.ToolName, "priority", request.Priority, "waited_slots", i+1)
 			return
 		}
 	}

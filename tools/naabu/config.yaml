@@ -1,19 +1,26 @@
 tool: "naabu"
 description: "Fast and reliable port scanner for network discovery"
 
+# Output configuration
+show_separator: true    # Show visual separator for naabu output
+separator_priority: 10  # Higher priority tools show separators first
+
 # Generic args structure
 args:
   # Standard user modes (no sudo required)
   fast_scan:
     - "-host"
     - "{{target}}"
-    - "-top-ports"
-    - "100"
+    - "-p"
+    - "80,443,22,8080"
     - "-rate"
+    - "500"
+    - "-timeout"
     - "2000"
     - "-json"
     - "-o"
     - "{{scans_dir}}/{{output_file}}.json"
+    - "-v"
 
   connect_scan:
     - "-host"
@@ -22,27 +29,42 @@ args:
     - "c"
     - "-top-ports"
     - "1000"
+    - "-rate"
+    - "1000"
+    - "-timeout"
+    - "3000"
     - "-json"
     - "-o"
     - "{{scans_dir}}/{{output_file}}.json"
+    - "-v"
 
   web_ports:
     - "-host"
     - "{{target}}"
     - "-p"
     - "80,443,8080,8443"
+    - "-rate"
+    - "1000"
+    - "-timeout"
+    - "2000"
     - "-json"
     - "-o"
     - "{{scans_dir}}/{{output_file}}.json"
+    - "-v"
 
   common_ports:
     - "-host"
     - "{{target}}"
     - "-p"
     - "22,80,443,8080,8443"
+    - "-rate"
+    - "1000"
+    - "-timeout"
+    - "2000"
     - "-json"
     - "-o"
     - "{{scans_dir}}/{{output_file}}.json"
+    - "-v"
 
   top1000_scan:
     - "-host"
@@ -51,10 +73,12 @@ args:
     - "1000"
     - "-rate"
     - "1000"
+    - "-timeout"
+    - "5000"
     - "-json"
     - "-o"
     - "{{scans_dir}}/{{output_file}}.json"
-    - "-silent"
+    - "-v"
 
   top1000_fast:
     - "-host"
@@ -63,11 +87,44 @@ args:
     - "1000"
     - "-rate"
     - "2000"
+    - "-timeout"
+    - "3000"
     - "-json"
     - "-o"
     - "{{scans_dir}}/{{output_file}}.json"
+    - "-v"
 
-  # Privileged modes (require sudo)
+  # NEW: Comprehensive all-ports scan (estimated 10-30 minutes depending on target)
+  all_ports_scan:
+    - "-host"
+    - "{{target}}"
+    - "-p"
+    - "-"                    # Scan all 65535 ports
+    - "-rate"
+    - "1000"                 # Moderate rate to avoid detection/blocking
+    - "-timeout"
+    - "10000"                # Longer timeout for comprehensive scan
+    - "-json"
+    - "-o"
+    - "{{scans_dir}}/{{output_file}}.json"
+    - "-v"
+
+  # NEW: Fast all-ports scan (estimated 5-15 minutes, more aggressive)
+  all_ports_fast:
+    - "-host"
+    - "{{target}}"
+    - "-p"
+    - "-"                    # Scan all 65535 ports
+    - "-rate"
+    - "2000"                 # Faster rate for quicker results
+    - "-timeout"
+    - "5000"                 # Shorter timeout for speed
+    - "-json"
+    - "-o"
+    - "{{scans_dir}}/{{output_file}}.json"
+    - "-v"
+
+  # Privileged modes (require sudo) - SYN scans are faster and more stealthy
   syn_scan:
     - "-host"
     - "{{target}}"
@@ -77,9 +134,29 @@ args:
     - "1000"
     - "-rate"
     - "2000"
+    - "-timeout"
+    - "3000"
     - "-json"
     - "-o"
     - "{{scans_dir}}/{{output_file}}.json"
+    - "-v"
+
+  # NEW: SYN scan all ports (estimated 3-10 minutes with sudo privileges)
+  syn_all_ports:
+    - "-host"
+    - "{{target}}"
+    - "-scan-type"
+    - "s"
+    - "-p"
+    - "-"                    # Scan all 65535 ports
+    - "-rate"
+    - "3000"                 # Higher rate possible with SYN scan
+    - "-timeout"
+    - "5000"
+    - "-json"
+    - "-o"
+    - "{{scans_dir}}/{{output_file}}.json"
+    - "-v"
 
   comprehensive_scan:
     - "-host"
@@ -90,9 +167,12 @@ args:
     - "-"
     - "-rate"
     - "1500"
+    - "-timeout"
+    - "8000"
     - "-json"
     - "-o"
     - "{{scans_dir}}/{{output_file}}.json"
+    - "-v"
 
   host_discovery:
     - "-host"
@@ -100,9 +180,14 @@ args:
     - "-host-discovery"
     - "-top-ports"
     - "100"
+    - "-rate"
+    - "500"
+    - "-timeout"
+    - "3000"
     - "-json"
     - "-o"
     - "{{scans_dir}}/{{output_file}}.json"
+    - "-v"
 
   stealth_scan:
     - "-host"
@@ -112,18 +197,24 @@ args:
     - "-top-ports"
     - "100"
     - "-rate"
-    - "100"
+    - "100"                  # Very slow for stealth
     - "-timeout"
-    - "5000"
+    - "10000"                # Longer timeout for stealth
     - "-json"
     - "-o"
     - "{{scans_dir}}/{{output_file}}.json"
+    - "-v"
 
   udp_scan:
     - "-host"
     - "{{target}}"
     - "-p"
     - "u:53,u:161,u:162,u:123,u:69"
+    - "-rate"
+    - "300"                  # UDP scans are slower
+    - "-timeout"
+    - "5000"
     - "-json"
     - "-o"
     - "{{scans_dir}}/{{output_file}}.json"
+    - "-v"

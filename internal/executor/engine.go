@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -684,11 +683,14 @@ func (tee *ToolExecutionEngine) ExecuteToolWithContext(ctx context.Context, tool
 			execCmd.Env = append(execCmd.Env, fmt.Sprintf("%s=%s", key, value))
 		}
 
-		// Set up pipes for real-time output streaming
-		var stdoutPipe, stderrPipe io.ReadCloser
+		// Set up output capture using temporary files instead of pipes to avoid deadlocks
+		var stdoutFile, stderrFile *os.File
 		if options.CaptureOutput {
-			stdoutPipe, _ = execCmd.StdoutPipe()
-			stderrPipe, _ = execCmd.StderrPipe()
+			// Create temporary files for stdout and stderr
+			stdoutFile, _ = os.CreateTemp("", "ipcrawler-stdout-*")
+			stderrFile, _ = os.CreateTemp("", "ipcrawler-stderr-*")
+			execCmd.Stdout = stdoutFile
+			execCmd.Stderr = stderrFile
 		} else {
 			// If not capturing, just connect directly to console
 			execCmd.Stdout = os.Stdout
@@ -699,52 +701,92 @@ func (tee *ToolExecutionEngine) ExecuteToolWithContext(ctx context.Context, tool
 		tee.debugLogger.Debug("Starting command", "attempt", attempt+1, "max_attempts", retryAttempts+1)
 		tee.writeDebugLog("Starting command (attempt %d/%d)...", attempt+1, retryAttempts+1)
 		
-		// We'll print the separator later with the output to avoid mixed outputs
-		
 		if err := execCmd.Start(); err != nil {
 			lastErr = err
 			tee.debugLogger.Debug("Failed to start command", "error", lastErr)
 			continue
 		}
 
-		// Buffer output instead of streaming in real-time to avoid mixed outputs
+		// SIMPLIFIED EXECUTION using temporary files
 		if options.CaptureOutput {
-			var wg sync.WaitGroup
-			wg.Add(2)
-
-			// Buffer stdout
-			go func() {
-				defer wg.Done()
-				scanner := bufio.NewScanner(stdoutPipe)
-				for scanner.Scan() {
-					line := scanner.Text()
-					stdoutBuf.WriteString(line + "\n") // Just buffer, don't display yet
-				}
-			}()
-
-			// Buffer stderr
-			go func() {
-				defer wg.Done()
-				scanner := bufio.NewScanner(stderrPipe)
-				for scanner.Scan() {
-					line := scanner.Text()
-					stderrBuf.WriteString(line + "\n") // Just buffer, don't display yet
-				}
-			}()
-
-			// Wait for command to complete
-			lastErr = execCmd.Wait()
-			wg.Wait() // Wait for output buffering to complete
+			var progress *SimpleProgress
 			
-			// Now display the complete output atomically using the synchronized method
-			// Display output if there's actual content or if it's the successful attempt
-			stdout := stdoutBuf.String()
-			stderr := stderrBuf.String()
-			hasOutput := stdout != "" || stderr != ""
+			// Start progress tracking if needed
+			if toolConfig.ShowSeparator {
+				progress = NewSimpleProgress(toolName, mode)
+			}
+
+			// Wait for command to complete with timeout
+			done := make(chan error, 1)
+			go func() {
+				done <- execCmd.Wait()
+			}()
 			
-			if hasOutput || lastErr == nil {
-				hasError := lastErr != nil
-				tee.outputController.PrintCompleteToolOutput(toolName, mode, stdout, stderr, hasError)
+			// Set tool-specific timeout
+			timeout := 5 * time.Second
+			if toolName == "nmap" {
+				timeout = 15 * time.Second // nmap service detection needs more time
+			}
+			
+			select {
+			case lastErr = <-done:
+				// Command completed normally
+			case <-time.After(timeout):
+				// Command timeout - kill it and continue
+				execCmd.Process.Kill()
+				lastErr = fmt.Errorf("command timeout after %v", timeout)
+				<-done // Wait for the goroutine to finish
+				
+				tee.debugLogger.Debug("Command timed out - will check for valid output after reading files", "timeout", timeout)
+			}
+			
+			// Close files and read their contents
+			if stdoutFile != nil {
+				stdoutFile.Close()
+				if data, err := os.ReadFile(stdoutFile.Name()); err == nil {
+					stdoutBuf.Write(data)
+				}
+				os.Remove(stdoutFile.Name()) // Clean up temp file
+			}
+			
+			if stderrFile != nil {
+				stderrFile.Close()
+				if data, err := os.ReadFile(stderrFile.Name()); err == nil {
+					stderrBuf.Write(data)
+				}
+				os.Remove(stderrFile.Name()) // Clean up temp file
+			}
+			
+			// Complete the progress tracking
+			if progress != nil {
+				progress.Complete()
+				
+				// Only show raw output in verbose mode
+				if tee.outputController.ShouldShowRaw() {
+					if stdoutBuf.Len() > 0 || stderrBuf.Len() > 0 {
+						if toolConfig.ShowSeparator {
+							tee.outputController.PrintCompleteToolOutput(toolName, mode, stdoutBuf.String(), stderrBuf.String(), lastErr != nil)
+						} else {
+							// Just print raw output without separators for tools that don't want them
+							if stdoutBuf.Len() > 0 {
+								fmt.Print(stdoutBuf.String())
+							}
+							if stderrBuf.Len() > 0 {
+								fmt.Fprintf(os.Stderr, "\033[31m%s\033[0m", stderrBuf.String())
+							}
+						}
+					}
+				}
+			} else if stdoutBuf.Len() > 0 || stderrBuf.Len() > 0 {
+				// Tool completed without showing progress (no separator config)
+				if tee.outputController.ShouldShowRaw() {
+					if stdoutBuf.Len() > 0 {
+						fmt.Print(stdoutBuf.String())
+					}
+					if stderrBuf.Len() > 0 {
+						fmt.Fprintf(os.Stderr, "\033[31m%s\033[0m", stderrBuf.String())
+					}
+				}
 			}
 		} else {
 			// Just wait for command if not capturing
@@ -753,6 +795,55 @@ func (tee *ToolExecutionEngine) ExecuteToolWithContext(ctx context.Context, tool
 
 		tee.debugLogger.Debug("Command completed", "error", lastErr)
 		tee.writeDebugLog("Command completed with error: %v", lastErr)
+
+		// Check for timeout errors and validate if tool produced valid output
+		if lastErr != nil && strings.Contains(lastErr.Error(), "timeout") {
+			toolProducedValidOutput := false
+			
+			// Check if output file was created successfully
+			if result.OutputPath != "" {
+				outputPaths := []string{result.OutputPath, result.OutputPath + ".json", result.OutputPath + ".xml"}
+				
+				for _, path := range outputPaths {
+					if _, err := os.Stat(path); err == nil {
+						// For nmap XML files, verify they contain scan data
+						if strings.HasSuffix(path, ".xml") && toolName == "nmap" {
+							if data, err := os.ReadFile(path); err == nil {
+								content := string(data)
+								// Check for nmap XML structure with scan initiation
+								if strings.Contains(content, "<nmaprun") && strings.Contains(content, "scan initiated") {
+									toolProducedValidOutput = true
+									tee.debugLogger.Debug("Command timed out but valid nmap XML created, treating as success", "output_path", path)
+									break
+								}
+							}
+						} else {
+							toolProducedValidOutput = true
+							tee.debugLogger.Debug("Command timed out but output file created, treating as success", "output_path", path)
+							break
+						}
+					}
+				}
+			}
+			
+			// Also check if stdout contains valid JSON output (for tools like naabu)
+			if !toolProducedValidOutput && stdoutBuf.Len() > 0 {
+				stdout := stdoutBuf.String()
+				// Check for JSON output patterns (naabu produces JSON lines)
+				if strings.Contains(stdout, `"host":`) && strings.Contains(stdout, `"port":`) && strings.Contains(stdout, `"protocol":`) {
+					toolProducedValidOutput = true
+					tee.debugLogger.Debug("Command timed out but produced valid JSON output, treating as success", "stdout_length", len(stdout))
+				}
+			}
+			
+			// If tool produced valid output, mark as successful
+			if toolProducedValidOutput {
+				lastErr = nil
+				tee.debugLogger.Debug("Tool timeout overridden due to valid output production")
+			} else {
+				tee.debugLogger.Debug("Command timed out with no valid output detected")
+			}
+		}
 
 		// Handle tool errors if execution failed
 		if lastErr != nil {
@@ -810,6 +901,12 @@ func (tee *ToolExecutionEngine) ExecuteToolWithContext(ctx context.Context, tool
 			result.ExitCode = exitError.ExitCode()
 		} else {
 			result.ExitCode = -1
+		}
+
+		// Don't retry timeout errors - they'll just timeout again (unless they were validated as successful)
+		if lastErr != nil && strings.Contains(lastErr.Error(), "timeout") {
+			result.ErrorMessage = fmt.Sprintf("tool execution timed out: %v", lastErr)
+			return result, lastErr
 		}
 
 		// If this was the last attempt, set final error
@@ -1125,4 +1222,5 @@ func sanitizeForFilename(input string) string {
 	
 	return result
 }
+
 

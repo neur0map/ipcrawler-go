@@ -9,10 +9,10 @@ max_concurrent_workflows: 3    # Allow multiple DNS workflows
 workflow_priority: "medium"    # Medium priority execution
 
 steps:
-  - name: "DNS Information Gathering"
+  - name: "DNS SOA Record Lookup"
     tool: "nslookup"
-    description: "Basic DNS information lookup and record enumeration"
-    modes: ["default_lookup"]
+    description: "SOA record enumeration for zone information"
+    modes: ["soa_record"]
     concurrent: false              # Single mode execution
     combine_results: false         # No result combination needed
     

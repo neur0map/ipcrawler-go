@@ -2,6 +2,10 @@ tool: "nslookup"
 description: "DNS lookup utility for network reconnaissance and domain information gathering"
 format: "text"
 
+# Output configuration
+show_separator: true    # Show visual separator for nslookup output
+separator_priority: 8   # Higher priority than nmap but lower than naabu (DNS reconnaissance tool)
+
 # Generic args structure - nslookup outputs text format for DNS queries
 args:
   # Basic DNS record queries

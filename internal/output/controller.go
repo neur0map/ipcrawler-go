@@ -98,6 +98,7 @@ func (oc *OutputController) PrintRawSection(toolName, mode, output string) {
 	}
 }
 
+
 // PrintLog outputs log messages based on the current mode
 func (oc *OutputController) PrintLog(level, msg string, args ...interface{}) {
 	switch oc.mode {
@@ -162,7 +163,7 @@ func (oc *OutputController) PrintInfo(msg string, args ...interface{}) {
 
 // ShouldShowRaw returns true if raw output should be displayed
 func (oc *OutputController) ShouldShowRaw() bool {
-	return oc.mode == OutputModeNormal || oc.mode == OutputModeVerbose
+	return oc.mode == OutputModeVerbose
 }
 
 // ShouldShowLogs returns true if log messages should be displayed
@@ -174,7 +175,7 @@ func (oc *OutputController) ShouldShowLogs() bool {
 func (oc *OutputController) PrintWorkflowTree(workflowsPath string, workflows map[string]interface{}) {
 	// Always show workflow tree regardless of mode
 	fmt.Printf("\n%s+==============================================================================+%s\n", colorCyan, colorReset)
-	fmt.Printf("%s|                              WORKFLOW TREE                                 	 |%s\n", colorCyan, colorReset)
+	fmt.Printf("%s|                              WORKFLOW TREE                                 |%s\n", colorCyan, colorReset)
 	fmt.Printf("%s+==============================================================================+%s\n", colorCyan, colorReset)
 
 	// Build workflow tree structure from file paths

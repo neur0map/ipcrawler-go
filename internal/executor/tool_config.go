@@ -5,24 +5,30 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 )
 
 // ToolConfig represents a tool configuration loaded from tools/*/config.yaml
 type ToolConfig struct {
-	Tool        string                   `yaml:"tool"`
-	Description string                   `yaml:"description"`
-	Format      string                   `yaml:"format"`
-	File        string                   `yaml:"file"`
-	Args        map[string][]string      `yaml:"args"`
-	Overrides   []map[string]interface{} `yaml:"overrides"`
+	Tool              string                   `yaml:"tool"`
+	Description       string                   `yaml:"description"`
+	Format            string                   `yaml:"format"`
+	File              string                   `yaml:"file"`
+	Args              map[string][]string      `yaml:"args"`
+	Overrides         []map[string]interface{} `yaml:"overrides"`
+	
+	// Output configuration for separator display
+	ShowSeparator     bool `yaml:"show_separator"`     // Whether to show visual separator for this tool
+	SeparatorPriority int  `yaml:"separator_priority"` // Priority for separator display (higher = shown first)
 }
 
 // ToolConfigLoader loads and manages tool configurations
 type ToolConfigLoader struct {
 	toolsPath string
 	configs   map[string]*ToolConfig
+	mutex     sync.RWMutex // Protect concurrent access to configs map
 }
 
 // NewToolConfigLoader creates a new tool configuration loader
@@ -35,10 +41,13 @@ func NewToolConfigLoader(toolsPath string) *ToolConfigLoader {
 
 // LoadToolConfig loads a specific tool's configuration
 func (tcl *ToolConfigLoader) LoadToolConfig(toolName string) (*ToolConfig, error) {
-	// Check if already loaded
+	// Check if already loaded (read lock first)
+	tcl.mutex.RLock()
 	if config, exists := tcl.configs[toolName]; exists {
+		tcl.mutex.RUnlock()
 		return config, nil
 	}
+	tcl.mutex.RUnlock()
 
 	// Construct path to tool config
 	configPath := filepath.Join(tcl.toolsPath, toolName, "config.yaml")
@@ -64,8 +73,10 @@ func (tcl *ToolConfigLoader) LoadToolConfig(toolName string) (*ToolConfig, error
 		config.Tool = toolName // Default to directory name if not specified
 	}
 
-	// Cache the config
+	// Cache the config (write lock)
+	tcl.mutex.Lock()
 	tcl.configs[toolName] = &config
+	tcl.mutex.Unlock()
 
 	return &config, nil
 }

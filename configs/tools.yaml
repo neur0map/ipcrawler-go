@@ -13,8 +13,8 @@
 #   execution.exec_validation: true
 #
 tool_execution:
-  max_concurrent_executions: 8
-  max_parallel_executions: 8
+  max_concurrent_executions: 50
+  max_parallel_executions: 50
 
 # Workflow orchestration configuration
 workflow_orchestration:
@@ -23,7 +23,7 @@ workflow_orchestration:
   resource_limits:
     max_cpu_usage: 100.0             # Maximum CPU usage percentage - unlocked by default
     max_memory_usage: 100.0          # Maximum memory usage percentage - unlocked by default  
-    max_active_tools: 999            # Maximum total active tools system-wide - unlocked by default
+    max_active_tools: 9999           # Maximum total active tools system-wide - unlimited
   priority_weights:
     high: 30                         # Priority boost for high priority workflows
     medium: 10                       # Priority boost for medium priority workflows

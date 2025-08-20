@@ -1,0 +1,788 @@
+9:21PM INFO IPCrawler CLI: === IPCrawler CLI Mode === target=scanme.nmap.org
+9:21PM INFO IPCrawler CLI: Workspace created path=workspace/scanme_nmap_org_1755566504
+
+[36m+==============================================================================+[0m
+[36m|                              WORKFLOW TREE                                 |[0m
+[36m+==============================================================================+[0m
+
+[1m[34m[+] workflows/[0m [90m(6 workflow files discovered)[0m
+|-- [1m[34m[D] DNS-Scanning/[0m
+|   `-- [32m[F] content-discovery.yaml[0m [90m(Web content and directory discovery)[0m
+|-- [1m[34m[D] reconnaissance/[0m
+|   |-- [32m[F] dns-enumeration.yaml[0m [90m(DNS reconnaissance and enumeration)[0m
+|   `-- [32m[F] port-scanning.yaml[0m [90m(Port discovery and service detection)[0m
+`-- [1m[34m[D] test/[0m
+    |-- [32m[F] naabu-only.yaml[0m [90m(Custom workflow)[0m
+    |-- [32m[F] naabu-simple-test.yaml[0m [90m(Custom workflow)[0m
+    `-- [32m[F] naabu_parallel_test.yaml[0m [90m(Custom workflow)[0m
+
+[90m================================================================================[0m
+9:21PM INFO IPCrawler CLI: Discovered workflow name=naabu-simple-test title="Naabu Simple Test" description="Simple naabu test for immediate output verification"
+9:21PM INFO IPCrawler CLI: Discovered workflow name=naabu_parallel_test title="Naabu Parallel Test" description="Test workflow to verify parallel execution and real-time output"
+9:21PM INFO IPCrawler CLI: Discovered workflow name=content-discovery title="DNS Information Gathering" description="Comprehensive DNS reconnaissance and domain information discovery"
+9:21PM INFO IPCrawler CLI: Discovered workflow name=dns-enumeration title="DNS Discovery" description="Comprehensive DNS information gathering and reconnaissance"
+9:21PM INFO IPCrawler CLI: Discovered workflow name=port-scanning title="Enhanced Reconnaissance" description="Multi-mode parallel port discovery and comprehensive service enumeration"
+9:21PM INFO IPCrawler CLI: Discovered workflow name=naabu-only title="Naabu Test" description="Test naabu execution only"
+9:21PM INFO IPCrawler CLI: Starting workflow execution count=6 workflows="naabu-simple-test, naabu_parallel_test, content-discovery, dns-enumeration, port-scanning, naabu-only"
+9:21PM INFO IPCrawler CLI: CLI execution timeout set seconds=300
+9:21PM INFO IPCrawler CLI: Queueing workflow name=naabu-simple-test title="Naabu Simple Test"
+2025/08/18 21:21:44 Queuing workflow: Naabu Simple Test for target: scanme.nmap.org
+2025/08/18 21:21:44 Calculated priority: 105 for workflow: Naabu Simple Test
+2025/08/18 21:21:44 Workflow queued successfully. Total queue size: 1
+9:21PM INFO IPCrawler CLI: Queueing workflow name=naabu_parallel_test title="Naabu Parallel Test"
+2025/08/18 21:21:44 Queuing workflow: Naabu Parallel Test for target: scanme.nmap.org
+2025/08/18 21:21:44 Calculated priority: 105 for workflow: Naabu Parallel Test
+2025/08/18 21:21:44 Workflow queued successfully. Total queue size: 2
+9:21PM INFO IPCrawler CLI: Queueing workflow name=content-discovery title="DNS Information Gathering"
+2025/08/18 21:21:44 Queuing workflow: DNS Information Gathering for target: scanme.nmap.org
+2025/08/18 21:21:44 Calculated priority: 105 for workflow: DNS Information Gathering
+2025/08/18 21:21:44 Workflow queued successfully. Total queue size: 3
+9:21PM INFO IPCrawler CLI: Queueing workflow name=dns-enumeration title="DNS Discovery"
+2025/08/18 21:21:44 Queuing workflow: DNS Discovery for target: scanme.nmap.org
+2025/08/18 21:21:44 Calculated priority: 85 for workflow: DNS Discovery
+2025/08/18 21:21:44 Workflow queued successfully. Total queue size: 4
+9:21PM INFO IPCrawler CLI: Queueing workflow name=port-scanning title="Enhanced Reconnaissance"
+2025/08/18 21:21:44 Queuing workflow: Enhanced Reconnaissance for target: scanme.nmap.org
+2025/08/18 21:21:44 Calculated priority: 65 for workflow: Enhanced Reconnaissance
+2025/08/18 21:21:44 Workflow queued successfully. Total queue size: 5
+9:21PM INFO IPCrawler CLI: Queueing workflow name=naabu-only title="Naabu Test"
+2025/08/18 21:21:44 Queuing workflow: Naabu Test for target: scanme.nmap.org
+2025/08/18 21:21:44 Calculated priority: 105 for workflow: Naabu Test
+2025/08/18 21:21:44 Workflow queued successfully. Total queue size: 6
+9:21PM INFO IPCrawler CLI: Executing queued workflows...
+2025/08/18 21:21:44 Starting ExecuteQueuedWorkflows - Queue size: 6, Active workflows: 0, Max concurrent: 3
+2025/08/18 21:21:44 Loop iteration - Queue: 6, Active: 0
+2025/08/18 21:21:44 DEBU Checking workflow start permissions cpu_percent=12.985343163163629 cpu_max=100 memory_percent=75.57907104492188 memory_max=100 active_tools=0 max_tools=9999
+2025/08/18 21:21:44 DEBU ALLOWED: All resource checks passed
+2025/08/18 21:21:44 Starting workflow: Naabu Simple Test for target: scanme.nmap.org
+2025/08/18 21:21:44 Loop iteration - Queue: 5, Active: 0
+2025/08/18 21:21:44 DEBU Checking workflow start permissions cpu_percent=12.985343163163629 cpu_max=100 memory_percent=75.57907104492188 memory_max=100 active_tools=0 max_tools=9999
+2025/08/18 21:21:44 DEBU ALLOWED: All resource checks passed
+2025/08/18 21:21:44 Starting workflow: Naabu Parallel Test for target: scanme.nmap.org
+2025/08/18 21:21:44 GOROUTINE STARTED: Naabu Simple Test for target: scanme.nmap.org
+2025/08/18 21:21:44 Starting workflow execution: Naabu Simple Test for target: scanme.nmap.org
+2025/08/18 21:21:44 About to acquire mutex for: Naabu Simple Test
+2025/08/18 21:21:44 Loop iteration - Queue: 4, Active: 0
+2025/08/18 21:21:44 DEBU Checking workflow start permissions cpu_percent=12.985343163163629 cpu_max=100 memory_percent=75.57907104492188 memory_max=100 active_tools=0 max_tools=9999
+2025/08/18 21:21:44 DEBU ALLOWED: All resource checks passed
+2025/08/18 21:21:44 GOROUTINE STARTED: Naabu Parallel Test for target: scanme.nmap.org
+2025/08/18 21:21:44 Starting workflow execution: Naabu Parallel Test for target: scanme.nmap.org
+2025/08/18 21:21:44 About to acquire mutex for: Naabu Parallel Test
+2025/08/18 21:21:44 Starting workflow: DNS Information Gathering for target: scanme.nmap.org
+2025/08/18 21:21:44 Loop iteration - Queue: 3, Active: 0
+2025/08/18 21:21:44 DEBU Checking workflow start permissions cpu_percent=12.985343163163629 cpu_max=100 memory_percent=75.57907104492188 memory_max=100 active_tools=0 max_tools=9999
+2025/08/18 21:21:44 DEBU ALLOWED: All resource checks passed
+2025/08/18 21:21:44 Starting workflow: Naabu Test for target: scanme.nmap.org
+2025/08/18 21:21:44 GOROUTINE STARTED: DNS Information Gathering for target: scanme.nmap.org
+2025/08/18 21:21:44 Starting workflow execution: DNS Information Gathering for target: scanme.nmap.org
+2025/08/18 21:21:44 About to acquire mutex for: DNS Information Gathering
+2025/08/18 21:21:44 Loop iteration - Queue: 2, Active: 0
+2025/08/18 21:21:44 DEBU Checking workflow start permissions cpu_percent=12.985343163163629 cpu_max=100 memory_percent=75.57907104492188 memory_max=100 active_tools=0 max_tools=9999
+2025/08/18 21:21:44 DEBU ALLOWED: All resource checks passed
+2025/08/18 21:21:44 Starting workflow: DNS Discovery for target: scanme.nmap.org
+2025/08/18 21:21:44 Loop iteration - Queue: 1, Active: 0
+2025/08/18 21:21:44 DEBU Checking workflow start permissions cpu_percent=12.985343163163629 cpu_max=100 memory_percent=75.57907104492188 memory_max=100 active_tools=0 max_tools=9999
+2025/08/18 21:21:44 DEBU ALLOWED: All resource checks passed
+2025/08/18 21:21:44 GOROUTINE STARTED: Naabu Test for target: scanme.nmap.org
+2025/08/18 21:21:44 Starting workflow execution: Naabu Test for target: scanme.nmap.org
+2025/08/18 21:21:44 GOROUTINE STARTED: DNS Discovery for target: scanme.nmap.org
+2025/08/18 21:21:44 Starting workflow execution: DNS Discovery for target: scanme.nmap.org
+2025/08/18 21:21:44 About to acquire mutex for: DNS Discovery
+2025/08/18 21:21:44 Starting workflow: Enhanced Reconnaissance for target: scanme.nmap.org
+2025/08/18 21:21:44 ExecuteQueuedWorkflows completed - Final queue size: 0, Active workflows: 0
+2025/08/18 21:21:44 About to acquire mutex for: Naabu Test
+2025/08/18 21:21:44 Waiting for all workflows to complete...
+2025/08/18 21:21:44 Acquired mutex for: Naabu Simple Test
+2025/08/18 21:21:44 Released mutex for: Naabu Simple Test
+2025/08/18 21:21:44 GOROUTINE STARTED: Enhanced Reconnaissance for target: scanme.nmap.org
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Simple Test" target=scanme.nmap.org status=started message="Workflow execution started"
+2025/08/18 21:21:44 Starting workflow execution: Enhanced Reconnaissance for target: scanme.nmap.org
+2025/08/18 21:21:44 About to acquire mutex for: Enhanced Reconnaissance
+2025/08/18 21:21:44 Acquired mutex for: Naabu Parallel Test
+2025/08/18 21:21:44 Released mutex for: Naabu Parallel Test
+2025/08/18 21:21:44 Workflow has 1 steps - executing ALL SIMULTANEOUSLY
+2025/08/18 21:21:44 STARTING IMMEDIATELY: Step 1: Naabu Fast Port Scan (tool: naabu, modes: [fast_scan])
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Parallel Test" target=scanme.nmap.org status=started message="Workflow execution started"
+2025/08/18 21:21:44 Workflow has 3 steps - executing ALL SIMULTANEOUSLY
+2025/08/18 21:21:44 STARTING IMMEDIATELY: Step 1: Naabu Fast Scan (tool: naabu, modes: [fast_scan])
+2025/08/18 21:21:44 Acquired mutex for: DNS Information Gathering
+2025/08/18 21:21:44 Released mutex for: DNS Information Gathering
+2025/08/18 21:21:44 Acquired mutex for: DNS Discovery
+2025/08/18 21:21:44 Released mutex for: DNS Discovery
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Simple Test" target=scanme.nmap.org status=step_started message="Started step 1/1: Naabu Fast Port Scan"
+2025/08/18 21:21:44 Acquired mutex for: Naabu Test
+2025/08/18 21:21:44 PARALLEL EXECUTION: Starting step 1: Naabu Fast Port Scan
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Parallel Test" target=scanme.nmap.org status=step_started message="Started step 1/3: Naabu Fast Scan"
+2025/08/18 21:21:44 Released mutex for: Naabu Test
+2025/08/18 21:21:44 DEBU Starting tool execution tool=naabu mode=fast_scan target=scanme.nmap.org
+2025/08/18 21:21:44 STARTING IMMEDIATELY: Step 2: Naabu Web Ports (tool: naabu, modes: [web_ports])
+2025/08/18 21:21:44 Acquired mutex for: Enhanced Reconnaissance
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Test" target=scanme.nmap.org status=started message="Workflow execution started"
+2025/08/18 21:21:44 Released mutex for: Enhanced Reconnaissance
+2025/08/18 21:21:44 Workflow has 1 steps - executing ALL SIMULTANEOUSLY
+2025/08/18 21:21:44 STARTING IMMEDIATELY: Step 1: Port Discovery Test (tool: naabu, modes: [fast_scan])
+2025/08/18 21:21:44 Waiting for all 1 steps to complete...
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Parallel Test" target=scanme.nmap.org status=step_started message="Started step 2/3: Naabu Web Ports"
+2025/08/18 21:21:44 STARTING IMMEDIATELY: Step 3: Naabu Common Ports (tool: naabu, modes: [common_ports])
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=naabu mode=fast_scan priority=200
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Parallel Test" target=scanme.nmap.org status=step_started message="Started step 3/3: Naabu Common Ports"
+2025/08/18 21:21:44 DEBU Loading config for tool tool=naabu
+2025/08/18 21:21:44 Waiting for all 3 steps to complete...
+2025/08/18 21:21:44 PARALLEL EXECUTION: Starting step 3: Naabu Common Ports
+2025/08/18 21:21:44 DEBU Starting tool execution tool=naabu mode=common_ports target=scanme.nmap.org
+9:21PM INFO IPCrawler CLI: Workflow status workflow="DNS Discovery" target=scanme.nmap.org status=started message="Workflow execution started"
+2025/08/18 21:21:44 Workflow has 1 steps - executing ALL SIMULTANEOUSLY
+2025/08/18 21:21:44 STARTING IMMEDIATELY: Step 1: DNS Information Gathering (tool: nslookup, modes: [default_lookup])
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=naabu mode=common_ports priority=200
+2025/08/18 21:21:44 DEBU Loading config for tool tool=naabu
+9:21PM INFO IPCrawler CLI: Workflow status workflow="DNS Discovery" target=scanme.nmap.org status=step_started message="Started step 1/1: DNS Information Gathering"
+2025/08/18 21:21:44 PARALLEL EXECUTION: Starting step 1: Naabu Fast Scan
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=naabu
+9:21PM INFO IPCrawler CLI: Workflow status workflow="DNS Information Gathering" target=scanme.nmap.org status=started message="Workflow execution started"
+2025/08/18 21:21:44 PARALLEL EXECUTION: Starting step 2: Naabu Web Ports
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Enhanced Reconnaissance" target=scanme.nmap.org status=started message="Workflow execution started"
+2025/08/18 21:21:44 Waiting for all 1 steps to complete...
+2025/08/18 21:21:44 DEBU Starting tool execution tool=naabu mode=web_ports target=scanme.nmap.org
+2025/08/18 21:21:44 PARALLEL EXECUTION: Starting step 1: DNS Information Gathering
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Test" target=scanme.nmap.org status=step_started message="Started step 1/1: Port Discovery Test"
+2025/08/18 21:21:44 Waiting for all 1 steps to complete...
+2025/08/18 21:21:44 DEBU Starting tool execution tool=nslookup mode=default_lookup target=scanme.nmap.org
+2025/08/18 21:21:44 PARALLEL EXECUTION: Starting step 1: Port Discovery Test
+2025/08/18 21:21:44 Workflow has 1 steps - executing ALL SIMULTANEOUSLY
+2025/08/18 21:21:44 STARTING IMMEDIATELY: Step 1: Complete DNS Reconnaissance (tool: nslookup, modes: [default_lookup a_record aaaa_record mx_record ns_record txt_record cname_record authoritative_ns])
+2025/08/18 21:21:44 Workflow has 2 steps - executing ALL SIMULTANEOUSLY
+2025/08/18 21:21:44 STARTING IMMEDIATELY: Step 1: Multi-Mode Port Discovery (tool: naabu, modes: [fast_scan])
+9:21PM INFO IPCrawler CLI: Workflow status workflow="DNS Information Gathering" target=scanme.nmap.org status=step_started message="Started step 1/1: Complete DNS Reconnaissance"
+2025/08/18 21:21:44 Waiting for all 1 steps to complete...
+2025/08/18 21:21:44 PARALLEL EXECUTION: Starting step 1: Complete DNS Reconnaissance
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Enhanced Reconnaissance" target=scanme.nmap.org status=step_started message="Started step 1/2: Multi-Mode Port Discovery"
+2025/08/18 21:21:44 STARTING IMMEDIATELY: Step 2: Multi-Mode Service Analysis (tool: nmap, modes: [pipeline_service_scan])
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=naabu
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Enhanced Reconnaissance" target=scanme.nmap.org status=step_started message="Started step 2/2: Multi-Mode Service Analysis"
+2025/08/18 21:21:44 Waiting for all 2 steps to complete...
+2025/08/18 21:21:44 PARALLEL EXECUTION: Starting step 1: Multi-Mode Port Discovery
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=naabu mode=web_ports priority=200
+2025/08/18 21:21:44 PARALLEL EXECUTION: Starting step 2: Multi-Mode Service Analysis
+2025/08/18 21:21:44 DEBU Starting tool execution tool=nmap mode=pipeline_service_scan target=scanme.nmap.org
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=nslookup mode=default_lookup priority=100
+2025/08/18 21:21:44 DEBU Loading config for tool tool=nslookup
+2025/08/18 21:21:44 DEBU Loading config for tool tool=naabu
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=naabu
+2025/08/18 21:21:44 DEBU Starting tool execution tool=naabu mode=fast_scan target=scanme.nmap.org
+2025/08/18 21:21:44 DEBU Starting tool execution tool=nslookup mode=authoritative_ns target=scanme.nmap.org
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=nslookup
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=nslookup mode=authoritative_ns priority=100
+2025/08/18 21:21:44 DEBU Loading config for tool tool=nslookup
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=naabu mode=fast_scan priority=200
+2025/08/18 21:21:44 DEBU Loading config for tool tool=naabu
+2025/08/18 21:21:44 DEBU Starting tool execution tool=nslookup mode=a_record target=scanme.nmap.org
+2025/08/18 21:21:44 DEBU Starting tool execution tool=nslookup mode=aaaa_record target=scanme.nmap.org
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=nslookup mode=a_record priority=100
+2025/08/18 21:21:44 DEBU Loading config for tool tool=nslookup
+2025/08/18 21:21:44 DEBU Starting tool execution tool=nslookup mode=txt_record target=scanme.nmap.org
+2025/08/18 21:21:44 DEBU Starting tool execution tool=nslookup mode=mx_record target=scanme.nmap.org
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=nslookup mode=txt_record priority=100
+2025/08/18 21:21:44 DEBU Loading config for tool tool=nslookup
+2025/08/18 21:21:44 DEBU Starting tool execution tool=nslookup mode=cname_record target=scanme.nmap.org
+2025/08/18 21:21:44 DEBU Starting tool execution tool=nslookup mode=ns_record target=scanme.nmap.org
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=nslookup mode=cname_record priority=100
+2025/08/18 21:21:44 DEBU Loading config for tool tool=nslookup
+2025/08/18 21:21:44 DEBU Starting tool execution tool=naabu mode=fast_scan target=scanme.nmap.org
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=naabu mode=fast_scan priority=200
+2025/08/18 21:21:44 DEBU Loading config for tool tool=naabu
+2025/08/18 21:21:44 DEBU Starting tool execution tool=naabu mode=fast_scan target=scanme.nmap.org
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=nmap mode=pipeline_service_scan priority=100
+2025/08/18 21:21:44 DEBU Loading config for tool tool=nmap
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+2025/08/18 21:21:44 DEBU Starting tool execution tool=nslookup mode=default_lookup target=scanme.nmap.org
+2025/08/18 21:21:44 DEBU Executing command executable=/Users/carlosm/.go/bin/naabu args="[-host scanme.nmap.org -p 80,443,22,8080 -rate 500 -timeout 2000 -json -o workspace/scanme_nmap_org_1755566504/scans/naabu_fast_scan_scanme_nmap_org_naabu-simple-test_naabu-fast-port-scan_20250818_212144.json -v]"
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=nslookup mode=default_lookup priority=100
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ naabu [fast_scan][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+2025/08/18 21:21:44 DEBU Loading config for tool tool=nslookup
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=nslookup
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=naabu
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=nslookup mode=aaaa_record priority=100
+2025/08/18 21:21:44 DEBU Loading config for tool tool=nslookup
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=nslookup
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=nslookup
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+2025/08/18 21:21:44 DEBU Executing command executable=/Users/carlosm/.go/bin/naabu args="[-host scanme.nmap.org -p 80,443,22,8080 -rate 500 -timeout 2000 -json -o workspace/scanme_nmap_org_1755566504/scans/naabu_fast_scan_scanme_nmap_org_naabu-test_port-discovery-test_20250818_212144.json -v]"
+2025/08/18 21:21:44 DEBU Executing command executable=/opt/homebrew/bin/nslookup args="[-type=NS -debug scanme.nmap.org]"
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=nslookup mode=mx_record priority=100
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ naabu [fast_scan][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ nslookup [authoritative_ns][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=nslookup mode=ns_record priority=100
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=nslookup
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=naabu
+2025/08/18 21:21:44 DEBU Executing command executable=/Users/carlosm/.go/bin/naabu args="[-host scanme.nmap.org -p 22,80,443,8080,8443 -json -o workspace/scanme_nmap_org_1755566504/scans/naabu_common_ports_scanme_nmap_org_naabu-parallel-test_naabu-common-ports_20250818_212144.json]"
+2025/08/18 21:21:44 DEBU Requesting execution slot tool=naabu mode=fast_scan priority=200
+2025/08/18 21:21:44 DEBU Executing command executable=/Users/carlosm/.go/bin/naabu args="[-host scanme.nmap.org -p 80,443,8080,8443 -json -o workspace/scanme_nmap_org_1755566504/scans/naabu_web_ports_scanme_nmap_org_naabu-parallel-test_naabu-web-ports_20250818_212144.json]"
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=nmap
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=nslookup
+2025/08/18 21:21:44 DEBU Executing command executable=/opt/homebrew/bin/nslookup args=[scanme.nmap.org]
+2025/08/18 21:21:44 DEBU Executing command executable=/opt/homebrew/bin/nslookup args="[-type=AAAA scanme.nmap.org]"
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=nslookup
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+2025/08/18 21:21:44 DEBU Executing command executable=/opt/homebrew/bin/nslookup args=[scanme.nmap.org]
+2025/08/18 21:21:44 DEBU Executing command executable=/opt/homebrew/bin/nmap args="[-sV -p {{combined_ports}} -T4 -oX workspace/scanme_nmap_org_1755566504/scans/nmap_pipeline_service_scan_scanme_nmap_org_enhanced-reconnaissance_multi-mode-service-analysis_20250818_212144.xml scanme.nmap.org]"
+2025/08/18 21:21:44 DEBU Executing command executable=/opt/homebrew/bin/nslookup args="[-type=A scanme.nmap.org]"
+2025/08/18 21:21:44 DEBU Executing command executable=/opt/homebrew/bin/nslookup args="[-type=TXT scanme.nmap.org]"
+2025/08/18 21:21:44 DEBU Loading config for tool tool=nslookup
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=nslookup
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ nslookup [aaaa_record][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ nslookup [default_lookup][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+[1m[32m▶ naabu [common_ports][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+[1m[32m▶ nslookup [default_lookup][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ nslookup [a_record][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ naabu [web_ports][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ nslookup [txt_record][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+[1m[32m▶ nmap [pipeline_service_scan][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+2025/08/18 21:21:44 DEBU Loading config for tool tool=naabu
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=naabu
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+2025/08/18 21:21:44 DEBU Executing command executable=/opt/homebrew/bin/nslookup args="[-type=MX scanme.nmap.org]"
+2025/08/18 21:21:44 DEBU Loading config for tool tool=nslookup
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+2025/08/18 21:21:44 DEBU Executing command executable=/Users/carlosm/.go/bin/naabu args="[-host scanme.nmap.org -p 80,443,22,8080 -rate 500 -timeout 2000 -json -o workspace/scanme_nmap_org_1755566504/scans/naabu_fast_scan_scanme_nmap_org_naabu-parallel-test_naabu-fast-scan_20250818_212144.json -v]"
+2025/08/18 21:21:44 DEBU Executing command executable=/opt/homebrew/bin/nslookup args="[-type=CNAME scanme.nmap.org]"
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ naabu [fast_scan][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ nslookup [cname_record][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+2025/08/18 21:21:44 DEBU Executing command executable=/Users/carlosm/.go/bin/naabu args="[-host scanme.nmap.org -p 80,443,22,8080 -rate 500 -timeout 2000 -json -o workspace/scanme_nmap_org_1755566504/scans/naabu_fast_scan_scanme_nmap_org_enhanced-reconnaissance_multi-mode-port-discovery_20250818_212144.json -v]"
+2025/08/18 21:21:44 DEBU Tool config loaded successfully tool=nslookup
+2025/08/18 21:21:44 DEBU Using preset workspace workspace=workspace/scanme_nmap_org_1755566504
+2025/08/18 21:21:44 DEBU Executing command executable=/opt/homebrew/bin/nslookup args="[-type=NS scanme.nmap.org]"
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ nslookup [ns_record][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ nslookup [mx_record][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ naabu [fast_scan][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+2025/08/18 21:21:44 DEBU Starting command attempt=1 max_attempts=4
+[31mError #485: Your port specifications are illegal.  Example of proper form: "-100,200-1024,T:3000-4000,U:60000-"[0m
+Starting Nmap 7.97 ( https://nmap.org ) at 2025-08-18 21:21 -0400
+[31mQUITTING![0m
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:44 DEBU Command completed error="exit status 1"
+
+[31m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[31m⚠️  ERROR: nmap [pipeline_service_scan] failed[0m[0m
+[31m════════════════════════════════════════════════════════════════════════════════[0m
+[36mTarget:[0m scanme.nmap.org
+[36mCommand:[0m /opt/homebrew/bin/nmap -sV -p {{combined_ports}} -T4 -oX workspace/scanme_nmap_org_1755566504/scans/nmap_pipeline_service_scan_scanme_nmap_org_enhanced-reconnaissance_multi-mode-service-analysis_20250818_212144.xml scanme.nmap.org
+[36mExit Code:[0m 1
+[36mDuration:[0m 40.705333ms
+[36mError:[0m exit status 1
+[36mStderr:[0m
+Error #485: Your port specifications are illegal.  Example of proper form: "-100,200-1024,T:3000-4000,U:60000-"
+QUITTING!
+
+[36mStdout:[0m
+Starting Nmap 7.97 ( https://nmap.org ) at 2025-08-18 21:21 -0400
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+;; Got recursion not available from 192.168.110.1
+Server:		192.168.110.1
+Address:	192.168.110.1#53
+
+Non-authoritative answer:
+Name:	scanme.nmap.org
+Address: 45.33.32.156
+;; Got recursion not available from 192.168.110.1
+Name:	scanme.nmap.org
+Address: 2600:3c01::f03c:91ff:fe18:bb2f
+
+;; Got recursion not available from 192.168.110.1
+Server:		192.168.110.1
+Address:	192.168.110.1#53
+
+Non-authoritative answer:
+Name:	scanme.nmap.org
+Address: 45.33.32.156
+;; Got recursion not available from 192.168.110.1
+Name:	scanme.nmap.org
+Address: 2600:3c01::f03c:91ff:fe18:bb2f
+
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:44 DEBU Command completed error=<nil>
+2025/08/18 21:21:44 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/nslookup_default_lookup_scanme_nmap_org_dns-discovery_dns-information-gathering_20250818_212144
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:44 DEBU Successfully saved stdout bytes=283
+2025/08/18 21:21:44 Step COMPLETED: DNS Information Gathering
+9:21PM INFO IPCrawler CLI: Workflow status workflow="DNS Discovery" target=scanme.nmap.org status=step_completed message="Completed step 1/1: DNS Information Gathering"
+2025/08/18 21:21:44 All steps completed!
+2025/08/18 21:21:44 DEBU Command completed error=<nil>
+2025/08/18 21:21:44 Workflow completed successfully: DNS Discovery
+9:21PM INFO IPCrawler CLI: Workflow status workflow="DNS Discovery" target=scanme.nmap.org status=completed message="Workflow completed successfully"
+2025/08/18 21:21:44 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/nslookup_default_lookup_scanme_nmap_org_dns-information-gathering_complete-dns-reconnaissance_20250818_212144
+;; Got recursion not available from 192.168.110.1
+Server:		192.168.110.1
+Address:	192.168.110.1#53
+
+------------
+    QUESTIONS:
+	scanme.nmap.org, type = NS, class = IN
+    ANSWERS:
+    AUTHORITY RECORDS:
+    ->  nmap.org
+	origin = ns1.linode.com
+	mail addr = hostmaster.insecure.org
+	serial = 2021000016
+	refresh = 14400
+	retry = 14400
+	expire = 1209600
+	minimum = 3600
+	ttl = 3545
+    ADDITIONAL RECORDS:
+------------
+Non-authoritative answer:
+*** Can't find scanme.nmap.org: No answer
+
+Authoritative answers can be found from:
+nmap.org
+	origin = ns1.linode.com
+	mail addr = hostmaster.insecure.org
+2025/08/18 21:21:44 DEBU Successfully saved stdout bytes=283
+	serial = 2021000016
+	refresh = 14400
+	retry = 14400
+	expire = 1209600
+	minimum = 3600
+
+;; Got recursion not available from 192.168.110.1
+Server:		192.168.110.1
+Address:	192.168.110.1#53
+
+Non-authoritative answer:
+Name:	scanme.nmap.org
+Address: 2600:3c01::f03c:91ff:fe18:bb2f
+
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:44 DEBU Command completed error=<nil>
+2025/08/18 21:21:44 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/nslookup_authoritative_ns_scanme_nmap_org_dns-information-gathering_complete-dns-reconnaissance_20250818_212144
+2025/08/18 21:21:44 DEBU Successfully saved stdout bytes=688
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:44 DEBU Command completed error=<nil>
+2025/08/18 21:21:44 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/nslookup_aaaa_record_scanme_nmap_org_dns-information-gathering_complete-dns-reconnaissance_20250818_212144
+2025/08/18 21:21:44 DEBU Successfully saved stdout bytes=189
+;; Got recursion not available from 192.168.110.1
+Server:		192.168.110.1
+Address:	192.168.110.1#53
+
+Non-authoritative answer:
+*** Can't find scanme.nmap.org: No answer
+
+Authoritative answers can be found from:
+nmap.org
+	origin = ns1.linode.com
+	mail addr = hostmaster.insecure.org
+	serial = 2021000016
+	refresh = 14400
+	retry = 14400
+	expire = 1209600
+	minimum = 3600
+
+;; Got recursion not available from 192.168.110.1
+Server:		192.168.110.1
+Address:	192.168.110.1#53
+
+Non-authoritative answer:
+*** Can't find scanme.nmap.org: No answer
+
+Authoritative answers can be found from:
+nmap.org
+	origin = ns1.linode.com
+	mail addr = hostmaster.insecure.org
+	serial = 2021000016
+	refresh = 14400
+	retry = 14400
+	expire = 1209600
+	minimum = 3600
+
+;; Got recursion not available from 192.168.110.1
+Server:		192.168.110.1
+Address:	192.168.110.1#53
+
+Non-authoritative answer:
+Name:	scanme.nmap.org
+Address: 45.33.32.156
+
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:44 DEBU Command completed error=<nil>
+2025/08/18 21:21:44 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/nslookup_cname_record_scanme_nmap_org_dns-information-gathering_complete-dns-reconnaissance_20250818_212144
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:44 DEBU Successfully saved stdout bytes=369
+2025/08/18 21:21:44 DEBU Command completed error=<nil>
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:44 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/nslookup_txt_record_scanme_nmap_org_dns-information-gathering_complete-dns-reconnaissance_20250818_212144
+2025/08/18 21:21:44 DEBU Command completed error=<nil>
+2025/08/18 21:21:44 DEBU Successfully saved stdout bytes=369
+2025/08/18 21:21:44 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/nslookup_a_record_scanme_nmap_org_dns-information-gathering_complete-dns-reconnaissance_20250818_212144
+2025/08/18 21:21:44 DEBU Successfully saved stdout bytes=171
+[31m[0m
+[31m                  __[0m
+[31m  ___  ___  ___ _/ /  __ __[0m
+[31m / _ \/ _ \/ _ \/ _ \/ // /[0m
+[31m/_//_/\_,_/\_,_/_.__/\_,_/[0m
+[31m[0m
+[31m		projectdiscovery.io[0m
+[31m[0m
+[31m[0m
+[31m                  __[0m
+[31m  ___  ___  ___ _/ /  __ __[0m
+[31m / _ \/ _ \/ _ \/ _ \/ // /[0m
+[31m/_//_/\_,_/\_,_/_.__/\_,_/[0m
+[31m[0m
+[31m		projectdiscovery.io[0m
+[31m[0m
+[31m[0m
+[31m                  __[0m
+[31m  ___  ___  ___ _/ /  __ __[0m
+[31m / _ \/ _ \/ _ \/ _ \/ // /[0m
+[31m/_//_/\_,_/\_,_/_.__/\_,_/[0m
+[31m[0m
+[31m		projectdiscovery.io[0m
+[31m[0m
+;; Got recursion not available from 192.168.110.1
+Server:		192.168.110.1
+Address:	192.168.110.1#53
+
+Non-authoritative answer:
+*** Can't find scanme.nmap.org: No answer
+
+Authoritative answers can be found from:
+nmap.org
+	origin = ns1.linode.com
+	mail addr = hostmaster.insecure.org
+	serial = 2021000016
+	refresh = 14400
+	retry = 14400
+	expire = 1209600
+	minimum = 3600
+
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:44 DEBU Command completed error=<nil>
+2025/08/18 21:21:44 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/nslookup_mx_record_scanme_nmap_org_dns-information-gathering_complete-dns-reconnaissance_20250818_212144
+2025/08/18 21:21:44 DEBU Successfully saved stdout bytes=369
+[31m[0m
+[31m                  __[0m
+[31m  ___  ___  ___ _/ /  __ __[0m
+[31m / _ \/ _ \/ _ \/ _ \/ // /[0m
+[31m/_//_/\_,_/\_,_/_.__/\_,_/[0m
+[31m[0m
+[31m		projectdiscovery.io[0m
+[31m[0m
+;; Got recursion not available from 192.168.110.1
+Server:		192.168.110.1
+Address:	192.168.110.1#53
+
+Non-authoritative answer:
+*** Can't find scanme.nmap.org: No answer
+
+Authoritative answers can be found from:
+nmap.org
+	origin = ns1.linode.com
+	mail addr = hostmaster.insecure.org
+	serial = 2021000016
+	refresh = 14400
+	retry = 14400
+	expire = 1209600
+	minimum = 3600
+
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:44 DEBU Command completed error=<nil>
+2025/08/18 21:21:44 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/nslookup_ns_record_scanme_nmap_org_dns-information-gathering_complete-dns-reconnaissance_20250818_212144
+2025/08/18 21:21:44 DEBU Successfully saved stdout bytes=369
+[31m[0m
+[31m                  __[0m
+[31m  ___  ___  ___ _/ /  __ __[0m
+[31m / _ \/ _ \/ _ \/ _ \/ // /[0m
+[31m/_//_/\_,_/\_,_/_.__/\_,_/[0m
+[31m[0m
+[31m		projectdiscovery.io[0m
+[31m[0m
+2025/08/18 21:21:44 Step COMPLETED: Complete DNS Reconnaissance
+9:21PM INFO IPCrawler CLI: Workflow status workflow="DNS Information Gathering" target=scanme.nmap.org status=step_completed message="Completed step 1/1: Complete DNS Reconnaissance"
+2025/08/18 21:21:44 All steps completed!
+2025/08/18 21:21:44 Workflow completed successfully: DNS Information Gathering
+9:21PM INFO IPCrawler CLI: Workflow status workflow="DNS Information Gathering" target=scanme.nmap.org status=completed message="Workflow completed successfully"
+[31m[0m
+[31m                  __[0m
+[31m  ___  ___  ___ _/ /  __ __[0m
+[31m / _ \/ _ \/ _ \/ _ \/ // /[0m
+[31m/_//_/\_,_/\_,_/_.__/\_,_/[0m
+[31m[0m
+[31m		projectdiscovery.io[0m
+[31m[0m
+[31m[[34mINF[0m] Current naabu version 2.3.4 ([91moutdated[0m)[0m
+[31m[[34mINF[0m] Current naabu version 2.3.4 ([91moutdated[0m)[0m
+[31m[[34mINF[0m] Current naabu version 2.3.4 ([91moutdated[0m)[0m
+[31m[[34mINF[0m] Current naabu version 2.3.4 ([91moutdated[0m)[0m
+[31m[[34mINF[0m] Current naabu version 2.3.4 ([91moutdated[0m)[0m
+[31m[[34mINF[0m] Current naabu version 2.3.4 ([91moutdated[0m)[0m
+[31m[[34mINF[0m] Running CONNECT scan with non root privileges[0m
+[31m[[34mINF[0m] Running CONNECT scan with non root privileges[0m
+[31m[[34mINF[0m] Running CONNECT scan with non root privileges[0m
+[31m[[34mINF[0m] Running CONNECT scan with non root privileges[0m
+[31m[[34mINF[0m] Running CONNECT scan with non root privileges[0m
+[31m[[34mINF[0m] Running CONNECT scan with non root privileges[0m
+{"host":"scanme.nmap.org","ip":"45.33.32.156","timestamp":"2025-08-19T01:21:45.221961Z","port":80,"protocol":"tcp","tls":false}
+{"host":"scanme.nmap.org","ip":"45.33.32.156","timestamp":"2025-08-19T01:21:45.221954Z","port":80,"protocol":"tcp","tls":false}
+{"host":"scanme.nmap.org","ip":"45.33.32.156","timestamp":"2025-08-19T01:21:45.221962Z","port":22,"protocol":"tcp","tls":false}
+{"host":"scanme.nmap.org","ip":"45.33.32.156","timestamp":"2025-08-19T01:21:45.238899Z","port":22,"protocol":"tcp","tls":false}
+{"host":"scanme.nmap.org","ip":"45.33.32.156","timestamp":"2025-08-19T01:21:45.239183Z","port":80,"protocol":"tcp","tls":false}
+{"host":"scanme.nmap.org","ip":"45.33.32.156","timestamp":"2025-08-19T01:21:45.241823Z","port":80,"protocol":"tcp","tls":false}
+{"host":"scanme.nmap.org","ip":"45.33.32.156","timestamp":"2025-08-19T01:21:45.242639Z","port":22,"protocol":"tcp","tls":false}
+{"host":"scanme.nmap.org","ip":"45.33.32.156","timestamp":"2025-08-19T01:21:45.255234Z","port":80,"protocol":"tcp","tls":false}
+{"host":"scanme.nmap.org","ip":"45.33.32.156","timestamp":"2025-08-19T01:21:45.255751Z","port":22,"protocol":"tcp","tls":false}
+{"host":"scanme.nmap.org","ip":"45.33.32.156","timestamp":"2025-08-19T01:21:45.25836Z","port":22,"protocol":"tcp","tls":false}
+{"host":"scanme.nmap.org","ip":"45.33.32.156","timestamp":"2025-08-19T01:21:45.258472Z","port":80,"protocol":"tcp","tls":false}
+2025/08/18 21:21:45 DEBU Executing command executable=/opt/homebrew/bin/nmap args="[-sV -p {{combined_ports}} -T4 -oX workspace/scanme_nmap_org_1755566504/scans/nmap_pipeline_service_scan_scanme_nmap_org_enhanced-reconnaissance_multi-mode-service-analysis_20250818_212144.xml scanme.nmap.org]"
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ nmap [pipeline_service_scan][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+2025/08/18 21:21:45 DEBU Starting command attempt=2 max_attempts=4
+[31mError #485: Your port specifications are illegal.  Example of proper form: "-100,200-1024,T:3000-4000,U:60000-"[0m
+[31mQUITTING![0m
+Starting Nmap 7.97 ( https://nmap.org ) at 2025-08-18 21:21 -0400
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:45 DEBU Command completed error="exit status 1"
+
+[31m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[31m⚠️  ERROR: nmap [pipeline_service_scan] failed[0m[0m
+[31m════════════════════════════════════════════════════════════════════════════════[0m
+[36mTarget:[0m scanme.nmap.org
+[36mCommand:[0m /opt/homebrew/bin/nmap -sV -p {{combined_ports}} -T4 -oX workspace/scanme_nmap_org_1755566504/scans/nmap_pipeline_service_scan_scanme_nmap_org_enhanced-reconnaissance_multi-mode-service-analysis_20250818_212144.xml scanme.nmap.org
+[36mExit Code:[0m 1
+[36mDuration:[0m 1.072208042s
+[36mError:[0m exit status 1
+[36mStderr:[0m
+Error #485: Your port specifications are illegal.  Example of proper form: "-100,200-1024,T:3000-4000,U:60000-"
+QUITTING!
+
+[36mStdout:[0m
+Starting Nmap 7.97 ( https://nmap.org ) at 2025-08-18 21:21 -0400
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+[31m[[34mINF[0m] Found 1 ports on host scanme.nmap.org (45.33.32.156)[0m
+[31m[[34mINF[0m] Found 2 ports on host scanme.nmap.org (45.33.32.156)[0m
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:47 DEBU Command completed error=<nil>
+2025/08/18 21:21:47 DEBU Command completed error=<nil>
+2025/08/18 21:21:47 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/naabu_fast_scan_scanme_nmap_org_naabu-simple-test_naabu-fast-port-scan_20250818_212144
+2025/08/18 21:21:47 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/naabu_web_ports_scanme_nmap_org_naabu-parallel-test_naabu-web-ports_20250818_212144
+2025/08/18 21:21:47 DEBU Successfully saved stdout bytes=256
+2025/08/18 21:21:47 DEBU Successfully saved stdout bytes=128
+2025/08/18 21:21:47 Step COMPLETED: Naabu Web Ports
+2025/08/18 21:21:47 Step COMPLETED: Naabu Fast Port Scan
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Parallel Test" target=scanme.nmap.org status=step_completed message="Completed step 2/3: Naabu Web Ports"
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Simple Test" target=scanme.nmap.org status=step_completed message="Completed step 1/1: Naabu Fast Port Scan"
+2025/08/18 21:21:47 All steps completed!
+2025/08/18 21:21:47 Workflow completed successfully: Naabu Simple Test
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Simple Test" target=scanme.nmap.org status=completed message="Workflow completed successfully"
+[31m[[34mINF[0m] Found 2 ports on host scanme.nmap.org (45.33.32.156)[0m
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:47 DEBU Command completed error=<nil>
+2025/08/18 21:21:47 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/naabu_common_ports_scanme_nmap_org_naabu-parallel-test_naabu-common-ports_20250818_212144
+2025/08/18 21:21:47 DEBU Successfully saved stdout bytes=256
+2025/08/18 21:21:47 Step COMPLETED: Naabu Common Ports
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Parallel Test" target=scanme.nmap.org status=step_completed message="Completed step 3/3: Naabu Common Ports"
+[31m[[34mINF[0m] Found 2 ports on host scanme.nmap.org (45.33.32.156)[0m
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:47 DEBU Command completed error=<nil>
+2025/08/18 21:21:47 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/naabu_fast_scan_scanme_nmap_org_naabu-test_port-discovery-test_20250818_212144
+2025/08/18 21:21:47 DEBU Successfully saved stdout bytes=256
+2025/08/18 21:21:47 Step COMPLETED: Port Discovery Test
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Test" target=scanme.nmap.org status=step_completed message="Completed step 1/1: Port Discovery Test"
+2025/08/18 21:21:47 All steps completed!
+2025/08/18 21:21:47 Workflow completed successfully: Naabu Test
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Test" target=scanme.nmap.org status=completed message="Workflow completed successfully"
+[31m[[34mINF[0m] Found 2 ports on host scanme.nmap.org (45.33.32.156)[0m
+[31m[[34mINF[0m] Found 2 ports on host scanme.nmap.org (45.33.32.156)[0m
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:47 DEBU Command completed error=<nil>
+2025/08/18 21:21:47 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/naabu_fast_scan_scanme_nmap_org_enhanced-reconnaissance_multi-mode-port-discovery_20250818_212144
+2025/08/18 21:21:47 DEBU Successfully saved stdout bytes=256
+2025/08/18 21:21:47 Step COMPLETED: Multi-Mode Port Discovery
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Enhanced Reconnaissance" target=scanme.nmap.org status=step_completed message="Completed step 1/2: Multi-Mode Port Discovery"
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:47 DEBU Command completed error=<nil>
+2025/08/18 21:21:47 DEBU Saving captured stdout path=workspace/scanme_nmap_org_1755566504/scans/naabu_fast_scan_scanme_nmap_org_naabu-parallel-test_naabu-fast-scan_20250818_212144
+2025/08/18 21:21:47 DEBU Successfully saved stdout bytes=255
+2025/08/18 21:21:47 Step COMPLETED: Naabu Fast Scan
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Parallel Test" target=scanme.nmap.org status=step_completed message="Completed step 1/3: Naabu Fast Scan"
+2025/08/18 21:21:47 All steps completed!
+2025/08/18 21:21:47 Workflow completed successfully: Naabu Parallel Test
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Naabu Parallel Test" target=scanme.nmap.org status=completed message="Workflow completed successfully"
+2025/08/18 21:21:47 DEBU Executing command executable=/opt/homebrew/bin/nmap args="[-sV -p {{combined_ports}} -T4 -oX workspace/scanme_nmap_org_1755566504/scans/nmap_pipeline_service_scan_scanme_nmap_org_enhanced-reconnaissance_multi-mode-service-analysis_20250818_212144.xml scanme.nmap.org]"
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ nmap [pipeline_service_scan][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+2025/08/18 21:21:47 DEBU Starting command attempt=3 max_attempts=4
+[31mError #485: Your port specifications are illegal.  Example of proper form: "-100,200-1024,T:3000-4000,U:60000-"[0m
+[31mQUITTING![0m
+Starting Nmap 7.97 ( https://nmap.org ) at 2025-08-18 21:21 -0400
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:47 DEBU Command completed error="exit status 1"
+
+[31m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[31m⚠️  ERROR: nmap [pipeline_service_scan] failed[0m[0m
+[31m════════════════════════════════════════════════════════════════════════════════[0m
+[36mTarget:[0m scanme.nmap.org
+[36mCommand:[0m /opt/homebrew/bin/nmap -sV -p {{combined_ports}} -T4 -oX workspace/scanme_nmap_org_1755566504/scans/nmap_pipeline_service_scan_scanme_nmap_org_enhanced-reconnaissance_multi-mode-service-analysis_20250818_212144.xml scanme.nmap.org
+[36mExit Code:[0m 1
+[36mDuration:[0m 3.1034915s
+[36mError:[0m exit status 1
+[36mStderr:[0m
+Error #485: Your port specifications are illegal.  Example of proper form: "-100,200-1024,T:3000-4000,U:60000-"
+QUITTING!
+
+[36mStdout:[0m
+Starting Nmap 7.97 ( https://nmap.org ) at 2025-08-18 21:21 -0400
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:50 DEBU Executing command executable=/opt/homebrew/bin/nmap args="[-sV -p {{combined_ports}} -T4 -oX workspace/scanme_nmap_org_1755566504/scans/nmap_pipeline_service_scan_scanme_nmap_org_enhanced-reconnaissance_multi-mode-service-analysis_20250818_212144.xml scanme.nmap.org]"
+
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[32m▶ nmap [pipeline_service_scan][0m
+[36m════════════════════════════════════════════════════════════════════════════════[0m
+
+2025/08/18 21:21:50 DEBU Starting command attempt=4 max_attempts=4
+[31mError #485: Your port specifications are illegal.  Example of proper form: "-100,200-1024,T:3000-4000,U:60000-"[0m
+[31mQUITTING![0m
+Starting Nmap 7.97 ( https://nmap.org ) at 2025-08-18 21:21 -0400
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:51 DEBU Command completed error="exit status 1"
+
+[31m════════════════════════════════════════════════════════════════════════════════[0m
+[1m[31m⚠️  ERROR: nmap [pipeline_service_scan] failed[0m[0m
+[31m════════════════════════════════════════════════════════════════════════════════[0m
+[36mTarget:[0m scanme.nmap.org
+[36mCommand:[0m /opt/homebrew/bin/nmap -sV -p {{combined_ports}} -T4 -oX workspace/scanme_nmap_org_1755566504/scans/nmap_pipeline_service_scan_scanme_nmap_org_enhanced-reconnaissance_multi-mode-service-analysis_20250818_212144.xml scanme.nmap.org
+[36mExit Code:[0m 1
+[36mDuration:[0m 6.12599775s
+[36mError:[0m exit status 1
+[36mStderr:[0m
+Error #485: Your port specifications are illegal.  Example of proper form: "-100,200-1024,T:3000-4000,U:60000-"
+QUITTING!
+
+[36mStdout:[0m
+Starting Nmap 7.97 ( https://nmap.org ) at 2025-08-18 21:21 -0400
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+2025/08/18 21:21:51 Step FAILED: Multi-Mode Service Analysis - Error: exit status 1
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Enhanced Reconnaissance" target=scanme.nmap.org status=step_failed message="Failed step 2/2: Multi-Mode Service Analysis - Error: exit status 1"
+2025/08/18 21:21:51 All steps completed!
+2025/08/18 21:21:51 Workflow failed with error: exit status 1
+9:21PM INFO IPCrawler CLI: Workflow status workflow="Enhanced Reconnaissance" target=scanme.nmap.org status=failed message="Workflow failed: exit status 1"
+2025/08/18 21:21:51 All workflows completed!
+9:21PM INFO IPCrawler CLI: All workflows completed successfully
