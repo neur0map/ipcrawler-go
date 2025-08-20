@@ -39,19 +39,19 @@ func (sv *SecurityValidator) ValidateArguments(args []string) error {
 	totalBytes := 0
 	for _, arg := range args {
 		argBytes := len(arg)
-		
+
 		// Check individual argument size
 		if argBytes > policy.MaxArgBytes {
-			return fmt.Errorf("argument too long: %d > %d bytes (max_arg_bytes): '%s'", 
+			return fmt.Errorf("argument too long: %d > %d bytes (max_arg_bytes): '%s'",
 				argBytes, policy.MaxArgBytes, truncateString(arg, 50))
 		}
-		
+
 		totalBytes += argBytes
 	}
 
 	// Check total arguments size
 	if totalBytes > policy.MaxArgvBytes {
-		return fmt.Errorf("total arguments too long: %d > %d bytes (max_argv_bytes)", 
+		return fmt.Errorf("total arguments too long: %d > %d bytes (max_argv_bytes)",
 			totalBytes, policy.MaxArgvBytes)
 	}
 
@@ -59,7 +59,7 @@ func (sv *SecurityValidator) ValidateArguments(args []string) error {
 	if policy.DenyShellMetachars {
 		for _, arg := range args {
 			if err := sv.checkShellMetacharacters(arg); err != nil {
-				return fmt.Errorf("shell metacharacter found in argument '%s': %w", 
+				return fmt.Errorf("shell metacharacter found in argument '%s': %w",
 					truncateString(arg, 50), err)
 			}
 		}
@@ -69,7 +69,7 @@ func (sv *SecurityValidator) ValidateArguments(args []string) error {
 	if len(policy.AllowedCharClasses) > 0 {
 		for _, arg := range args {
 			if err := sv.validateCharacterClasses(arg, policy.AllowedCharClasses); err != nil {
-				return fmt.Errorf("invalid characters in argument '%s': %w", 
+				return fmt.Errorf("invalid characters in argument '%s': %w",
 					truncateString(arg, 50), err)
 			}
 		}
@@ -78,7 +78,7 @@ func (sv *SecurityValidator) ValidateArguments(args []string) error {
 	// Check for path traversal attempts
 	for _, arg := range args {
 		if err := sv.checkPathTraversal(arg); err != nil {
-			return fmt.Errorf("path traversal attempt in argument '%s': %w", 
+			return fmt.Errorf("path traversal attempt in argument '%s': %w",
 				truncateString(arg, 50), err)
 		}
 	}
@@ -97,7 +97,7 @@ func (sv *SecurityValidator) ValidateExecutable(executablePath string) error {
 	if toolsRoot == "" {
 		toolsRoot = sv.config.Tools.Execution.ToolsPath // Fallback to tools config
 	}
-	
+
 	// If tools root is empty, allow any executable (system PATH)
 	if toolsRoot == "" {
 		return nil
@@ -122,7 +122,7 @@ func (sv *SecurityValidator) ValidateExecutable(executablePath string) error {
 
 	// If relative path starts with "..", it's outside tools root
 	if strings.HasPrefix(relPath, "..") {
-		return fmt.Errorf("executable outside tools root: %s not under %s", 
+		return fmt.Errorf("executable outside tools root: %s not under %s",
 			executablePath, toolsRoot)
 	}
 
@@ -138,7 +138,7 @@ func (sv *SecurityValidator) ValidateExecutable(executablePath string) error {
 func (sv *SecurityValidator) checkShellMetacharacters(arg string) error {
 	// Common shell metacharacters that could be dangerous
 	dangerousChars := []string{
-		";", "&", "|", "&&", "||", "$", "`", "$(", "${", 
+		";", "&", "|", "&&", "||", "$", "`", "$(", "${",
 		">", ">>", "<", "<<", "*", "?", "[", "]", "!", "~",
 		"'", "\"", "\\", "\n", "\r", "\t",
 	}
@@ -156,7 +156,7 @@ func (sv *SecurityValidator) checkShellMetacharacters(arg string) error {
 func (sv *SecurityValidator) validateCharacterClasses(arg string, allowedClasses []string) error {
 	// Build allowed character set
 	allowedChars := make(map[rune]bool)
-	
+
 	for _, class := range allowedClasses {
 		switch class {
 		case "alnum":
@@ -217,8 +217,8 @@ func (sv *SecurityValidator) checkPathTraversal(arg string) error {
 	// Check for encoded path traversal
 	if matched, _ := regexp.MatchString(`%[0-9a-fA-F]{2}`, arg); matched {
 		// Contains URL encoding - could be hiding path traversal
-		if strings.Contains(argLower, "%2e") || strings.Contains(argLower, "%2f") || 
-		   strings.Contains(argLower, "%5c") {
+		if strings.Contains(argLower, "%2e") || strings.Contains(argLower, "%2f") ||
+			strings.Contains(argLower, "%5c") {
 			return fmt.Errorf("potential encoded path traversal detected")
 		}
 	}
@@ -249,7 +249,7 @@ func (sv *SecurityValidator) ValidateStringContent(s string, fieldName string) e
 	// Check for non-printable characters
 	for i, r := range s {
 		if !unicode.IsPrint(r) && !unicode.IsSpace(r) {
-			return fmt.Errorf("non-printable character at position %d in %s: U+%04X", 
+			return fmt.Errorf("non-printable character at position %d in %s: U+%04X",
 				i, fieldName, r)
 		}
 	}

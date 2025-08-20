@@ -72,11 +72,19 @@ test-keyboard: ## Test keyboard interactions
 	fi
 
 test-deps: ## Test dependency versions
-	@echo "$(BLUE)Checking Charmbracelet dependency versions...$(RESET)"
-	@go list -m github.com/charmbracelet/bubbletea
-	@go list -m github.com/charmbracelet/bubbles  
-	@go list -m github.com/charmbracelet/lipgloss
+	@echo "$(BLUE)Checking core dependency versions...$(RESET)"
+	@go list -m github.com/charmbracelet/log
+	@go list -m github.com/pterm/pterm
+	@go list -m github.com/spf13/viper
 	@echo "$(GREEN)✓ All dependencies are properly resolved$(RESET)"
+
+test-static: ## Run static analysis tests
+	@echo "$(BLUE)Running static analysis...$(RESET)"
+	@echo "$(GREEN)✓ Running go vet...$(RESET)"
+	@go vet ./cmd/ipcrawler ./internal/...
+	@echo "$(GREEN)✓ Running go fmt check...$(RESET)"
+	@test -z "$$(gofmt -l ./cmd/ipcrawler ./internal/)" || (echo "$(RED)Code not formatted. Run 'gofmt -w .'$(RESET)" && exit 1)
+	@echo "$(GREEN)✓ Static analysis completed$(RESET)"
 
 test-all: test-ui test-plain test-static test-deps ## Run all tests
 	@echo "$(GREEN)All tests completed successfully!$(RESET)"

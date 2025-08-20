@@ -13,13 +13,13 @@ type ToolPerformanceProfile int
 
 const (
 	FastTool   ToolPerformanceProfile = iota // Quick tools like nslookup, ping
-	MediumTool                              // Medium tools like naabu, gobuster
-	HeavyTool                               // Heavy tools like nmap, sqlmap
+	MediumTool                               // Medium tools like naabu, gobuster
+	HeavyTool                                // Heavy tools like nmap, sqlmap
 )
 
 // NOTE: No hardcoded tool classifications - system learns dynamically from execution times
 // All unknown tools start as MediumTool and are reclassified based on actual performance:
-// - FastTool: < 5 seconds average execution time  
+// - FastTool: < 5 seconds average execution time
 // - MediumTool: 5-30 seconds average execution time
 // - HeavyTool: > 30 seconds average execution time
 
@@ -52,38 +52,38 @@ type ToolPerformanceHistory struct {
 // ConcurrencyManager manages dynamic tool execution slots
 type ConcurrencyManager struct {
 	limits ConcurrencyLimits
-	
+
 	// Separate semaphores for each tool type
 	fastSem   chan struct{}
 	mediumSem chan struct{}
 	heavySem  chan struct{}
-	
+
 	// Active execution tracking
 	activeMutex sync.RWMutex
 	activeTools map[string]int // toolName -> active count
-	
+
 	// Execution queue
-	queueMutex   sync.Mutex
+	queueMutex     sync.Mutex
 	executionQueue []*ExecutionRequest
-	
+
 	// Dynamic tool performance learning
-	performanceMutex sync.RWMutex
+	performanceMutex   sync.RWMutex
 	performanceHistory map[string]*ToolPerformanceHistory
-	
+
 	// Metrics
 	metricsMutex sync.RWMutex
 	metrics      ConcurrencyMetrics
-	
+
 	logger *log.Logger
 }
 
 // ConcurrencyMetrics tracks concurrency performance
 type ConcurrencyMetrics struct {
-	TotalExecuted     int
-	QueuedExecutions  int
-	AverageWaitTime   time.Duration
-	SlotUtilization   map[ToolPerformanceProfile]float64
-	PeakConcurrency   map[ToolPerformanceProfile]int
+	TotalExecuted    int
+	QueuedExecutions int
+	AverageWaitTime  time.Duration
+	SlotUtilization  map[ToolPerformanceProfile]float64
+	PeakConcurrency  map[ToolPerformanceProfile]int
 }
 
 // NewConcurrencyManager creates a new dynamic concurrency manager
@@ -92,14 +92,14 @@ func NewConcurrencyManager(limits ConcurrencyLimits, logger *log.Logger) *Concur
 		logger = log.New(nil)
 		logger.SetLevel(log.ErrorLevel) // Silent by default
 	}
-	
+
 	return &ConcurrencyManager{
-		limits:         limits,
-		fastSem:        make(chan struct{}, limits.FastToolLimit),
-		mediumSem:      make(chan struct{}, limits.MediumToolLimit),
-		heavySem:       make(chan struct{}, limits.HeavyToolLimit),
-		activeTools:    make(map[string]int),
-		executionQueue: make([]*ExecutionRequest, 0),
+		limits:             limits,
+		fastSem:            make(chan struct{}, limits.FastToolLimit),
+		mediumSem:          make(chan struct{}, limits.MediumToolLimit),
+		heavySem:           make(chan struct{}, limits.HeavyToolLimit),
+		activeTools:        make(map[string]int),
+		executionQueue:     make([]*ExecutionRequest, 0),
 		performanceHistory: make(map[string]*ToolPerformanceHistory),
 		metrics: ConcurrencyMetrics{
 			SlotUtilization: make(map[ToolPerformanceProfile]float64),
@@ -113,14 +113,14 @@ func NewConcurrencyManager(limits ConcurrencyLimits, logger *log.Logger) *Concur
 func (cm *ConcurrencyManager) GetToolProfile(toolName string) ToolPerformanceProfile {
 	cm.performanceMutex.RLock()
 	defer cm.performanceMutex.RUnlock()
-	
+
 	// Check if we have learned performance data for this tool
 	if history, exists := cm.performanceHistory[toolName]; exists {
 		// Use learned classification even from first execution
 		// This allows immediate adaptation after first run
 		return history.LastClassified
 	}
-	
+
 	// All unknown tools start as MediumTool - completely dynamic, no hardcoded hints
 	cm.logger.Debug("Unknown tool, defaulting to medium profile", "tool", toolName)
 	return MediumTool
@@ -130,7 +130,7 @@ func (cm *ConcurrencyManager) GetToolProfile(toolName string) ToolPerformancePro
 func (cm *ConcurrencyManager) LearnToolPerformance(toolName string, executionTime time.Duration) {
 	cm.performanceMutex.Lock()
 	defer cm.performanceMutex.Unlock()
-	
+
 	history, exists := cm.performanceHistory[toolName]
 	if !exists {
 		history = &ToolPerformanceHistory{
@@ -139,20 +139,20 @@ func (cm *ConcurrencyManager) LearnToolPerformance(toolName string, executionTim
 		}
 		cm.performanceHistory[toolName] = history
 	}
-	
+
 	oldProfile := history.LastClassified
-	
+
 	// Update statistics
 	history.TotalExecutions++
 	history.TotalTime += executionTime
 	history.AverageTime = history.TotalTime / time.Duration(history.TotalExecutions)
 	history.LastUpdate = time.Now()
-	
+
 	// Dynamic classification based on execution performance
 	// Use weighted average with current execution to be more responsive to recent performance
 	currentSeconds := executionTime.Seconds()
 	avgSeconds := history.AverageTime.Seconds()
-	
+
 	// For early executions (< 5 runs), weight current execution more heavily
 	// This allows faster adaptation to tool characteristics
 	var effectiveTime float64
@@ -162,7 +162,7 @@ func (cm *ConcurrencyManager) LearnToolPerformance(toolName string, executionTim
 	} else {
 		effectiveTime = avgSeconds // Use pure average for established tools
 	}
-	
+
 	// Classify based on effective execution time (fully dynamic)
 	var newProfile ToolPerformanceProfile
 	switch {
@@ -173,10 +173,10 @@ func (cm *ConcurrencyManager) LearnToolPerformance(toolName string, executionTim
 	default:
 		newProfile = HeavyTool
 	}
-	
+
 	// Log classification updates (including first-time classification)
 	if newProfile != oldProfile {
-		cm.logger.Debug("Tool classification updated", 
+		cm.logger.Debug("Tool classification updated",
 			"tool", toolName,
 			"old_profile", oldProfile,
 			"new_profile", newProfile,
@@ -185,7 +185,7 @@ func (cm *ConcurrencyManager) LearnToolPerformance(toolName string, executionTim
 			"effective_time", effectiveTime,
 			"executions", history.TotalExecutions)
 	}
-	
+
 	history.LastClassified = newProfile
 }
 
@@ -193,7 +193,7 @@ func (cm *ConcurrencyManager) LearnToolPerformance(toolName string, executionTim
 func (cm *ConcurrencyManager) GetToolPerformanceHistory() map[string]ToolPerformanceHistory {
 	cm.performanceMutex.RLock()
 	defer cm.performanceMutex.RUnlock()
-	
+
 	result := make(map[string]ToolPerformanceHistory)
 	for toolName, history := range cm.performanceHistory {
 		result[toolName] = *history // Copy the struct
@@ -204,10 +204,10 @@ func (cm *ConcurrencyManager) GetToolPerformanceHistory() map[string]ToolPerform
 // RequestExecution requests an execution slot for a tool
 func (cm *ConcurrencyManager) RequestExecution(ctx context.Context, toolName string, priority int) (*ExecutionRequest, error) {
 	profile := cm.GetToolProfile(toolName)
-	
+
 	// Create cancellable context for this request
 	requestCtx, cancelFunc := context.WithCancel(ctx)
-	
+
 	request := &ExecutionRequest{
 		ToolName:   toolName,
 		Profile:    profile,
@@ -216,25 +216,25 @@ func (cm *ConcurrencyManager) RequestExecution(ctx context.Context, toolName str
 		StartChan:  make(chan struct{}),
 		CancelFunc: cancelFunc,
 	}
-	
+
 	// Try to acquire slot immediately
 	if cm.tryAcquireSlot(request) {
 		// Slot acquired, signal immediate start
 		close(request.StartChan)
 		return request, nil
 	}
-	
+
 	// No slot available, add to queue
 	cm.addToQueue(request)
 	cm.logger.Debug("Tool queued", "tool", toolName, "profile", profile, "queue_size", len(cm.executionQueue))
-	
+
 	return request, nil
 }
 
 // tryAcquireSlot attempts to immediately acquire an execution slot
 func (cm *ConcurrencyManager) tryAcquireSlot(request *ExecutionRequest) bool {
 	var sem chan struct{}
-	
+
 	switch request.Profile {
 	case FastTool:
 		sem = cm.fastSem
@@ -243,7 +243,7 @@ func (cm *ConcurrencyManager) tryAcquireSlot(request *ExecutionRequest) bool {
 	case HeavyTool:
 		sem = cm.heavySem
 	}
-	
+
 	select {
 	case sem <- struct{}{}:
 		// Slot acquired
@@ -259,24 +259,24 @@ func (cm *ConcurrencyManager) tryAcquireSlot(request *ExecutionRequest) bool {
 func (cm *ConcurrencyManager) addToQueue(request *ExecutionRequest) {
 	cm.queueMutex.Lock()
 	defer cm.queueMutex.Unlock()
-	
+
 	// Insert request in priority order (higher priority first)
 	inserted := false
 	for i, queuedRequest := range cm.executionQueue {
 		if request.Priority > queuedRequest.Priority {
 			// Insert at position i
-			cm.executionQueue = append(cm.executionQueue[:i], 
+			cm.executionQueue = append(cm.executionQueue[:i],
 				append([]*ExecutionRequest{request}, cm.executionQueue[i:]...)...)
 			inserted = true
 			break
 		}
 	}
-	
+
 	if !inserted {
 		// Append to end
 		cm.executionQueue = append(cm.executionQueue, request)
 	}
-	
+
 	cm.metricsMutex.Lock()
 	cm.metrics.QueuedExecutions++
 	cm.metricsMutex.Unlock()
@@ -285,7 +285,7 @@ func (cm *ConcurrencyManager) addToQueue(request *ExecutionRequest) {
 // ReleaseExecution releases an execution slot and processes queue
 func (cm *ConcurrencyManager) ReleaseExecution(request *ExecutionRequest) {
 	var sem chan struct{}
-	
+
 	switch request.Profile {
 	case FastTool:
 		sem = cm.fastSem
@@ -294,16 +294,16 @@ func (cm *ConcurrencyManager) ReleaseExecution(request *ExecutionRequest) {
 	case HeavyTool:
 		sem = cm.heavySem
 	}
-	
+
 	// Release the semaphore slot
 	<-sem
-	
+
 	// Update tracking
 	cm.trackToolEnd(request.ToolName, request.Profile)
-	
+
 	// Process queue for newly available slot
 	cm.processQueue(request.Profile)
-	
+
 	cm.logger.Debug("Execution slot released", "tool", request.ToolName, "profile", request.Profile)
 }
 
@@ -311,7 +311,7 @@ func (cm *ConcurrencyManager) ReleaseExecution(request *ExecutionRequest) {
 func (cm *ConcurrencyManager) processQueue(releasedProfile ToolPerformanceProfile) {
 	cm.queueMutex.Lock()
 	defer cm.queueMutex.Unlock()
-	
+
 	// Look for highest priority tools that can use ANY available slot (not just the released type)
 	for i, request := range cm.executionQueue {
 		// Check if request context is still valid
@@ -320,7 +320,7 @@ func (cm *ConcurrencyManager) processQueue(releasedProfile ToolPerformanceProfil
 			cm.executionQueue = append(cm.executionQueue[:i], cm.executionQueue[i+1:]...)
 			continue
 		}
-		
+
 		// Try to acquire slot for this request (regardless of profile - priority wins)
 		if cm.tryAcquireSlot(request) {
 			// Remove from queue and signal start
@@ -336,14 +336,14 @@ func (cm *ConcurrencyManager) processQueue(releasedProfile ToolPerformanceProfil
 func (cm *ConcurrencyManager) trackToolStart(toolName string, profile ToolPerformanceProfile) {
 	cm.activeMutex.Lock()
 	defer cm.activeMutex.Unlock()
-	
+
 	cm.activeTools[toolName]++
-	
+
 	cm.metricsMutex.Lock()
 	defer cm.metricsMutex.Unlock()
-	
+
 	cm.metrics.TotalExecuted++
-	
+
 	// Update peak concurrency
 	activeCount := cm.getActiveCountByProfile(profile)
 	if activeCount > cm.metrics.PeakConcurrency[profile] {
@@ -355,7 +355,7 @@ func (cm *ConcurrencyManager) trackToolStart(toolName string, profile ToolPerfor
 func (cm *ConcurrencyManager) trackToolEnd(toolName string, profile ToolPerformanceProfile) {
 	cm.activeMutex.Lock()
 	defer cm.activeMutex.Unlock()
-	
+
 	cm.activeTools[toolName]--
 	if cm.activeTools[toolName] <= 0 {
 		delete(cm.activeTools, toolName)
@@ -377,15 +377,15 @@ func (cm *ConcurrencyManager) getActiveCountByProfile(profile ToolPerformancePro
 func (cm *ConcurrencyManager) GetStatus() map[string]interface{} {
 	cm.activeMutex.RLock()
 	defer cm.activeMutex.RUnlock()
-	
+
 	cm.queueMutex.Lock()
 	defer cm.queueMutex.Unlock()
-	
+
 	// Calculate slot utilization
 	fastActive := cm.getActiveCountByProfile(FastTool)
 	mediumActive := cm.getActiveCountByProfile(MediumTool)
 	heavyActive := cm.getActiveCountByProfile(HeavyTool)
-	
+
 	status := map[string]interface{}{
 		"slots": map[string]interface{}{
 			"fast": map[string]interface{}{
@@ -413,7 +413,7 @@ func (cm *ConcurrencyManager) GetStatus() map[string]interface{} {
 		},
 		"active_tools": cm.copyActiveTools(),
 	}
-	
+
 	return status
 }
 
@@ -439,20 +439,20 @@ func (cm *ConcurrencyManager) copyActiveTools() map[string]int {
 func (cm *ConcurrencyManager) GetMetrics() ConcurrencyMetrics {
 	cm.metricsMutex.RLock()
 	defer cm.metricsMutex.RUnlock()
-	
+
 	// Create a copy to avoid data races
 	metrics := cm.metrics
 	metrics.SlotUtilization = make(map[ToolPerformanceProfile]float64)
 	metrics.PeakConcurrency = make(map[ToolPerformanceProfile]int)
-	
+
 	for profile, peak := range cm.metrics.PeakConcurrency {
 		metrics.PeakConcurrency[profile] = peak
 	}
-	
+
 	for profile, util := range cm.metrics.SlotUtilization {
 		metrics.SlotUtilization[profile] = util
 	}
-	
+
 	return metrics
 }
 

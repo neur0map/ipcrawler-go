@@ -19,47 +19,46 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
-
 // Workflow represents a complete workflow definition with enhanced parallelism support
 type Workflow struct {
-	Name                    string
-	Description             string
-	Category                string
-	Steps                   []*WorkflowStep
-	
+	Name        string
+	Description string
+	Category    string
+	Steps       []*WorkflowStep
+
 	// Enhanced workflow-level parallelism controls
-	ParallelWorkflow        bool   // Can run simultaneously with other workflows
-	IndependentExecution    bool   // Doesn't need to wait for external dependencies
-	MaxConcurrentWorkflows  int    // Maximum number of workflows that can run in parallel
-	WorkflowPriority        string // "low", "medium", "high" - workflow execution priority
+	ParallelWorkflow       bool   // Can run simultaneously with other workflows
+	IndependentExecution   bool   // Doesn't need to wait for external dependencies
+	MaxConcurrentWorkflows int    // Maximum number of workflows that can run in parallel
+	WorkflowPriority       string // "low", "medium", "high" - workflow execution priority
 }
 
 // WorkflowStep represents a single step in a workflow
 type WorkflowStep struct {
-	Name                string
-	Tool                string
-	Description         string
-	Modes               []string
-	Concurrent          bool
-	CombineResults      bool
-	DependsOn           string
-	Variables           map[string]string // Variable mappings for this step
-	
+	Name           string
+	Tool           string
+	Description    string
+	Modes          []string
+	Concurrent     bool
+	CombineResults bool
+	DependsOn      string
+	Variables      map[string]string // Variable mappings for this step
+
 	// Enhanced parallelism controls
-	StepPriority        string // "low", "medium", "high" - execution priority
-	MaxConcurrentTools  int    // Maximum number of tool instances to run simultaneously
+	StepPriority       string // "low", "medium", "high" - execution priority
+	MaxConcurrentTools int    // Maximum number of tool instances to run simultaneously
 }
 
 // WorkflowResult represents the result of executing a workflow step
 type WorkflowResult struct {
-	StepName      string
-	Tool          string
-	Modes         []string
-	Success       bool
-	Results       []*ExecutionResult
-	CombinedVars  map[string]string
-	Duration      time.Duration
-	ErrorMessage  string
+	StepName     string
+	Tool         string
+	Modes        []string
+	Success      bool
+	Results      []*ExecutionResult
+	CombinedVars map[string]string
+	Duration     time.Duration
+	ErrorMessage string
 }
 
 // WorkflowExecutor handles execution of multi-step workflows with parallel support
@@ -73,8 +72,8 @@ func getPriorityFromString(priority string) int {
 	switch strings.ToLower(strings.TrimSpace(priority)) {
 	case "high":
 		return 200 // High priority tools execute first
-	case "low": 
-		return 50  // Low priority tools execute last
+	case "low":
+		return 50 // Low priority tools execute last
 	case "medium", "":
 		return 100 // Default medium priority
 	default:
@@ -87,45 +86,45 @@ type WorkflowStatusCallback func(workflowName, target, status, message string)
 
 // WorkflowOrchestrator manages parallel execution of multiple workflows
 type WorkflowOrchestrator struct {
-	executor             *WorkflowExecutor
+	executor               *WorkflowExecutor
 	maxConcurrentWorkflows int
-	activeWorkflows       map[string]*WorkflowExecution
-	workflowQueue         []*WorkflowQueueItem
-	ResourceMonitor       *ResourceMonitor // Made public for TUI access
-	config               *config.Config // Configuration reference for priority calculations
-	statusCallback       WorkflowStatusCallback // Callback for status updates
-	mutex                sync.RWMutex
-	wg                   sync.WaitGroup // WaitGroup to track active workflows
-	
+	activeWorkflows        map[string]*WorkflowExecution
+	workflowQueue          []*WorkflowQueueItem
+	ResourceMonitor        *ResourceMonitor       // Made public for TUI access
+	config                 *config.Config         // Configuration reference for priority calculations
+	statusCallback         WorkflowStatusCallback // Callback for status updates
+	mutex                  sync.RWMutex
+	wg                     sync.WaitGroup // WaitGroup to track active workflows
+
 	// Loggers for different output types
 	debugLogger *log.Logger
 	infoLogger  *log.Logger
-	
+
 	// Output mode for controlling console logging
-	outputMode   output.OutputMode
+	outputMode output.OutputMode
 }
 
 // WorkflowExecution tracks the execution state of a workflow
 type WorkflowExecution struct {
-	Workflow        *Workflow
-	Target          string
-	Status          WorkflowStatus
-	StartTime       time.Time
-	EndTime         time.Time
-	CurrentStep     int
-	StepResults     []*WorkflowResult
-	Error           error
-	TotalSteps      int
-	CompletedSteps  int
+	Workflow       *Workflow
+	Target         string
+	Status         WorkflowStatus
+	StartTime      time.Time
+	EndTime        time.Time
+	CurrentStep    int
+	StepResults    []*WorkflowResult
+	Error          error
+	TotalSteps     int
+	CompletedSteps int
 }
 
 // WorkflowQueueItem represents a workflow waiting to be executed
 type WorkflowQueueItem struct {
-	Workflow      *Workflow
-	Target        string
-	Priority      int // Calculated priority based on workflow settings
-	QueueTime     time.Time
-	Dependencies  []string // List of workflow names this depends on
+	Workflow     *Workflow
+	Target       string
+	Priority     int // Calculated priority based on workflow settings
+	QueueTime    time.Time
+	Dependencies []string // List of workflow names this depends on
 }
 
 // WorkflowStatus represents the current state of workflow execution
@@ -169,34 +168,34 @@ func NewWorkflowExecutor(engine *ToolExecutionEngine) *WorkflowExecutor {
 func NewWorkflowOrchestrator(executor *WorkflowExecutor, cfg *config.Config) *WorkflowOrchestrator {
 	// Get configuration values with safe defaults
 	orchestrationConfig := cfg.Tools.WorkflowOrchestration
-	
+
 	maxConcurrentWorkflows := 3 // Default value
 	if orchestrationConfig.MaxConcurrentWorkflows > 0 {
 		maxConcurrentWorkflows = orchestrationConfig.MaxConcurrentWorkflows
 	}
-	
+
 	maxCPUUsage := 80.0 // Default value
 	if orchestrationConfig.ResourceLimits.MaxCPUUsage > 0 {
 		maxCPUUsage = orchestrationConfig.ResourceLimits.MaxCPUUsage
 	}
-	
+
 	maxMemoryUsage := 80.0 // Default value
 	if orchestrationConfig.ResourceLimits.MaxMemoryUsage > 0 {
 		maxMemoryUsage = orchestrationConfig.ResourceLimits.MaxMemoryUsage
 	}
-	
+
 	maxActiveTools := 15 // Default value
 	if orchestrationConfig.ResourceLimits.MaxActiveTools > 0 {
 		maxActiveTools = orchestrationConfig.ResourceLimits.MaxActiveTools
 	}
-	
+
 	// Setup default loggers (will be overridden when workspace is set)
 	debugLogger := log.New(os.Stderr)
 	debugLogger.SetLevel(log.DebugLevel)
-	
-	infoLogger := log.New(os.Stderr) 
+
+	infoLogger := log.New(os.Stderr)
 	infoLogger.SetLevel(log.InfoLevel)
-	
+
 	return &WorkflowOrchestrator{
 		executor:               executor,
 		maxConcurrentWorkflows: maxConcurrentWorkflows,
@@ -231,7 +230,7 @@ func (wo *WorkflowOrchestrator) SetOutputMode(mode output.OutputMode) {
 func (wo *WorkflowOrchestrator) SetWorkspaceLoggers(workspaceDir string) error {
 	debugsDir := filepath.Join(workspaceDir, "logs", "debug")
 	infoDir := filepath.Join(workspaceDir, "logs", "info")
-	
+
 	// Create log directories
 	if err := os.MkdirAll(debugsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create debug log directory: %v", err)
@@ -239,14 +238,14 @@ func (wo *WorkflowOrchestrator) SetWorkspaceLoggers(workspaceDir string) error {
 	if err := os.MkdirAll(infoDir, 0755); err != nil {
 		return fmt.Errorf("failed to create info log directory: %v", err)
 	}
-	
+
 	// Setup debug logger to write to both console and file
-	debugFile, err := os.OpenFile(filepath.Join(debugsDir, "workflow.log"), 
+	debugFile, err := os.OpenFile(filepath.Join(debugsDir, "workflow.log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open debug log file: %v", err)
 	}
-	
+
 	// Create MultiWriter based on output mode
 	var debugMultiWriter io.Writer
 	if wo.outputMode == output.OutputModeVerbose || wo.outputMode == output.OutputModeDebug {
@@ -260,14 +259,14 @@ func (wo *WorkflowOrchestrator) SetWorkspaceLoggers(workspaceDir string) error {
 	wo.debugLogger.SetReportCaller(false)
 	wo.debugLogger.SetReportTimestamp(true)
 	wo.debugLogger.SetLevel(log.DebugLevel)
-	
-	// Setup info logger to write to both console and file  
+
+	// Setup info logger to write to both console and file
 	infoFile, err := os.OpenFile(filepath.Join(infoDir, "workflow.log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open info log file: %v", err)
 	}
-	
+
 	// Create MultiWriter based on output mode
 	var infoMultiWriter io.Writer
 	if wo.outputMode == output.OutputModeVerbose || wo.outputMode == output.OutputModeDebug {
@@ -281,10 +280,10 @@ func (wo *WorkflowOrchestrator) SetWorkspaceLoggers(workspaceDir string) error {
 	wo.infoLogger.SetReportCaller(false)
 	wo.infoLogger.SetReportTimestamp(true)
 	wo.infoLogger.SetLevel(log.InfoLevel)
-	
+
 	// Update ResourceMonitor logger
 	wo.ResourceMonitor.debugLogger = wo.debugLogger
-	
+
 	return nil
 }
 
@@ -292,22 +291,22 @@ func (wo *WorkflowOrchestrator) SetWorkspaceLoggers(workspaceDir string) error {
 func (wo *WorkflowOrchestrator) GetExecutionStatus() (queuedCount, activeCount int, queuedNames, activeNames []string) {
 	wo.mutex.RLock()
 	defer wo.mutex.RUnlock()
-	
+
 	queuedCount = len(wo.workflowQueue)
 	activeCount = len(wo.activeWorkflows)
-	
+
 	// Get queued workflow names
 	queuedNames = make([]string, 0, queuedCount)
 	for _, item := range wo.workflowQueue {
 		queuedNames = append(queuedNames, item.Workflow.Name)
 	}
-	
+
 	// Get active workflow names
 	activeNames = make([]string, 0, activeCount)
 	for key := range wo.activeWorkflows {
 		activeNames = append(activeNames, key)
 	}
-	
+
 	return
 }
 
@@ -333,7 +332,7 @@ func (wo *WorkflowOrchestrator) QueueWorkflow(workflow *Workflow, target string)
 
 	// Insert into queue based on priority
 	wo.insertByPriority(queueItem)
-	
+
 	wo.debugLogger.Printf("Workflow queued successfully. Total queue size: %d", len(wo.workflowQueue))
 
 	return nil
@@ -353,7 +352,7 @@ func (wo *WorkflowOrchestrator) ExecuteQueuedWorkflows(ctx context.Context) erro
 
 	for len(wo.workflowQueue) > 0 && len(wo.activeWorkflows) < wo.maxConcurrentWorkflows {
 		wo.debugLogger.Printf("Loop iteration - Queue: %d, Active: %d", len(wo.workflowQueue), len(wo.activeWorkflows))
-		
+
 		// Check if we have enough resources
 		if !wo.ResourceMonitor.canStartNewWorkflow() {
 			wo.debugLogger.Printf("Breaking due to resource constraints")
@@ -370,7 +369,7 @@ func (wo *WorkflowOrchestrator) ExecuteQueuedWorkflows(ctx context.Context) erro
 		// Remove from queue and start execution
 		queueItem := wo.workflowQueue[nextIndex]
 		wo.workflowQueue = append(wo.workflowQueue[:nextIndex], wo.workflowQueue[nextIndex+1:]...)
-		
+
 		wo.debugLogger.Printf("Starting workflow: %s for target: %s", queueItem.Workflow.Name, queueItem.Target)
 
 		// Start workflow execution in a separate goroutine
@@ -380,29 +379,29 @@ func (wo *WorkflowOrchestrator) ExecuteQueuedWorkflows(ctx context.Context) erro
 
 	wo.debugLogger.Printf("ExecuteQueuedWorkflows completed - Final queue size: %d, Active workflows: %d",
 		len(wo.workflowQueue), len(wo.activeWorkflows))
-	
+
 	// Release the mutex before waiting for workflows to complete
 	wo.mutex.Unlock()
-	
+
 	// Wait for all started workflows to complete
 	wo.debugLogger.Printf("Waiting for all workflows to complete...")
 	wo.wg.Wait()
 	wo.debugLogger.Printf("All workflows completed!")
-	
+
 	return nil
 }
 
 // executeWorkflowAsync executes a workflow asynchronously
 func (wo *WorkflowOrchestrator) executeWorkflowAsync(ctx context.Context, queueItem *WorkflowQueueItem) {
 	wo.debugLogger.Printf("GOROUTINE STARTED: %s for target: %s", queueItem.Workflow.Name, queueItem.Target)
-	
+
 	execution := &WorkflowExecution{
-		Workflow:      queueItem.Workflow,
-		Target:        queueItem.Target,
-		Status:        WorkflowStatusRunning,
-		StartTime:     time.Now(),
-		TotalSteps:    len(queueItem.Workflow.Steps),
-		StepResults:   make([]*WorkflowResult, 0),
+		Workflow:    queueItem.Workflow,
+		Target:      queueItem.Target,
+		Status:      WorkflowStatusRunning,
+		StartTime:   time.Now(),
+		TotalSteps:  len(queueItem.Workflow.Steps),
+		StepResults: make([]*WorkflowResult, 0),
 	}
 
 	wo.debugLogger.Printf("Starting workflow execution: %s for target: %s", queueItem.Workflow.Name, queueItem.Target)
@@ -424,7 +423,7 @@ func (wo *WorkflowOrchestrator) executeWorkflowAsync(ctx context.Context, queueI
 
 	// Execute workflow steps IN PARALLEL for true simultaneous execution
 	wo.debugLogger.Printf("Workflow has %d steps - executing ALL SIMULTANEOUSLY", len(queueItem.Workflow.Steps))
-	
+
 	// Check if context is already cancelled
 	select {
 	case <-ctx.Done():
@@ -436,20 +435,20 @@ func (wo *WorkflowOrchestrator) executeWorkflowAsync(ctx context.Context, queueI
 	default:
 		// Continue
 	}
-	
+
 	// SMART PARALLEL EXECUTION: Respect dependencies while maximizing parallelism
 	stepResults := make([]*WorkflowResult, len(queueItem.Workflow.Steps))
 	stepErrors := make([]error, len(queueItem.Workflow.Steps))
 	stepCompleted := make([]bool, len(queueItem.Workflow.Steps))
 	stepCompletionChans := make([]chan bool, len(queueItem.Workflow.Steps))
-	
+
 	// Initialize completion channels for each step
 	for i := range queueItem.Workflow.Steps {
 		stepCompletionChans[i] = make(chan bool, 1)
 	}
-	
+
 	var stepWg sync.WaitGroup
-	
+
 	// Start all independent steps immediately, dependent steps wait for their dependencies
 	for i, step := range queueItem.Workflow.Steps {
 		stepWg.Add(1)
@@ -459,11 +458,11 @@ func (wo *WorkflowOrchestrator) executeWorkflowAsync(ctx context.Context, queueI
 				// Signal completion for dependent steps
 				stepCompletionChans[stepIndex] <- true
 			}()
-			
+
 			// Wait for dependencies if any
 			if workflowStep.DependsOn != "" {
 				wo.debugLogger.Printf("Step %d (%s) waiting for dependency: %s", stepIndex+1, workflowStep.Name, workflowStep.DependsOn)
-				
+
 				// Find the dependency step
 				depIndex := -1
 				for j, depStep := range queueItem.Workflow.Steps {
@@ -472,7 +471,7 @@ func (wo *WorkflowOrchestrator) executeWorkflowAsync(ctx context.Context, queueI
 						break
 					}
 				}
-				
+
 				if depIndex != -1 {
 					// Wait for dependency to complete
 					<-stepCompletionChans[depIndex]
@@ -483,19 +482,19 @@ func (wo *WorkflowOrchestrator) executeWorkflowAsync(ctx context.Context, queueI
 			} else {
 				wo.debugLogger.Printf("STARTING IMMEDIATELY: Step %d: %s (tool: %s, modes: %v) - NO DEPENDENCIES", stepIndex+1, workflowStep.Name, workflowStep.Tool, workflowStep.Modes)
 				if callback != nil {
-					callback(queueItem.Workflow.Name, queueItem.Target, "step_started", 
+					callback(queueItem.Workflow.Name, queueItem.Target, "step_started",
 						fmt.Sprintf("Started step %d/%d: %s", stepIndex+1, len(queueItem.Workflow.Steps), workflowStep.Name))
 				}
 			}
-			
+
 			wo.debugLogger.Printf("EXECUTING: Step %d: %s", stepIndex+1, workflowStep.Name)
-			
+
 			// Execute step with default options - get validation setting from config
 			validateOutput := false // Default fallback
 			if wo.config != nil && wo.config.Tools.CLIMode.ValidateOutput {
 				validateOutput = wo.config.Tools.CLIMode.ValidateOutput
 			}
-			
+
 			options := &ExecutionOptions{
 				CaptureOutput:  true,
 				ValidateOutput: validateOutput,
@@ -505,31 +504,31 @@ func (wo *WorkflowOrchestrator) executeWorkflowAsync(ctx context.Context, queueI
 			stepResults[stepIndex] = result
 			stepErrors[stepIndex] = err
 			stepCompleted[stepIndex] = true
-			
+
 			if err != nil {
 				wo.debugLogger.Printf("Step FAILED: %s - Error: %v", workflowStep.Name, err)
 			} else {
 				wo.debugLogger.Printf("Step COMPLETED: %s", workflowStep.Name)
 			}
-			
+
 			// Notify step completion immediately when it finishes
 			if callback != nil {
 				if err != nil {
-					callback(queueItem.Workflow.Name, queueItem.Target, "step_failed", 
+					callback(queueItem.Workflow.Name, queueItem.Target, "step_failed",
 						fmt.Sprintf("Failed step %d/%d: %s - Error: %v", stepIndex+1, len(queueItem.Workflow.Steps), workflowStep.Name, err))
 				} else {
-					callback(queueItem.Workflow.Name, queueItem.Target, "step_completed", 
+					callback(queueItem.Workflow.Name, queueItem.Target, "step_completed",
 						fmt.Sprintf("Completed step %d/%d: %s", stepIndex+1, len(queueItem.Workflow.Steps), workflowStep.Name))
 				}
 			}
 		}(i, step)
 	}
-	
+
 	// Wait for ALL steps to complete
 	wo.debugLogger.Printf("Waiting for all %d steps to complete (with dependencies)...", len(queueItem.Workflow.Steps))
 	stepWg.Wait()
 	wo.debugLogger.Printf("All steps completed!")
-	
+
 	// Process results and check for failures
 	var firstError error
 	for i, result := range stepResults {
@@ -543,7 +542,7 @@ func (wo *WorkflowOrchestrator) executeWorkflowAsync(ctx context.Context, queueI
 			firstError = stepErrors[i]
 		}
 	}
-	
+
 	// Set overall execution status
 	if firstError != nil {
 		execution.Error = firstError
@@ -583,27 +582,27 @@ func (wo *WorkflowOrchestrator) calculatePriority(workflow *Workflow) int {
 
 	// Get priority weights from config with safe defaults
 	priorityWeights := wo.config.Tools.WorkflowOrchestration.PriorityWeights
-	
+
 	highWeight := 30
 	if priorityWeights.High > 0 {
 		highWeight = priorityWeights.High
 	}
-	
+
 	mediumWeight := 10
 	if priorityWeights.Medium != 0 {
 		mediumWeight = priorityWeights.Medium
 	}
-	
+
 	lowWeight := -10
 	if priorityWeights.Low != 0 {
 		lowWeight = priorityWeights.Low
 	}
-	
+
 	independentBonus := 20
 	if priorityWeights.IndependentBonus > 0 {
 		independentBonus = priorityWeights.IndependentBonus
 	}
-	
+
 	parallelBonus := 5
 	if priorityWeights.ParallelBonus > 0 {
 		parallelBonus = priorityWeights.ParallelBonus
@@ -634,13 +633,13 @@ func (wo *WorkflowOrchestrator) calculatePriority(workflow *Workflow) int {
 // extractDependencies identifies workflow dependencies
 func (wo *WorkflowOrchestrator) extractDependencies(workflow *Workflow) []string {
 	dependencies := make([]string, 0)
-	
+
 	// If not independent, it may have external dependencies
 	if !workflow.IndependentExecution {
 		// For now, assume workflows with the same target might depend on each other
 		// This can be enhanced with explicit dependency declarations
 	}
-	
+
 	return dependencies
 }
 
@@ -656,7 +655,7 @@ func (wo *WorkflowOrchestrator) insertByPriority(queueItem *WorkflowQueueItem) {
 	}
 
 	// Insert at the calculated position
-	wo.workflowQueue = append(wo.workflowQueue[:insertIndex], 
+	wo.workflowQueue = append(wo.workflowQueue[:insertIndex],
 		append([]*WorkflowQueueItem{queueItem}, wo.workflowQueue[insertIndex:]...)...)
 }
 
@@ -688,7 +687,7 @@ func (wo *WorkflowOrchestrator) areDependenciesSatisfied(dependencies []string) 
 func (wo *WorkflowOrchestrator) GetActiveWorkflows() map[string]*WorkflowExecution {
 	wo.mutex.RLock()
 	defer wo.mutex.RUnlock()
-	
+
 	// Return a copy to prevent external modification
 	result := make(map[string]*WorkflowExecution)
 	for k, v := range wo.activeWorkflows {
@@ -701,7 +700,7 @@ func (wo *WorkflowOrchestrator) GetActiveWorkflows() map[string]*WorkflowExecuti
 func (wo *WorkflowOrchestrator) GetQueueStatus() []*WorkflowQueueItem {
 	wo.mutex.RLock()
 	defer wo.mutex.RUnlock()
-	
+
 	// Return a copy
 	result := make([]*WorkflowQueueItem, len(wo.workflowQueue))
 	copy(result, wo.workflowQueue)
@@ -714,15 +713,15 @@ func (wo *WorkflowOrchestrator) GetQueueStatus() []*WorkflowQueueItem {
 func (rm *ResourceMonitor) canStartNewWorkflow() bool {
 	rm.mutex.RLock()
 	defer rm.mutex.RUnlock()
-	
+
 	// Debug: Always log resource check attempts
 	if rm.debugLogger != nil {
-		rm.debugLogger.Debug("Checking workflow start permissions", 
+		rm.debugLogger.Debug("Checking workflow start permissions",
 			"cpu_percent", rm.currentCPU, "cpu_max", rm.maxCPUUsage,
 			"memory_percent", rm.currentMemory, "memory_max", rm.maxMemoryUsage,
 			"active_tools", rm.activeTools, "max_tools", rm.maxActiveTools)
 	}
-	
+
 	// Check CPU and memory limits
 	if rm.currentCPU > rm.maxCPUUsage {
 		if rm.debugLogger != nil {
@@ -730,14 +729,14 @@ func (rm *ResourceMonitor) canStartNewWorkflow() bool {
 		}
 		return false
 	}
-	
+
 	if rm.currentMemory > rm.maxMemoryUsage {
 		if rm.debugLogger != nil {
 			rm.debugLogger.Debug("BLOCKED: Memory usage too high", "current", rm.currentMemory, "max", rm.maxMemoryUsage)
 		}
 		return false
 	}
-	
+
 	// Check active tools limit
 	if rm.activeTools >= rm.maxActiveTools {
 		if rm.debugLogger != nil {
@@ -745,7 +744,7 @@ func (rm *ResourceMonitor) canStartNewWorkflow() bool {
 		}
 		return false
 	}
-	
+
 	if rm.debugLogger != nil {
 		rm.debugLogger.Debug("ALLOWED: All resource checks passed")
 	}
@@ -756,7 +755,7 @@ func (rm *ResourceMonitor) canStartNewWorkflow() bool {
 func (rm *ResourceMonitor) updateResourceUsage(cpuUsage, memory float64, activeTools int) {
 	rm.mutex.Lock()
 	defer rm.mutex.Unlock()
-	
+
 	rm.currentCPU = cpuUsage
 	rm.currentMemory = memory
 	rm.activeTools = activeTools
@@ -791,7 +790,7 @@ func (we *WorkflowExecutor) ExecuteStep(ctx context.Context, step *WorkflowStep,
 // ExecuteStepWithWorkflow executes a single workflow step with workflow context for unique filenames
 func (we *WorkflowExecutor) ExecuteStepWithWorkflow(ctx context.Context, step *WorkflowStep, target, workflowName string, options *ExecutionOptions) (*WorkflowResult, error) {
 	startTime := time.Now()
-	
+
 	result := &WorkflowResult{
 		StepName:     step.Name,
 		Tool:         step.Tool,
@@ -800,7 +799,7 @@ func (we *WorkflowExecutor) ExecuteStepWithWorkflow(ctx context.Context, step *W
 		Results:      []*ExecutionResult{},
 		CombinedVars: make(map[string]string),
 	}
-	
+
 	// Create a copy of options to modify without affecting the original
 	var stepOptions *ExecutionOptions
 	if options != nil {
@@ -818,7 +817,7 @@ func (we *WorkflowExecutor) ExecuteStepWithWorkflow(ctx context.Context, step *W
 			CaptureOutput: true,
 		}
 	}
-	
+
 	// Override priority based on step's priority setting
 	if step.StepPriority != "" {
 		stepOptions.Priority = getPriorityFromString(step.StepPriority)
@@ -862,7 +861,7 @@ func (we *WorkflowExecutor) ExecuteStepWithWorkflow(ctx context.Context, step *W
 			result.ErrorMessage = fmt.Sprintf("result combining failed: %v", err)
 		} else {
 			result.CombinedVars = combinedVars
-			
+
 			// Add combined variables to template resolver
 			for varName, varValue := range combinedVars {
 				we.engine.GetTemplateResolver().AddVariable(varName, varValue)
@@ -900,7 +899,7 @@ func (we *WorkflowExecutor) executeModesParallelWithWorkflow(ctx context.Context
 	if step.MaxConcurrentTools > 0 && step.MaxConcurrentTools < len(step.Modes) {
 		maxConcurrent = step.MaxConcurrentTools
 	}
-	
+
 	// Create semaphore to limit concurrent executions within this step
 	semaphore := make(chan struct{}, maxConcurrent)
 
@@ -909,11 +908,11 @@ func (we *WorkflowExecutor) executeModesParallelWithWorkflow(ctx context.Context
 		wg.Add(1)
 		go func(index int, modeName string) {
 			defer wg.Done()
-			
+
 			// Acquire semaphore slot
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
-			
+
 			// Execute this mode
 			execResult, err := we.engine.ExecuteToolWithContext(ctx, step.Tool, modeName, target, workflowName, step.Name, options)
 			results[index] = execResult
@@ -927,7 +926,7 @@ func (we *WorkflowExecutor) executeModesParallelWithWorkflow(ctx context.Context
 	// Check for errors
 	var failedModes []string
 	var validResults []*ExecutionResult
-	
+
 	for i, err := range errors {
 		if err != nil {
 			failedModes = append(failedModes, step.Modes[i])

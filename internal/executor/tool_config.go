@@ -12,13 +12,13 @@ import (
 
 // ToolConfig represents a tool configuration loaded from tools/*/config.yaml
 type ToolConfig struct {
-	Tool              string                   `yaml:"tool"`
-	Description       string                   `yaml:"description"`
-	Format            string                   `yaml:"format"`
-	File              string                   `yaml:"file"`
-	Args              map[string][]string      `yaml:"args"`
-	Overrides         []map[string]interface{} `yaml:"overrides"`
-	
+	Tool        string                   `yaml:"tool"`
+	Description string                   `yaml:"description"`
+	Format      string                   `yaml:"format"`
+	File        string                   `yaml:"file"`
+	Args        map[string][]string      `yaml:"args"`
+	Overrides   []map[string]interface{} `yaml:"overrides"`
+
 	// Output configuration for separator display
 	ShowSeparator     bool `yaml:"show_separator"`     // Whether to show visual separator for this tool
 	SeparatorPriority int  `yaml:"separator_priority"` // Priority for separator display (higher = shown first)
@@ -157,4 +157,3 @@ func (tc *ToolConfig) GetAvailableModes() []string {
 	}
 	return modes
 }
-

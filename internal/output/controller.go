@@ -98,7 +98,6 @@ func (oc *OutputController) PrintRawSection(toolName, mode, output string) {
 	}
 }
 
-
 // PrintLog outputs log messages based on the current mode
 func (oc *OutputController) PrintLog(level, msg string, args ...interface{}) {
 	switch oc.mode {

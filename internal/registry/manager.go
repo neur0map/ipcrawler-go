@@ -13,10 +13,10 @@ import (
 
 // DefaultRegistryManager implements the RegistryManager interface
 type DefaultRegistryManager struct {
-	database   *RegistryDatabase
-	dbPath     string
-	mutex      sync.RWMutex
-	autoSave   bool
+	database *RegistryDatabase
+	dbPath   string
+	mutex    sync.RWMutex
+	autoSave bool
 }
 
 // NewRegistryManager creates a new registry manager
@@ -28,7 +28,7 @@ func NewRegistryManager(dbPath string) (*DefaultRegistryManager, error) {
 			Version:     "1.0.0",
 			LastUpdated: time.Now(),
 			Variables:   make(map[string]*VariableRecord),
-			Statistics:  RegistryStatistics{
+			Statistics: RegistryStatistics{
 				VariablesByType:     make(map[VariableType]int),
 				VariablesByCategory: make(map[VariableCategory]int),
 				VariablesBySource:   make(map[VariableSource]int),

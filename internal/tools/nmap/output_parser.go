@@ -83,9 +83,9 @@ func (p *OutputParser) ParseOutput(outputPath string) map[string]string {
 	data, err := os.ReadFile(outputPath)
 	if err != nil {
 		return map[string]string{
-			"ports":        "",
-			"port_count":   "0",
-			"error":        "failed to read output file",
+			"ports":      "",
+			"port_count": "0",
+			"error":      "failed to read output file",
 		}
 	}
 
@@ -93,9 +93,9 @@ func (p *OutputParser) ParseOutput(outputPath string) map[string]string {
 	var nmapRun NmapRun
 	if err := xml.Unmarshal(data, &nmapRun); err != nil {
 		return map[string]string{
-			"ports":        "",
-			"port_count":   "0", 
-			"error":        "failed to parse XML",
+			"ports":      "",
+			"port_count": "0",
+			"error":      "failed to parse XML",
 		}
 	}
 
@@ -120,7 +120,7 @@ func (p *OutputParser) ParseOutput(outputPath string) map[string]string {
 		// Extract port information
 		for _, port := range host.Ports.Ports {
 			portStr := strconv.Itoa(port.PortID)
-			
+
 			// Categorize by state
 			switch strings.ToLower(port.State.State) {
 			case "open":
@@ -157,21 +157,21 @@ func (p *OutputParser) ParseOutput(outputPath string) map[string]string {
 
 	// Create magic variables that other tools can use
 	magicVars := map[string]string{
-		"ports":            strings.Join(openPorts, ","),
-		"port_count":       strconv.Itoa(len(openPorts)),
-		"open_ports":       strings.Join(openPorts, ","),
-		"open_port_count":  strconv.Itoa(len(openPorts)),
-		"closed_ports":     strings.Join(closedPorts, ","),
-		"closed_port_count": strconv.Itoa(len(closedPorts)),
-		"filtered_ports":   strings.Join(filteredPorts, ","),
+		"ports":               strings.Join(openPorts, ","),
+		"port_count":          strconv.Itoa(len(openPorts)),
+		"open_ports":          strings.Join(openPorts, ","),
+		"open_port_count":     strconv.Itoa(len(openPorts)),
+		"closed_ports":        strings.Join(closedPorts, ","),
+		"closed_port_count":   strconv.Itoa(len(closedPorts)),
+		"filtered_ports":      strings.Join(filteredPorts, ","),
 		"filtered_port_count": strconv.Itoa(len(filteredPorts)),
-		"tcp_ports":        strings.Join(removeDuplicates(tcpPorts), ","),
-		"udp_ports":        strings.Join(removeDuplicates(udpPorts), ","),
-		"services":         strings.Join(removeDuplicates(services), ","),
-		"service_count":    strconv.Itoa(len(removeDuplicates(services))),
-		"products":         strings.Join(removeDuplicates(products), ","),
-		"hosts":            strings.Join(hostList, ","),
-		"host_count":       strconv.Itoa(len(hostList)),
+		"tcp_ports":           strings.Join(removeDuplicates(tcpPorts), ","),
+		"udp_ports":           strings.Join(removeDuplicates(udpPorts), ","),
+		"services":            strings.Join(removeDuplicates(services), ","),
+		"service_count":       strconv.Itoa(len(removeDuplicates(services))),
+		"products":            strings.Join(removeDuplicates(products), ","),
+		"hosts":               strings.Join(hostList, ","),
+		"host_count":          strconv.Itoa(len(hostList)),
 	}
 
 	// If no open ports found, provide fallback

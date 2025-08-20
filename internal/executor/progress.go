@@ -46,7 +46,7 @@ type SimpleProgress struct {
 // NewSimpleProgress creates a new progress indicator using PTerm
 func NewSimpleProgress(toolName, mode string) *SimpleProgress {
 	key := fmt.Sprintf("%s:%s", toolName, mode)
-	
+
 	progress := &SimpleProgress{
 		ToolName:  toolName,
 		Mode:      mode,
@@ -58,10 +58,10 @@ func NewSimpleProgress(toolName, mode string) *SimpleProgress {
 
 	// Register with PTerm tracker
 	globalTracker.addExecution(key, toolName, mode)
-	
+
 	// Start dummy update loop for compatibility
 	go progress.updateLoop()
-	
+
 	return progress
 }
 
@@ -69,24 +69,24 @@ func NewSimpleProgress(toolName, mode string) *SimpleProgress {
 func (et *ExecutionTracker) addExecution(key, toolName, mode string) {
 	et.mu.Lock()
 	defer et.mu.Unlock()
-	
+
 	// Check for duplicates - prevent same tool/mode from running twice
 	if _, exists := et.executions[key]; exists {
 		return // Already running
 	}
-	
+
 	// Start the multi printer if not already started
 	if !et.started {
 		et.multi.Start()
 		et.started = true
 	}
-	
+
 	// Create a spinner for this execution
 	spinner, _ := pterm.DefaultSpinner.
 		WithWriter(et.multi.NewWriter()).
 		WithText(fmt.Sprintf("%s [%s]", toolName, mode)).
 		Start()
-	
+
 	// Store the execution entry
 	et.executions[key] = &ExecutionEntry{
 		ToolName:  toolName,
@@ -116,7 +116,7 @@ func (sp *SimpleProgress) Complete() {
 			close(sp.done)
 		}
 	}
-	
+
 	globalTracker.completeExecution(sp.key)
 }
 
@@ -134,7 +134,7 @@ func (sp *SimpleProgress) Failed() {
 			close(sp.done)
 		}
 	}
-	
+
 	globalTracker.failExecution(sp.key)
 }
 
@@ -142,12 +142,12 @@ func (sp *SimpleProgress) Failed() {
 func (et *ExecutionTracker) completeExecution(key string) {
 	et.mu.Lock()
 	defer et.mu.Unlock()
-	
+
 	if entry, exists := et.executions[key]; exists {
 		duration := time.Since(entry.StartTime)
-		entry.Spinner.Success(fmt.Sprintf("%s [%s] (completed in %s)", 
+		entry.Spinner.Success(fmt.Sprintf("%s [%s] (completed in %s)",
 			entry.ToolName, entry.Mode, formatDuration(duration)))
-		
+
 		// Remove from active executions
 		delete(et.executions, key)
 	}
@@ -157,12 +157,12 @@ func (et *ExecutionTracker) completeExecution(key string) {
 func (et *ExecutionTracker) failExecution(key string) {
 	et.mu.Lock()
 	defer et.mu.Unlock()
-	
+
 	if entry, exists := et.executions[key]; exists {
 		duration := time.Since(entry.StartTime)
-		entry.Spinner.Fail(fmt.Sprintf("%s [%s] (failed after %s)", 
+		entry.Spinner.Fail(fmt.Sprintf("%s [%s] (failed after %s)",
 			entry.ToolName, entry.Mode, formatDuration(duration)))
-		
+
 		// Remove from active executions
 		delete(et.executions, key)
 	}
@@ -172,18 +172,18 @@ func (et *ExecutionTracker) failExecution(key string) {
 func StopAll() {
 	globalTracker.mu.Lock()
 	defer globalTracker.mu.Unlock()
-	
+
 	// Stop any remaining spinners
 	for _, entry := range globalTracker.executions {
 		entry.Spinner.Info(fmt.Sprintf("%s [%s] (interrupted)", entry.ToolName, entry.Mode))
 	}
-	
+
 	// Stop the multi printer
 	if globalTracker.started {
 		globalTracker.multi.Stop()
 		globalTracker.started = false
 	}
-	
+
 	// Clear executions
 	globalTracker.executions = make(map[string]*ExecutionEntry)
 }
@@ -205,12 +205,12 @@ func formatDuration(d time.Duration) string {
 func ClearTracker() {
 	globalTracker.mu.Lock()
 	defer globalTracker.mu.Unlock()
-	
+
 	// Stop all active spinners
 	for _, entry := range globalTracker.executions {
 		entry.Spinner.Stop()
 	}
-	
+
 	// Reset tracker
 	globalTracker.executions = make(map[string]*ExecutionEntry)
 	if globalTracker.started {

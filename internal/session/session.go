@@ -36,12 +36,12 @@ func getSessionFilePath() string {
 	if _, err := os.Stat(".ipcrawler_session"); err == nil {
 		return ".ipcrawler_session"
 	}
-	
+
 	// Try home directory
 	if home, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(home, ".ipcrawler_session")
 	}
-	
+
 	// Fallback to current directory
 	return ".ipcrawler_session"
 }
@@ -56,28 +56,28 @@ func (m *Manager) Load() (*Session, error) {
 		}
 		return nil, fmt.Errorf("failed to read session file: %w", err)
 	}
-	
+
 	var session Session
 	if err := json.Unmarshal(data, &session); err != nil {
 		return nil, fmt.Errorf("failed to parse session file: %w", err)
 	}
-	
+
 	return &session, nil
 }
 
 // Save saves the session to disk
 func (m *Manager) Save(session *Session) error {
 	session.LastModified = time.Now()
-	
+
 	data, err := json.MarshalIndent(session, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal session: %w", err)
 	}
-	
+
 	if err := os.WriteFile(m.sessionFile, data, 0644); err != nil {
 		return fmt.Errorf("failed to write session file: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -93,7 +93,7 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			SessionID: generateSessionID(),
 		}
 	}
-	
+
 	// Apply updates
 	for key, value := range updates {
 		switch key {
@@ -111,7 +111,7 @@ func (m *Manager) Update(updates map[string]interface{}) error {
 			}
 		}
 	}
-	
+
 	return m.Save(session)
 }
 

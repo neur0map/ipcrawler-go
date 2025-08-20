@@ -11,7 +11,7 @@ import (
 func RegisterAllParsers(manager *MagicVariableManager) {
 	// Register naabu parser
 	manager.RegisterParser(&naabu.OutputParser{})
-	
+
 	// Register nmap parser
 	manager.RegisterParser(&nmap.OutputParser{})
 

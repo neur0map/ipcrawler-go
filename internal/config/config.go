@@ -167,9 +167,9 @@ type SecurityConfig struct {
 }
 
 type SecurityExecutionConfig struct {
-	ToolsRoot       string `mapstructure:"tools_root"`
-	ArgsValidation  bool   `mapstructure:"args_validation"`
-	ExecValidation  bool   `mapstructure:"exec_validation"`
+	ToolsRoot      string `mapstructure:"tools_root"`
+	ArgsValidation bool   `mapstructure:"args_validation"`
+	ExecValidation bool   `mapstructure:"exec_validation"`
 }
 
 type ScanningConfig struct {
@@ -204,16 +204,16 @@ type ReportingConfig struct {
 //
 // It also supports the legacy wrapper form under the "output" key via loadConfigFile.
 type OutputConfig struct {
-	WorkspaceBase      string        `mapstructure:"workspace_base"`
-	Timestamp          bool          `mapstructure:"timestamp"`
-	TimeFormat         string        `mapstructure:"time_format"`
-	ScanOutputMode     string        `mapstructure:"scan_output_mode"`
-	CreateLatestLinks  bool          `mapstructure:"create_latest_links"`
-	Info               LogSinkConfig `mapstructure:"info"`
-	Error              LogSinkConfig `mapstructure:"error"`
-	Warning            LogSinkConfig `mapstructure:"warning"`
-	Debug              LogSinkConfig `mapstructure:"debug"`
-	Raw                RawSinkConfig `mapstructure:"raw"`
+	WorkspaceBase     string        `mapstructure:"workspace_base"`
+	Timestamp         bool          `mapstructure:"timestamp"`
+	TimeFormat        string        `mapstructure:"time_format"`
+	ScanOutputMode    string        `mapstructure:"scan_output_mode"`
+	CreateLatestLinks bool          `mapstructure:"create_latest_links"`
+	Info              LogSinkConfig `mapstructure:"info"`
+	Error             LogSinkConfig `mapstructure:"error"`
+	Warning           LogSinkConfig `mapstructure:"warning"`
+	Debug             LogSinkConfig `mapstructure:"debug"`
+	Raw               RawSinkConfig `mapstructure:"raw"`
 }
 
 type LogSinkConfig struct {
@@ -242,17 +242,17 @@ type ToolExecutionConfig struct {
 }
 
 type WorkflowOrchestrationConfig struct {
-	MaxConcurrentWorkflows   int                    `mapstructure:"max_concurrent_workflows"`
+	MaxConcurrentWorkflows    int                   `mapstructure:"max_concurrent_workflows"`
 	MaxConcurrentToolsPerStep int                   `mapstructure:"max_concurrent_tools_per_step"`
-	ResourceLimits           ResourceLimitsConfig   `mapstructure:"resource_limits"`
-	PriorityWeights          PriorityWeightsConfig  `mapstructure:"priority_weights"`
-	Scheduling               SchedulingConfig       `mapstructure:"scheduling"`
+	ResourceLimits            ResourceLimitsConfig  `mapstructure:"resource_limits"`
+	PriorityWeights           PriorityWeightsConfig `mapstructure:"priority_weights"`
+	Scheduling                SchedulingConfig      `mapstructure:"scheduling"`
 }
 
 type ResourceLimitsConfig struct {
-	MaxCPUUsage     float64 `mapstructure:"max_cpu_usage"`
-	MaxMemoryUsage  float64 `mapstructure:"max_memory_usage"`
-	MaxActiveTools  int     `mapstructure:"max_active_tools"`
+	MaxCPUUsage    float64 `mapstructure:"max_cpu_usage"`
+	MaxMemoryUsage float64 `mapstructure:"max_memory_usage"`
+	MaxActiveTools int     `mapstructure:"max_active_tools"`
 }
 
 type PriorityWeightsConfig struct {
@@ -269,17 +269,17 @@ type SchedulingConfig struct {
 }
 
 type ArgvPolicyConfig struct {
-	MaxArgs             int      `mapstructure:"max_args"`
-	MaxArgBytes         int      `mapstructure:"max_arg_bytes"`
-	MaxArgvBytes        int      `mapstructure:"max_argv_bytes"`
-	DenyShellMetachars  bool     `mapstructure:"deny_shell_metachars"`
-	AllowedCharClasses  []string `mapstructure:"allowed_char_classes"`
+	MaxArgs            int      `mapstructure:"max_args"`
+	MaxArgBytes        int      `mapstructure:"max_arg_bytes"`
+	MaxArgvBytes       int      `mapstructure:"max_argv_bytes"`
+	DenyShellMetachars bool     `mapstructure:"deny_shell_metachars"`
+	AllowedCharClasses []string `mapstructure:"allowed_char_classes"`
 }
 
 type ExecutionConfig struct {
-	ToolsPath       string `mapstructure:"tools_path"`
-	ArgsValidation  bool   `mapstructure:"args_validation"`
-	ExecValidation  bool   `mapstructure:"exec_validation"`
+	ToolsPath      string `mapstructure:"tools_path"`
+	ArgsValidation bool   `mapstructure:"args_validation"`
+	ExecValidation bool   `mapstructure:"exec_validation"`
 }
 
 type CLIModeConfig struct {
@@ -506,7 +506,7 @@ func setSecurityDefaults(sec *SecurityConfig) {
 	if !sec.OSDetection {
 		sec.OSDetection = true
 	}
-	
+
 	// Set defaults for execution settings
 	if sec.Execution.ToolsRoot == "" {
 		sec.Execution.ToolsRoot = "" // Empty means allow system PATH
@@ -517,7 +517,7 @@ func setSecurityDefaults(sec *SecurityConfig) {
 	if !sec.Execution.ExecValidation {
 		sec.Execution.ExecValidation = true
 	}
-	
+
 	if sec.Scanning.MaxThreads == 0 {
 		sec.Scanning.MaxThreads = 10
 	}
@@ -587,7 +587,7 @@ func setToolsDefaults(tools *ToolsConfig) {
 	if tools.RetryAttempts == 0 {
 		tools.RetryAttempts = 1
 	}
-	
+
 	// Set defaults for workflow orchestration
 	if tools.WorkflowOrchestration.MaxConcurrentWorkflows == 0 {
 		tools.WorkflowOrchestration.MaxConcurrentWorkflows = 3
@@ -625,7 +625,7 @@ func setToolsDefaults(tools *ToolsConfig) {
 	if tools.WorkflowOrchestration.Scheduling.ResourceCheckIntervalMs == 0 {
 		tools.WorkflowOrchestration.Scheduling.ResourceCheckIntervalMs = 1000
 	}
-	
+
 	// Set defaults for argv policy
 	if tools.ArgvPolicy.MaxArgs == 0 {
 		tools.ArgvPolicy.MaxArgs = 64
@@ -642,7 +642,7 @@ func setToolsDefaults(tools *ToolsConfig) {
 	if len(tools.ArgvPolicy.AllowedCharClasses) == 0 {
 		tools.ArgvPolicy.AllowedCharClasses = []string{"alnum", "-", "_", ".", ":", "/", "=", ","}
 	}
-	
+
 	// Set defaults for execution settings
 	if tools.Execution.ToolsPath == "" {
 		tools.Execution.ToolsPath = "" // Empty means allow system PATH

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
 	"github.com/spf13/pflag"
+	"gopkg.in/yaml.v3"
 
 	"github.com/charmbracelet/log"
 	"github.com/neur0map/ipcrawler/internal/config"
@@ -22,29 +22,55 @@ import (
 	"github.com/neur0map/ipcrawler/internal/output"
 )
 
-// isValidHostname performs basic hostname validation
+// isValidHostname performs comprehensive hostname validation according to RFC standards
 func isValidHostname(hostname string) bool {
-	// Basic hostname validation
-	if len(hostname) > 253 {
+	// Check total length
+	if len(hostname) == 0 || len(hostname) > 253 {
 		return false
 	}
-	
-	// Must contain only valid characters
-	for _, r := range hostname {
-		if !((r >= 'a' && r <= 'z') || 
-			 (r >= 'A' && r <= 'Z') || 
-			 (r >= '0' && r <= '9') || 
-			 r == '.' || r == '-') {
+
+	// Remove trailing dot (FQDN)
+	if strings.HasSuffix(hostname, ".") {
+		hostname = hostname[:len(hostname)-1]
+	}
+
+	// Split into labels
+	labels := strings.Split(hostname, ".")
+	if len(labels) == 0 {
+		return false
+	}
+
+	for _, label := range labels {
+		if !isValidLabel(label) {
 			return false
 		}
 	}
-	
-	// Must not start or end with dot or hyphen
-	if strings.HasPrefix(hostname, ".") || strings.HasPrefix(hostname, "-") ||
-		strings.HasSuffix(hostname, ".") || strings.HasSuffix(hostname, "-") {
+
+	return true
+}
+
+// isValidLabel validates a single hostname label
+func isValidLabel(label string) bool {
+	// Label length check (RFC 1035: max 63 characters)
+	if len(label) == 0 || len(label) > 63 {
 		return false
 	}
-	
+
+	// Must not start or end with hyphen
+	if strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+		return false
+	}
+
+	// Check characters: only letters, digits, and hyphens allowed
+	for _, r := range label {
+		if !((r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			r == '-') {
+			return false
+		}
+	}
+
 	return true
 }
 
@@ -65,14 +91,14 @@ func getProjectDirectory() (string, error) {
 			return parentDir, nil
 		}
 	}
-	
+
 	// Fallback: try current working directory
 	if cwd, err := os.Getwd(); err == nil {
 		if _, err := os.Stat(filepath.Join(cwd, "go.mod")); err == nil {
 			return cwd, nil
 		}
 	}
-	
+
 	// Last resort: use current working directory anyway
 	return os.Getwd()
 }
@@ -130,16 +156,16 @@ func loadWorkflowFromPath(filePath string) (*executor.Workflow, error) {
 		MaxConcurrentTools int               `yaml:"max_concurrent_tools"`
 		Variables          map[string]string `yaml:"variables"`
 	}
-	
+
 	type yamlWorkflow struct {
-		Name                   string              `yaml:"name"`
-		Description            string              `yaml:"description"`
-		Category               string              `yaml:"category"`
-		ParallelWorkflow       bool                `yaml:"parallel_workflow"`
-		IndependentExecution   bool                `yaml:"independent_execution"`
-		MaxConcurrentWorkflows int                 `yaml:"max_concurrent_workflows"`
-		WorkflowPriority       string              `yaml:"workflow_priority"`
-		Steps                  []yamlWorkflowStep  `yaml:"steps"`
+		Name                   string             `yaml:"name"`
+		Description            string             `yaml:"description"`
+		Category               string             `yaml:"category"`
+		ParallelWorkflow       bool               `yaml:"parallel_workflow"`
+		IndependentExecution   bool               `yaml:"independent_execution"`
+		MaxConcurrentWorkflows int                `yaml:"max_concurrent_workflows"`
+		WorkflowPriority       string             `yaml:"workflow_priority"`
+		Steps                  []yamlWorkflowStep `yaml:"steps"`
 	}
 
 	var yamlWf yamlWorkflow
@@ -149,14 +175,14 @@ func loadWorkflowFromPath(filePath string) (*executor.Workflow, error) {
 
 	// Convert to executor.Workflow
 	workflow := &executor.Workflow{
-		Name:                    yamlWf.Name,
-		Description:             yamlWf.Description,
-		Category:                yamlWf.Category,
-		ParallelWorkflow:        yamlWf.ParallelWorkflow,
-		IndependentExecution:    yamlWf.IndependentExecution,
-		MaxConcurrentWorkflows:  yamlWf.MaxConcurrentWorkflows,
-		WorkflowPriority:        yamlWf.WorkflowPriority,
-		Steps:                   make([]*executor.WorkflowStep, len(yamlWf.Steps)),
+		Name:                   yamlWf.Name,
+		Description:            yamlWf.Description,
+		Category:               yamlWf.Category,
+		ParallelWorkflow:       yamlWf.ParallelWorkflow,
+		IndependentExecution:   yamlWf.IndependentExecution,
+		MaxConcurrentWorkflows: yamlWf.MaxConcurrentWorkflows,
+		WorkflowPriority:       yamlWf.WorkflowPriority,
+		Steps:                  make([]*executor.WorkflowStep, len(yamlWf.Steps)),
 	}
 
 	// Convert steps
@@ -181,17 +207,17 @@ func loadWorkflowFromPath(filePath string) (*executor.Workflow, error) {
 // discoverAllWorkflows automatically discovers all workflow files in the workflows directory
 func discoverAllWorkflows() (map[string]*executor.Workflow, error) {
 	workflows := make(map[string]*executor.Workflow)
-	
+
 	err := filepath.WalkDir("workflows", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		
+
 		// Skip descriptions.yaml (metadata only)
 		if d.Name() == "descriptions.yaml" {
 			return nil
 		}
-		
+
 		// Process .yaml files
 		if strings.HasSuffix(d.Name(), ".yaml") {
 			workflow, err := loadWorkflowFromPath(path)
@@ -200,17 +226,16 @@ func discoverAllWorkflows() (map[string]*executor.Workflow, error) {
 				fmt.Fprintf(os.Stderr, "WARN: Failed to load workflow %s: %v\n", path, err)
 				return nil // Continue processing other files
 			}
-			
+
 			workflowKey := strings.TrimSuffix(d.Name(), ".yaml")
 			workflows[workflowKey] = workflow
 		}
-		
+
 		return nil
 	})
-	
+
 	return workflows, err
 }
-
 
 // runCLI executes all workflows in CLI mode without TUI
 func runCLI(target string, outputMode output.OutputMode) error {
@@ -232,101 +257,101 @@ func runCLI(target string, outputMode output.OutputMode) error {
 			Prefix:          "IPCrawler CLI",
 		})
 	}
-	
+
 	logger.Info("=== IPCrawler CLI Mode ===", "target", target)
-	
+
 	// Load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %v", err)
 	}
-	
+
 	// Validate target
 	if target == "" {
 		return fmt.Errorf("target cannot be empty")
 	}
-	
+
 	// Create workspace directory
 	sanitizedTarget := sanitizeTargetForPath(target)
 	timestamp := time.Now().Unix()
 	workspaceDir := filepath.Join(cfg.Output.WorkspaceBase, fmt.Sprintf("%s_%d", sanitizedTarget, timestamp))
-	
+
 	if err := createWorkspaceStructure(workspaceDir); err != nil {
 		return fmt.Errorf("failed to create workspace: %v", err)
 	}
-	
+
 	logger.Info("Workspace created", "path", workspaceDir)
-	
+
 	// Set up workspace file logging
-	debugLogger, infoLogger, rawLogger, err := setupWorkspaceLogging(workspaceDir)
+	debugLogger, infoLogger, rawLogger, logCleanup, err := setupWorkspaceLogging(workspaceDir)
 	if err != nil {
 		return fmt.Errorf("failed to setup workspace logging: %v", err)
 	}
-	// Note: File handles will be closed when the function exits
-	
+	defer logCleanup.Close() // Ensure file handles are closed when function exits
+
 	// Make loggers available globally for executors
 	setGlobalLoggers(debugLogger, infoLogger, rawLogger)
-	
+
 	// Discover all workflows
 	workflows, err := discoverAllWorkflows()
 	if err != nil {
 		return fmt.Errorf("failed to discover workflows: %v", err)
 	}
-	
+
 	if len(workflows) == 0 {
 		return fmt.Errorf("no workflows found in workflows directory")
 	}
-	
+
 	// Initialize output controller for tree display
 	outputController := output.NewOutputController(outputMode)
 	globalOutputController = outputController
-	
+
 	// Display workflow tree (always shown regardless of output mode)
 	outputController.PrintWorkflowTree("workflows", nil)
-	
+
 	// Log discovered workflows
 	workflowNames := make([]string, 0, len(workflows))
 	for name, workflow := range workflows {
 		workflowNames = append(workflowNames, name)
 		logger.Info("Discovered workflow", "name", name, "title", workflow.Name, "description", workflow.Description)
 	}
-	
+
 	logger.Info("Starting workflow execution", "count", len(workflows), "workflows", strings.Join(workflowNames, ", "))
-	
+
 	// Initialize execution engine and orchestrator
 	executionEngine := executor.NewToolExecutionEngine(cfg, "", outputMode)
-	
+
 	// Set the workspace base directory for consistent path resolution
 	executionEngine.SetWorkspaceBase(workspaceDir)
-	
+
 	// Set output mode explicitly (in case it's needed)
 	executionEngine.SetOutputMode(outputMode)
-	
+
 	// Set up workspace logging for tool execution engine
 	if err := executionEngine.SetWorkspaceLoggers(workspaceDir); err != nil {
 		return fmt.Errorf("failed to setup tool execution engine logging: %v", err)
 	}
-	
+
 	workflowExecutor := executor.NewWorkflowExecutor(executionEngine)
 	workflowOrchestrator := executor.NewWorkflowOrchestrator(workflowExecutor, cfg)
-	
+
 	// Set output mode before setting up loggers
 	workflowOrchestrator.SetOutputMode(outputMode)
-	
+
 	// Set up workspace logging for workflow orchestrator
 	if err := workflowOrchestrator.SetWorkspaceLoggers(workspaceDir); err != nil {
 		return fmt.Errorf("failed to setup workflow orchestrator logging: %v", err)
 	}
-	
+
 	// Set up status callback for CLI logging
 	workflowOrchestrator.SetStatusCallback(func(workflowName, target, status, message string) {
 		logger.Info("Workflow status", "workflow", workflowName, "target", target, "status", status, "message", message)
 	})
-	
+
 	// Queue all workflows
 	var ctx context.Context
 	var cancel context.CancelFunc
-	
+
 	// Set timeout from configuration
 	if cfg.Tools.CLIMode.ExecutionTimeoutSeconds > 0 {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(cfg.Tools.CLIMode.ExecutionTimeoutSeconds)*time.Second)
@@ -336,7 +361,7 @@ func runCLI(target string, outputMode output.OutputMode) error {
 		logger.Info("CLI execution timeout disabled (unlimited)")
 	}
 	defer cancel()
-	
+
 	for workflowName, workflow := range workflows {
 		logger.Info("Queueing workflow", "name", workflowName, "title", workflow.Name)
 		if err := workflowOrchestrator.QueueWorkflow(workflow, target); err != nil {
@@ -344,7 +369,7 @@ func runCLI(target string, outputMode output.OutputMode) error {
 			continue
 		}
 	}
-	
+
 	// Execute queued workflows
 	logger.Info("Executing queued workflows...")
 	if err := workflowOrchestrator.ExecuteQueuedWorkflows(ctx); err != nil {
@@ -353,7 +378,7 @@ func runCLI(target string, outputMode output.OutputMode) error {
 		}
 		return fmt.Errorf("failed to execute workflows: %v", err)
 	}
-	
+
 	logger.Info("All workflows completed successfully")
 	return nil
 }
@@ -373,7 +398,7 @@ func createWorkspaceStructure(workspaceDir string) error {
 	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
 		return err
 	}
-	
+
 	// Create subdirectories
 	subdirs := []string{"logs/info", "logs/debug", "logs/error", "logs/warning", "raw", "scans", "reports"}
 	for _, subdir := range subdirs {
@@ -381,55 +406,78 @@ func createWorkspaceStructure(workspaceDir string) error {
 			return err
 		}
 	}
-	
+
 	return nil
 }
 
+// LoggerCleanup holds file handles that need to be closed
+type LoggerCleanup struct {
+	files []*os.File
+}
+
+// Close closes all log files
+func (lc *LoggerCleanup) Close() error {
+	var lastErr error
+	for _, file := range lc.files {
+		if err := file.Close(); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
 // setupWorkspaceLogging creates file loggers for the workspace
-func setupWorkspaceLogging(workspaceDir string) (*log.Logger, *log.Logger, *log.Logger, error) {
+func setupWorkspaceLogging(workspaceDir string) (*log.Logger, *log.Logger, *log.Logger, *LoggerCleanup, error) {
+	cleanup := &LoggerCleanup{}
+
 	// Create debug logger
-	debugFile, err := os.OpenFile(filepath.Join(workspaceDir, "logs/debug/execution.log"), 
+	debugFile, err := os.OpenFile(filepath.Join(workspaceDir, "logs/debug/execution.log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to create debug log file: %v", err)
+		return nil, nil, nil, nil, fmt.Errorf("failed to create debug log file: %v", err)
 	}
-	
+	cleanup.files = append(cleanup.files, debugFile)
+
 	debugLogger := log.NewWithOptions(debugFile, log.Options{
 		ReportCaller:    false,
 		ReportTimestamp: true,
 		TimeFormat:      time.RFC3339,
 		Prefix:          "DEBUG",
 	})
-	
+
 	// Create info logger
 	infoFile, err := os.OpenFile(filepath.Join(workspaceDir, "logs/info/workflow.log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to create info log file: %v", err)
+		cleanup.Close() // Clean up already opened files
+		return nil, nil, nil, nil, fmt.Errorf("failed to create info log file: %v", err)
 	}
-	
+	cleanup.files = append(cleanup.files, infoFile)
+
 	infoLogger := log.NewWithOptions(infoFile, log.Options{
 		ReportCaller:    false,
 		ReportTimestamp: true,
 		TimeFormat:      time.RFC3339,
 		Prefix:          "INFO",
 	})
-	
+
 	// Create raw output logger
 	rawFile, err := os.OpenFile(filepath.Join(workspaceDir, "raw/tool_output.log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to create raw output file: %v", err)
+		cleanup.Close() // Clean up already opened files
+		return nil, nil, nil, nil, fmt.Errorf("failed to create raw output file: %v", err)
 	}
-	
+	cleanup.files = append(cleanup.files, rawFile)
+
 	rawLogger := log.NewWithOptions(rawFile, log.Options{
 		ReportCaller:    false,
 		ReportTimestamp: true,
 		TimeFormat:      time.RFC3339,
 		Prefix:          "RAW",
 	})
-	
-	return debugLogger, infoLogger, rawLogger, nil
+
+	return debugLogger, infoLogger, rawLogger, cleanup, nil
 }
 
 // Global loggers for executor modules
@@ -462,7 +510,7 @@ func logDebug(msg string, args ...interface{}) {
 			fmt.Printf("[DEBUG] %s\n", msg)
 		}
 	}
-	
+
 	// Also write to file if available
 	if globalDebugLogger != nil {
 		if len(args) > 0 {
@@ -484,7 +532,7 @@ func logRaw(toolName, mode, output string) {
 		fmt.Print(output)
 		fmt.Printf("=== END OUTPUT ===\n\n")
 	}
-	
+
 	// Also write to file if available
 	if globalRawLogger != nil {
 		globalRawLogger.Infof("=== %s %s ===\n%s", toolName, mode, output)
@@ -498,10 +546,10 @@ func main() {
 		debug   = pflag.BoolP("debug", "d", false, "Show only logs, no raw tool output")
 		help    = pflag.BoolP("help", "h", false, "Show this help message")
 	)
-	
+
 	// Parse flags
 	pflag.Parse()
-	
+
 	// Show help if requested
 	if *help {
 		fmt.Fprintf(os.Stderr, "Usage: %s [FLAGS] <target>\n", os.Args[0])
@@ -519,10 +567,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  %s registry list\n", os.Args[0])
 		os.Exit(0)
 	}
-	
+
 	// Get remaining arguments after flag parsing
 	args := pflag.Args()
-	
+
 	// Check for registry command
 	if len(args) > 0 && args[0] == "registry" {
 		if err := runRegistryCommand(args); err != nil {
@@ -531,7 +579,7 @@ func main() {
 		}
 		return
 	}
-	
+
 	// Require target argument
 	if len(args) < 1 {
 		fmt.Fprintf(os.Stderr, "Error: target argument is required\n")
@@ -539,7 +587,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Use --help for more information\n")
 		os.Exit(1)
 	}
-	
+
 	// Determine output mode
 	var outputMode output.OutputMode
 	if *debug && *verbose {
@@ -552,10 +600,10 @@ func main() {
 	} else {
 		outputMode = output.OutputModeNormal
 	}
-	
+
 	// Set global output controller before running CLI
 	globalOutputController = output.NewOutputController(outputMode)
-	
+
 	// Run CLI with target and output mode
 	target := args[0]
 	if err := runCLI(target, outputMode); err != nil {
@@ -563,9 +611,6 @@ func main() {
 		os.Exit(1)
 	}
 }
-
-
-
 
 // isRunningAsRoot checks if the current process is running with root privileges
 func isRunningAsRoot() bool {
@@ -582,12 +627,12 @@ func isRunningWithSudo() bool {
 	if os.Getenv("SUDO_UID") != "" {
 		return true
 	}
-	
+
 	// Check if we're root but SUDO_USER is set
 	if isRunningAsRoot() && os.Getenv("SUDO_USER") != "" {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -597,20 +642,20 @@ func isRootlessEnvironment() bool {
 	if !isRunningAsRoot() {
 		return false
 	}
-	
+
 	// Check for container indicators
 	containerIndicators := []string{
-		"/.dockerenv",                    // Docker
-		"/run/.containerenv",            // Podman
-		"/proc/1/cgroup",                // Check if we can read cgroup (container sign)
+		"/.dockerenv",        // Docker
+		"/run/.containerenv", // Podman
+		"/proc/1/cgroup",     // Check if we can read cgroup (container sign)
 	}
-	
+
 	for _, indicator := range containerIndicators {
 		if _, err := os.Stat(indicator); err == nil {
 			return true
 		}
 	}
-	
+
 	// Check if we're in a limited root environment
 	// HTB machines often have root but with limited capabilities
 	if isRunningAsRoot() {
@@ -619,20 +664,20 @@ func isRootlessEnvironment() bool {
 			"/etc/shadow",
 			"/root/.ssh",
 		}
-		
+
 		accessCount := 0
 		for _, path := range restrictedPaths {
 			if _, err := os.Stat(path); err == nil {
 				accessCount++
 			}
 		}
-		
+
 		// If we're root but can't access typical root files, likely rootless
 		if accessCount == 0 {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -647,7 +692,7 @@ func getPrivilegeStatus() (bool, string) {
 			return true, "Running as root user"
 		}
 	}
-	
+
 	// Check if user might have capabilities without being root
 	currentUser, err := user.Current()
 	if err == nil && currentUser.Username != "" {
@@ -660,7 +705,7 @@ func getPrivilegeStatus() (bool, string) {
 		}
 		return false, fmt.Sprintf("Running as %s (unprivileged)", currentUser.Username)
 	}
-	
+
 	return false, "Running as unprivileged user"
 }
 
@@ -669,13 +714,13 @@ func checkUserInGroup(username, groupname string) bool {
 	if runtime.GOOS == "windows" {
 		return false // Skip group checking on Windows
 	}
-	
+
 	cmd := exec.Command("id", "-Gn", username)
 	output, err := cmd.Output()
 	if err != nil {
 		return false
 	}
-	
+
 	groups := strings.Fields(string(output))
 	for _, group := range groups {
 		if group == groupname {
@@ -684,4 +729,3 @@ func checkUserInGroup(username, groupname string) bool {
 	}
 	return false
 }
-

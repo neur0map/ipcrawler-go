@@ -33,14 +33,14 @@ type ExecutionContext struct {
 
 // TemplateResolver resolves template variables in tool configurations
 type TemplateResolver struct {
-	config         *config.Config
-	magicVars      map[string]string
-	magicMutex     sync.RWMutex
+	config          *config.Config
+	magicVars       map[string]string
+	magicMutex      sync.RWMutex
 	registryManager registry.RegistryManager // Optional registry for auto-detection
-	
+
 	// Performance optimization: cache resolved arguments
-	argCache       map[string][]string  // key = toolName:mode:target, value = resolved args
-	cacheMutex     sync.RWMutex
+	argCache   map[string][]string // key = toolName:mode:target, value = resolved args
+	cacheMutex sync.RWMutex
 }
 
 // NewTemplateResolver creates a new template resolver with the given configuration
@@ -70,7 +70,7 @@ func (tr *TemplateResolver) ResolveArguments(args []string, ctx *ExecutionContex
 
 	// Generate cache key for performance optimization
 	cacheKey := fmt.Sprintf("%s:%s:%s", ctx.ToolName, ctx.Mode, ctx.Target)
-	
+
 	// Check cache first (only for basic args, not with workflow context)
 	if ctx.WorkflowName == "" && ctx.StepName == "" && len(ctx.CustomVars) == 0 {
 		tr.cacheMutex.RLock()
@@ -155,10 +155,10 @@ func (tr *TemplateResolver) buildVariableMap(ctx *ExecutionContext) map[string]s
 
 		// Sanitize target for filename (replace problematic characters)
 		sanitizedTarget := tr.sanitizeForFilename(ctx.Target)
-		
+
 		// Handle different output modes
 		outputMode := tr.config.Output.ScanOutputMode
-		
+
 		// Create unique identifier from workflow and step names
 		workflowID := ""
 		if ctx.WorkflowName != "" {
@@ -167,7 +167,7 @@ func (tr *TemplateResolver) buildVariableMap(ctx *ExecutionContext) map[string]s
 		if ctx.StepName != "" {
 			workflowID += "_" + strings.ReplaceAll(strings.ToLower(ctx.StepName), " ", "-")
 		}
-		
+
 		switch outputMode {
 		case "overwrite":
 			// No timestamp - same filename always overwrites (include mode for uniqueness)
@@ -347,7 +347,7 @@ func (tr *TemplateResolver) AddVariable(name, value string) {
 	tr.magicMutex.Lock()
 	defer tr.magicMutex.Unlock()
 	tr.magicVars[name] = value
-	
+
 	// Auto-register with registry if available
 	if tr.registryManager != nil {
 		context := registry.DetectionContext{
@@ -358,7 +358,7 @@ func (tr *TemplateResolver) AddVariable(name, value string) {
 			Tool:       "",
 			Timestamp:  time.Now(),
 		}
-		
+
 		// Attempt to auto-register (ignore errors to avoid disrupting execution)
 		tr.registryManager.AutoRegisterVariable(name, context)
 	}
@@ -368,7 +368,7 @@ func (tr *TemplateResolver) AddVariable(name, value string) {
 func (tr *TemplateResolver) GetAllVariables() map[string]string {
 	tr.magicMutex.RLock()
 	defer tr.magicMutex.RUnlock()
-	
+
 	// Create a copy to avoid race conditions
 	result := make(map[string]string)
 	for k, v := range tr.magicVars {
@@ -397,10 +397,10 @@ func (tr *TemplateResolver) MapWorkflowVariable(sourceVar, targetVar string) {
 	tr.magicMutex.RLock()
 	sourceValue, exists := tr.magicVars[sourceVar]
 	tr.magicMutex.RUnlock()
-	
+
 	if exists {
 		tr.AddVariable(targetVar, sourceValue)
-		
+
 		// Track workflow variable mapping in registry
 		if tr.registryManager != nil {
 			context := registry.DetectionContext{
@@ -411,7 +411,7 @@ func (tr *TemplateResolver) MapWorkflowVariable(sourceVar, targetVar string) {
 				Tool:       "",
 				Timestamp:  time.Now(),
 			}
-			
+
 			// Register both the mapping and the target variable
 			tr.registryManager.AutoRegisterVariable(targetVar, context)
 		}

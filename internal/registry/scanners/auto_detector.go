@@ -106,7 +106,7 @@ func (ad *AutoDetector) ScanString(content string, source registry.VariableSourc
 		for _, match := range matches {
 			if len(match) >= 2 {
 				varName := fmt.Sprintf("{{%s}}", match[1])
-				
+
 				detectedVar := registry.DetectedVariable{
 					Name:       varName,
 					LineNumber: lineNum + 1,
@@ -224,7 +224,7 @@ func (ad *AutoDetector) determineSourceType(filePath string) registry.VariableSo
 
 func (ad *AutoDetector) shouldScanFile(filePath string) bool {
 	ext := strings.ToLower(filepath.Ext(filePath))
-	
+
 	// Scan these file types
 	scanExtensions := map[string]bool{
 		".yaml": true,
@@ -236,12 +236,12 @@ func (ad *AutoDetector) shouldScanFile(filePath string) bool {
 
 	// Skip certain directories
 	skipDirs := map[string]bool{
-		".git":        true,
+		".git":         true,
 		"node_modules": true,
-		"vendor":      true,
-		"bin":         true,
-		"dist":        true,
-		"build":       true,
+		"vendor":       true,
+		"bin":          true,
+		"dist":         true,
+		"build":        true,
 	}
 
 	// Check if any part of the path contains skip directories
@@ -258,7 +258,7 @@ func (ad *AutoDetector) shouldScanFile(filePath string) bool {
 func (ad *AutoDetector) extractToolFromPath(filePath string) string {
 	// Extract tool name from file path
 	// e.g., "tools/nmap/config.yaml" -> "nmap"
-	
+
 	pathParts := strings.Split(filePath, string(filepath.Separator))
 	for i, part := range pathParts {
 		if part == "tools" && i+1 < len(pathParts) {

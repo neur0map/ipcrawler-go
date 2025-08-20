@@ -27,7 +27,7 @@ func (rc *ResultCombiner) CombineResults(outputPaths []string) map[string]string
 	if len(outputPaths) == 1 {
 		parser := &OutputParser{}
 		vars := parser.ParseOutput(outputPaths[0])
-		
+
 		// Add "combined_" prefix to variables for consistency
 		combined := make(map[string]string)
 		for key, value := range vars {
@@ -62,7 +62,7 @@ func (rc *ResultCombiner) CombineResults(outputPaths []string) map[string]string
 
 			allResults = append(allResults, result)
 			hosts[result.IP] = true
-			
+
 			// Track source of this port discovery
 			portKey := fmt.Sprintf("%s:%d", result.IP, result.Port)
 			if _, exists := sources[portKey]; !exists {
@@ -82,7 +82,7 @@ func (rc *ResultCombiner) CombineResults(outputPaths []string) map[string]string
 	for _, result := range allResults {
 		portStr := strconv.Itoa(result.Port)
 		portKey := fmt.Sprintf("%s:%d", result.IP, result.Port)
-		
+
 		if !uniquePorts[portStr] {
 			uniquePorts[portStr] = true
 			ports = append(ports, portStr)
@@ -110,15 +110,15 @@ func (rc *ResultCombiner) CombineResults(outputPaths []string) map[string]string
 	}
 
 	// Calculate coverage statistics
-	var highCoveragePorts []string      // Found by multiple modes
-	var uniqueDiscoveries []string      // Found by only one mode
-	
+	var highCoveragePorts []string // Found by multiple modes
+	var uniqueDiscoveries []string // Found by only one mode
+
 	for port, modes := range coverage {
 		modeSet := make(map[string]bool)
 		for _, mode := range modes {
 			modeSet[mode] = true
 		}
-		
+
 		if len(modeSet) > 1 {
 			highCoveragePorts = append(highCoveragePorts, port)
 		} else {
@@ -135,29 +135,29 @@ func (rc *ResultCombiner) CombineResults(outputPaths []string) map[string]string
 	// Create combined magic variables
 	combinedVars := map[string]string{
 		// Core combined results
-		"combined_ports":                strings.Join(ports, ","),
-		"combined_port_count":           strconv.Itoa(len(ports)),
-		"combined_unique_ports":         strings.Join(ports, ","), // Already deduplicated
-		"combined_hosts":                strings.Join(hostList, ","),
-		"combined_host_count":           strconv.Itoa(len(hostList)),
-		
+		"combined_ports":        strings.Join(ports, ","),
+		"combined_port_count":   strconv.Itoa(len(ports)),
+		"combined_unique_ports": strings.Join(ports, ","), // Already deduplicated
+		"combined_hosts":        strings.Join(hostList, ","),
+		"combined_host_count":   strconv.Itoa(len(hostList)),
+
 		// Protocol-specific results
-		"combined_tcp_ports":            strings.Join(tcpPorts, ","),
-		"combined_tcp_port_count":       strconv.Itoa(len(tcpPorts)),
-		"combined_udp_ports":            strings.Join(udpPorts, ","),
-		"combined_udp_port_count":       strconv.Itoa(len(udpPorts)),
-		"combined_tls_ports":            strings.Join(tlsPorts, ","),
-		"combined_tls_port_count":       strconv.Itoa(len(tlsPorts)),
-		
+		"combined_tcp_ports":      strings.Join(tcpPorts, ","),
+		"combined_tcp_port_count": strconv.Itoa(len(tcpPorts)),
+		"combined_udp_ports":      strings.Join(udpPorts, ","),
+		"combined_udp_port_count": strconv.Itoa(len(udpPorts)),
+		"combined_tls_ports":      strings.Join(tlsPorts, ","),
+		"combined_tls_port_count": strconv.Itoa(len(tlsPorts)),
+
 		// Coverage analysis
-		"combined_high_coverage_ports":  strings.Join(highCoveragePorts, ","),
-		"combined_high_coverage_count":  strconv.Itoa(len(highCoveragePorts)),
-		"combined_unique_discoveries":   strings.Join(uniqueDiscoveries, ","),
+		"combined_high_coverage_ports":    strings.Join(highCoveragePorts, ","),
+		"combined_high_coverage_count":    strconv.Itoa(len(highCoveragePorts)),
+		"combined_unique_discoveries":     strings.Join(uniqueDiscoveries, ","),
 		"combined_unique_discovery_count": strconv.Itoa(len(uniqueDiscoveries)),
-		
+
 		// Scan statistics
-		"combined_scan_count":           strconv.Itoa(len(outputPaths)),
-		"combined_total_results":        strconv.Itoa(len(allResults)),
+		"combined_scan_count":    strconv.Itoa(len(outputPaths)),
+		"combined_total_results": strconv.Itoa(len(allResults)),
 	}
 
 	// Fallback if no results

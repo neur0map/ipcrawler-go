@@ -72,11 +72,11 @@ func runRegistryList(args []string) error {
 	// Parse flags
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
 	var (
-		varType    = fs.String("type", "", "Filter by variable type")
-		tool       = fs.String("tool", "", "Filter by tool name")
-		category   = fs.String("category", "", "Filter by category")
-		verbose    = fs.Bool("verbose", false, "Show detailed information")
-		help       = fs.Bool("help", false, "Show help")
+		varType  = fs.String("type", "", "Filter by variable type")
+		tool     = fs.String("tool", "", "Filter by tool name")
+		category = fs.String("category", "", "Filter by category")
+		verbose  = fs.Bool("verbose", false, "Show detailed information")
+		help     = fs.Bool("help", false, "Show help")
 	)
 
 	if err := fs.Parse(args); err != nil {
@@ -165,7 +165,7 @@ func runRegistryShow(args []string) error {
 	}
 
 	varName := args[0]
-	
+
 	// Ensure variable name has proper format
 	if !strings.HasPrefix(varName, "{{") || !strings.HasSuffix(varName, "}}") {
 		varName = fmt.Sprintf("{{%s}}", varName)
@@ -373,11 +373,11 @@ func printVariableDetailed(variable *registry.VariableRecord) {
 	fmt.Printf("Description: %s\n", variable.Description)
 	fmt.Printf("Data Type: %s\n", variable.DataType)
 	fmt.Printf("Source: %s\n", variable.Source)
-	
+
 	if variable.ToolName != "" {
 		fmt.Printf("Tool: %s\n", variable.ToolName)
 	}
-	
+
 	fmt.Printf("Usage Count: %d\n", variable.UsageCount)
 	fmt.Printf("Auto-detected: %v\n", variable.AutoDetected)
 	fmt.Printf("First Detected: %s\n", variable.FirstDetected.Format("2006-01-02 15:04:05"))

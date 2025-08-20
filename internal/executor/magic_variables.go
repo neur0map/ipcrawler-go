@@ -44,7 +44,7 @@ func (mvm *MagicVariableManager) RegisterParser(parser ToolOutputParser) {
 // and creates magic variables. This is completely generic.
 func (mvm *MagicVariableManager) ProcessToolOutput(toolName string, outputFiles []string) map[string]string {
 	toolName = strings.ToLower(toolName)
-	
+
 	parser, exists := mvm.parsers[toolName]
 	if !exists {
 		// No parser registered = no magic variables created
@@ -66,7 +66,7 @@ func (mvm *MagicVariableManager) ProcessToolOutput(toolName string, outputFiles 
 		for key, value := range toolVars {
 			magicVarName := fmt.Sprintf("%s_%s", toolName, key)
 			magicVariables[magicVarName] = value
-			
+
 			// Auto-register with registry if available
 			if mvm.registryManager != nil {
 				context := registry.DetectionContext{
@@ -77,7 +77,7 @@ func (mvm *MagicVariableManager) ProcessToolOutput(toolName string, outputFiles 
 					Tool:       toolName,
 					Timestamp:  time.Now(),
 				}
-				
+
 				// Register the variable (ignore errors to avoid disrupting execution)
 				mvm.registryManager.AutoRegisterVariable(fmt.Sprintf("{{%s}}", magicVarName), context)
 			}

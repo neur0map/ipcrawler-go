@@ -38,7 +38,7 @@ func (rc *ResultCombiner) CombineResults(outputPaths []string) map[string]string
 	if len(outputPaths) == 1 {
 		parser := &OutputParser{}
 		vars := parser.ParseOutput(outputPaths[0])
-		
+
 		// Add "combined_" prefix to variables for consistency
 		combined := make(map[string]string)
 		for key, value := range vars {
@@ -50,7 +50,7 @@ func (rc *ResultCombiner) CombineResults(outputPaths []string) map[string]string
 	// Parse all files and collect results
 	hosts := make(map[string]bool)
 	services := make(map[string]*ServiceInfo) // port:protocol -> ServiceInfo
-	
+
 	for i, outputPath := range outputPaths {
 		data, err := os.ReadFile(outputPath)
 		if err != nil {
@@ -76,11 +76,11 @@ func (rc *ResultCombiner) CombineResults(outputPaths []string) map[string]string
 			// Process ports and services
 			for _, port := range host.Ports.Ports {
 				key := fmt.Sprintf("%d:%s", port.PortID, port.Protocol)
-				
+
 				if existing, exists := services[key]; exists {
 					// Merge information from multiple scans
 					existing.Sources = append(existing.Sources, sourceMode)
-					
+
 					// Update service info if this scan has more details
 					if port.Service.Name != "" && existing.Service == "" {
 						existing.Service = port.Service.Name
@@ -91,7 +91,7 @@ func (rc *ResultCombiner) CombineResults(outputPaths []string) map[string]string
 					if port.Service.Version != "" && existing.Version == "" {
 						existing.Version = port.Service.Version
 					}
-					
+
 					// Keep the most "open" state (open > filtered > closed)
 					if port.State.State == "open" || (existing.State != "open" && port.State.State == "filtered") {
 						existing.State = port.State.State
@@ -120,12 +120,12 @@ func (rc *ResultCombiner) CombineResults(outputPaths []string) map[string]string
 	var udpPorts []string
 	var serviceNames []string
 	var productNames []string
-	var highConfidenceServices []string  // Found by multiple scans
-	var uniqueDiscoveries []string       // Found by only one scan
+	var highConfidenceServices []string // Found by multiple scans
+	var uniqueDiscoveries []string      // Found by only one scan
 
 	for _, svc := range services {
 		portStr := strconv.Itoa(svc.Port)
-		
+
 		// Categorize by state
 		switch strings.ToLower(svc.State) {
 		case "open":
@@ -157,12 +157,12 @@ func (rc *ResultCombiner) CombineResults(outputPaths []string) map[string]string
 		for _, source := range svc.Sources {
 			uniqueSources[source] = true
 		}
-		
+
 		serviceDesc := fmt.Sprintf("%d/%s", svc.Port, svc.Protocol)
 		if svc.Service != "" {
 			serviceDesc += fmt.Sprintf("(%s)", svc.Service)
 		}
-		
+
 		if len(uniqueSources) > 1 {
 			highConfidenceServices = append(highConfidenceServices, serviceDesc)
 		} else {
@@ -179,40 +179,40 @@ func (rc *ResultCombiner) CombineResults(outputPaths []string) map[string]string
 	// Create combined magic variables
 	combinedVars := map[string]string{
 		// Core combined results
-		"combined_ports":                strings.Join(openPorts, ","),
-		"combined_port_count":           strconv.Itoa(len(openPorts)),
-		"combined_open_ports":           strings.Join(openPorts, ","),
-		"combined_open_port_count":      strconv.Itoa(len(openPorts)),
-		"combined_hosts":                strings.Join(hostList, ","),
-		"combined_host_count":           strconv.Itoa(len(hostList)),
-		
+		"combined_ports":           strings.Join(openPorts, ","),
+		"combined_port_count":      strconv.Itoa(len(openPorts)),
+		"combined_open_ports":      strings.Join(openPorts, ","),
+		"combined_open_port_count": strconv.Itoa(len(openPorts)),
+		"combined_hosts":           strings.Join(hostList, ","),
+		"combined_host_count":      strconv.Itoa(len(hostList)),
+
 		// State-specific results
-		"combined_closed_ports":         strings.Join(closedPorts, ","),
-		"combined_closed_port_count":    strconv.Itoa(len(closedPorts)),
-		"combined_filtered_ports":       strings.Join(filteredPorts, ","),
-		"combined_filtered_port_count":  strconv.Itoa(len(filteredPorts)),
-		
+		"combined_closed_ports":        strings.Join(closedPorts, ","),
+		"combined_closed_port_count":   strconv.Itoa(len(closedPorts)),
+		"combined_filtered_ports":      strings.Join(filteredPorts, ","),
+		"combined_filtered_port_count": strconv.Itoa(len(filteredPorts)),
+
 		// Protocol-specific results
-		"combined_tcp_ports":            strings.Join(removeDuplicates(tcpPorts), ","),
-		"combined_tcp_port_count":       strconv.Itoa(len(removeDuplicates(tcpPorts))),
-		"combined_udp_ports":            strings.Join(removeDuplicates(udpPorts), ","),
-		"combined_udp_port_count":       strconv.Itoa(len(removeDuplicates(udpPorts))),
-		
+		"combined_tcp_ports":      strings.Join(removeDuplicates(tcpPorts), ","),
+		"combined_tcp_port_count": strconv.Itoa(len(removeDuplicates(tcpPorts))),
+		"combined_udp_ports":      strings.Join(removeDuplicates(udpPorts), ","),
+		"combined_udp_port_count": strconv.Itoa(len(removeDuplicates(udpPorts))),
+
 		// Service information
-		"combined_services":             strings.Join(removeDuplicates(serviceNames), ","),
-		"combined_service_count":        strconv.Itoa(len(removeDuplicates(serviceNames))),
-		"combined_products":             strings.Join(removeDuplicates(productNames), ","),
-		"combined_product_count":        strconv.Itoa(len(removeDuplicates(productNames))),
-		
+		"combined_services":      strings.Join(removeDuplicates(serviceNames), ","),
+		"combined_service_count": strconv.Itoa(len(removeDuplicates(serviceNames))),
+		"combined_products":      strings.Join(removeDuplicates(productNames), ","),
+		"combined_product_count": strconv.Itoa(len(removeDuplicates(productNames))),
+
 		// Confidence analysis
-		"combined_high_confidence_services":    strings.Join(highConfidenceServices, ","),
-		"combined_high_confidence_count":       strconv.Itoa(len(highConfidenceServices)),
-		"combined_unique_discoveries":          strings.Join(uniqueDiscoveries, ","),
-		"combined_unique_discovery_count":      strconv.Itoa(len(uniqueDiscoveries)),
-		
+		"combined_high_confidence_services": strings.Join(highConfidenceServices, ","),
+		"combined_high_confidence_count":    strconv.Itoa(len(highConfidenceServices)),
+		"combined_unique_discoveries":       strings.Join(uniqueDiscoveries, ","),
+		"combined_unique_discovery_count":   strconv.Itoa(len(uniqueDiscoveries)),
+
 		// Scan statistics
-		"combined_scan_count":           strconv.Itoa(len(outputPaths)),
-		"combined_total_services":       strconv.Itoa(len(services)),
+		"combined_scan_count":     strconv.Itoa(len(outputPaths)),
+		"combined_total_services": strconv.Itoa(len(services)),
 	}
 
 	// Fallback if no results
