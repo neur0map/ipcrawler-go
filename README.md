@@ -11,30 +11,40 @@ Hi! I'm a cybersecurity student trying to break into the cyber industry, and IPC
 
 **🤖 Transparency:** This project was largely developed with AI assistance (Claude Code) as part of my programming learning process. As a beginner programmer, I used AI to help implement advanced features while I focus on understanding cybersecurity concepts and techniques.
 
-## 🚀 Quick Install
+## 🚀 Installation Options
 
-**One-liner installation (recommended):**
+### 📦 **Production Installation**
+**One-liner for ready-to-use IPCrawler:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/neur0map/ipcrawler-go/main/install.sh | sudo bash
 ```
+- ✅ Automatic system detection and dependency installation
+- ✅ Global binary installation with wrapper scripts
+- ✅ No build tools required - just download and use
+- ✅ Perfect for HTB practice and normal security testing
 
-**Alternative manual installation:**
+### 🛠️ **Development Installation**
+**Manual setup for building, testing, and contributing:**
 ```bash
 git clone https://github.com/neur0map/ipcrawler-go.git
 cd ipcrawler-go
-make easy
+make easy    # Build from source and create global symlink
 ```
+- ✅ Full source code access for learning and modification
+- ✅ Make commands for building, testing, and development
+- ✅ Perfect for adding new tools, workflows, or contributing
+- ✅ Ideal for cybersecurity students who want to understand the code
 
 ## 🎓 What IPCrawler Does (For Fellow Students)
 
-IPCrawler is basically a "Swiss Army knife" for penetration testing that I built to help with my Hack The Box practice sessions and CTF challenges. Instead of running multiple terminal windows with different commands, everything runs in one clean interface.
+IPCrawler is basically a "Swiss Army knife" for penetration testing that I built to help with my Hack The Box practice sessions and CTF challenges. Instead of remembering all those nmap flags and running tools manually, it automatically runs multiple security tools in organized workflows.
 
-### 🖥️ **Cool TUI Interface** 
-- Clean dashboard that shows everything happening at once
-- No need to juggle multiple terminal windows
-- Real-time system monitoring (CPU, memory, etc.)
-- Just hit Tab to cycle between different panels
-- Saves your target between sessions (super helpful for HTB boxes!)
+### ⚡ **Automated CLI Tool** 
+- Runs all security tools automatically with one command
+- Clean progress output shows what's happening in real-time
+- No need to remember complex command-line flags
+- Organized output logs for easy analysis
+- Smart workflow execution saves tons of time on HTB!
 
 ### ⚡ **Automated Security Scanning**
 - **Port Scanning** - Finds open ports on targets (great for HTB enumeration phase)
@@ -69,34 +79,38 @@ sudo ipcrawler 10.10.10.10
 
 ### Real HTB Example Workflow
 ```bash
-# Start scanning an HTB machine
+# Start scanning an HTB machine - it runs ALL workflows automatically!
 ipcrawler 10.10.10.87
 
-# The TUI will pop up and you can:
-# 1. Select "Port Scanning" workflow  
-# 2. Select "DNS Enumeration" workflow
-# 3. Watch them run in real-time
-# 4. Check the logs for detailed output
-# 5. Results save automatically for your writeups!
+# What happens:
+# 1. Automatically discovers and runs all available workflows
+# 2. Port scanning workflow executes (nmap + naabu)
+# 3. DNS enumeration workflow runs (nslookup queries)
+# 4. Real-time progress shows in terminal
+# 5. All results saved to organized log files
+# 6. Ready for your HTB writeup!
 ```
 
-### Navigation (It's Actually Fun!)
-- **Tab** - Jump between different panels
-- **Arrow Keys** - Navigate through lists
-- **Space/Enter** - Select workflows to run  
-- **q** - Quit when done
-- **1-5** - Quick jump to specific panels
+### Output & Logging
+- **Automatic execution** - No interaction needed, just run and wait
+- **Progress indicators** - See what's running and completed  
+- **Organized logs** - Results saved in structured directories
+- **Verbose mode** - Add `-v` flag for detailed output
+- **Clean output** - Easy to parse for writeups
 
 ### Pro Tips for Students
 ```bash
 # See what tools are available
 ipcrawler registry list
 
-# Test mode (doesn't actually scan)
+# Verbose mode (see detailed output)
+ipcrawler -v target.com
+
+# Debug mode (see everything that's happening)
 ipcrawler --debug target.com
 
-# Old school CLI mode (for scripts)
-ipcrawler no-tui target.com
+# Check the generated logs after scanning
+ls local_files/logs/
 ```
 
 ## 🏗️ How It Works (For the Curious)
@@ -105,10 +119,10 @@ ipcrawler no-tui target.com
 
 ### The Main Parts (AI helped me design this!)
 
-1. **The Pretty Interface** (`cmd/ipcrawler/main.go`)
-   - Uses Charmbracelet's Bubble Tea framework for the TUI
-   - Shows real-time progress of all your scans
-   - Handles all the keyboard input and navigation
+1. **The Main CLI** (`cmd/ipcrawler/main.go`)
+   - Simple command-line interface that just takes a target
+   - Automatically discovers and runs all available workflows
+   - Shows real-time progress with clean output formatting
 
 2. **The Engine** (`internal/executor/`)
    - **engine.go** - Actually runs the security tools
@@ -167,32 +181,42 @@ One of the coolest things about this project is that everything is configurable 
 
 ## 🔨 Development (Learning Journey)
 
-As a student learning to code, I found these commands super helpful for building and testing:
+**Note:** This section is for the development installation only. Production users can skip this!
 
-### Build Commands (AI taught me these!)
+As a student learning to code, I found these Make commands super helpful for building and testing:
+
+### Development Commands (AI taught me these!)
 ```bash
-make build     # Compile the Go code into a binary
-make run       # Launch in a new terminal window  
-make dev       # Auto-rebuild when files change (great for learning!)
-make easy      # Create global command (what most people want)
+# Building and Testing
+make build       # Compile Go source into binary
+make run         # Test the CLI tool locally  
+make dev         # Auto-rebuild on file changes (great for learning!)
+make test-all    # Run comprehensive test suite
+
+# Installation and Deployment
+make easy        # Create global symlink to your dev build
+make install     # Install to $GOPATH/bin (alternative method)
+make clean       # Clean build artifacts
 ```
 
-### Testing (Important for Learning!)
+### Testing Commands (Important for Learning!)
 ```bash
-make test-all      # Run all the tests  
-make test-static   # Make sure the TUI architecture is correct
-make test-deps     # Verify all dependencies work
+make test-all      # Complete test suite
+make test-static   # Verify CLI architecture correctness
+make test-deps     # Check dependency versions
+make test-ui       # Test CLI application functionality
 ```
 
-### Learning by Adding Tools
-This is actually how I'm learning more about penetration testing - by adding new tools:
+### Learning by Adding Tools (My Favorite!)
+This is how I'm actually learning more about penetration testing:
 
-1. Study how existing tools work in `tools/` folder
-2. Create `tools/newtool/config.yaml` for your new tool
-3. Add it to a workflow in `workflows/`
-4. Test it on HTB machines!
+1. **Study existing patterns** - Look at `tools/nmap/config.yaml`
+2. **Create new tool config** - Make `tools/mytool/config.yaml` 
+3. **Add to workflows** - Include in `workflows/reconnaissance/`
+4. **Test on HTB machines** - Real-world validation!
+5. **Iterate and improve** - Learn from what works
 
-**Pro tip:** Start by modifying existing tool configs to understand the pattern, then create your own.
+**Development tip:** Use `make dev` while coding - it auto-rebuilds when you save files!
 
 ## 🛡️ Security Features
 
@@ -250,16 +274,21 @@ The installer performs:
 
 The wrapper script automatically changes to `/opt/ipcrawler` before executing the binary, ensuring access to all workflow files, configurations, and tool definitions regardless of where the command is run from.
 
-### Manual Installation
+### Development vs Production
+
+| Method | Use Case | What You Get |
+|--------|----------|--------------|
+| **Production Install** | HTB practice, normal use | Pre-built binary, automatic setup, just works |
+| **Development Install** | Learning, contributing, modifying | Full source, build tools, development environment |
+
+### Development Setup (Detailed)
 ```bash
-# Clone repository
 git clone https://github.com/neur0map/ipcrawler-go.git
 cd ipcrawler-go
-
-# Build and install
-make deps
-make build  
-make easy   # Creates global symlink
+make deps        # Install Go dependencies
+make build       # Compile from source
+make test-all    # Run all tests
+make easy        # Create global symlink to your dev build
 ```
 
 ## 📊 Performance
@@ -319,10 +348,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ### AI Development Partner
 - **Claude Code by Anthropic** - This project was built with heavy AI assistance. As a cybersecurity student, I focused on learning the security concepts while Claude Code helped implement the complex programming architecture, concurrency management, and advanced Go features that were beyond my current skill level.
 
-### Amazing Open Source Tools & Frameworks
-- **Charmbracelet** - For the incredible TUI framework ([Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubbles](https://github.com/charmbracelet/bubbles), [Lip Gloss](https://github.com/charmbracelet/lipgloss))
-- **PTerm** - For beautiful terminal output management  
+### Amazing Open Source Tools & Frameworks  
+- **PTerm** - For beautiful terminal output management and progress indicators
+- **Charmbracelet Log** - For structured logging output
 - **Security Community** - For all the awesome tools that IPCrawler integrates
+- **Go Ecosystem** - For powerful CLI development capabilities
 
 ### Learning Resources That Helped
 - **Hack The Box** - Primary testing ground and inspiration
@@ -338,10 +368,23 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🎯 Ready to Start Your Pentesting Journey?
 
-**Install IPCrawler in seconds and start practicing on HTB machines:**
-
+### 🚀 **Quick Start**
+**Install production version and start practicing on HTB machines:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/neur0map/ipcrawler-go/main/install.sh | sudo bash
+ipcrawler 10.10.10.10  # Start scanning!
 ```
+
+### 🛠️ **Developer Start**
+**Clone development version for learning and contributing:**
+```bash
+git clone https://github.com/neur0map/ipcrawler-go.git
+cd ipcrawler-go && make easy
+ipcrawler 10.10.10.10  # Test your build!
+```
+
+---
+
+**Production = Ready to use. Development = Ready to learn and modify.**
 
 *Built by a student, for students. AI-assisted but security-focused. Perfect for Hack The Box practice!* 🚀
