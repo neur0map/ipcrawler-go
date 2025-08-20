@@ -345,10 +345,33 @@ func (rm *DefaultRegistryManager) GetStatistics() RegistryStatistics {
 	rm.mutex.RLock()
 	defer rm.mutex.RUnlock()
 
-	// Create a copy of statistics
-	stats := rm.database.Statistics
+	// Create a copy of statistics to avoid data races
+	stats := RegistryStatistics{
+		TotalVariables:      rm.database.Statistics.TotalVariables,
+		AutoDetectedCount:   rm.database.Statistics.AutoDetectedCount,
+		ManuallyAddedCount:  rm.database.Statistics.ManuallyAddedCount,
+		DeprecatedCount:     rm.database.Statistics.DeprecatedCount,
+		VariablesByType:     make(map[VariableType]int),
+		VariablesByCategory: make(map[VariableCategory]int),
+		VariablesBySource:   make(map[VariableSource]int),
+		MostUsedVariables:   make([]VariableUsageRank, len(rm.database.Statistics.MostUsedVariables)),
+		UnusedVariables:     make([]string, len(rm.database.Statistics.UnusedVariables)),
+	}
 
-	// Recalculate real-time statistics
+	// Deep copy maps to avoid race conditions
+	for k, v := range rm.database.Statistics.VariablesByType {
+		stats.VariablesByType[k] = v
+	}
+	for k, v := range rm.database.Statistics.VariablesByCategory {
+		stats.VariablesByCategory[k] = v
+	}
+	for k, v := range rm.database.Statistics.VariablesBySource {
+		stats.VariablesBySource[k] = v
+	}
+	copy(stats.MostUsedVariables, rm.database.Statistics.MostUsedVariables)
+	copy(stats.UnusedVariables, rm.database.Statistics.UnusedVariables)
+
+	// Recalculate real-time statistics on the copy
 	rm.calculateStatistics(&stats)
 
 	return stats
@@ -470,15 +493,42 @@ func (rm *DefaultRegistryManager) saveDatabase() error {
 }
 
 func (rm *DefaultRegistryManager) updateStatistics() {
+	// Note: This should be called while holding a write lock
 	rm.calculateStatistics(&rm.database.Statistics)
 }
 
 func (rm *DefaultRegistryManager) calculateStatistics(stats *RegistryStatistics) {
 	// Reset counters
 	stats.TotalVariables = len(rm.database.Variables)
-	stats.VariablesByType = make(map[VariableType]int)
-	stats.VariablesByCategory = make(map[VariableCategory]int)
-	stats.VariablesBySource = make(map[VariableSource]int)
+
+	// Initialize maps if they're nil to avoid panic
+	if stats.VariablesByType == nil {
+		stats.VariablesByType = make(map[VariableType]int)
+	} else {
+		// Clear existing data
+		for k := range stats.VariablesByType {
+			delete(stats.VariablesByType, k)
+		}
+	}
+
+	if stats.VariablesByCategory == nil {
+		stats.VariablesByCategory = make(map[VariableCategory]int)
+	} else {
+		// Clear existing data
+		for k := range stats.VariablesByCategory {
+			delete(stats.VariablesByCategory, k)
+		}
+	}
+
+	if stats.VariablesBySource == nil {
+		stats.VariablesBySource = make(map[VariableSource]int)
+	} else {
+		// Clear existing data
+		for k := range stats.VariablesBySource {
+			delete(stats.VariablesBySource, k)
+		}
+	}
+
 	stats.AutoDetectedCount = 0
 	stats.ManuallyAddedCount = 0
 	stats.DeprecatedCount = 0

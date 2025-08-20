@@ -233,17 +233,17 @@ func (wo *WorkflowOrchestrator) SetWorkspaceLoggers(workspaceDir string) error {
 
 	// Create log directories
 	if err := os.MkdirAll(debugsDir, 0755); err != nil {
-		return fmt.Errorf("failed to create debug log directory: %v", err)
+		return fmt.Errorf("failed to create debug log directory: %w", err)
 	}
 	if err := os.MkdirAll(infoDir, 0755); err != nil {
-		return fmt.Errorf("failed to create info log directory: %v", err)
+		return fmt.Errorf("failed to create info log directory: %w", err)
 	}
 
 	// Setup debug logger to write to both console and file
 	debugFile, err := os.OpenFile(filepath.Join(debugsDir, "workflow.log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to open debug log file: %v", err)
+		return fmt.Errorf("failed to open debug log file: %w", err)
 	}
 
 	// Create MultiWriter based on output mode
@@ -264,7 +264,7 @@ func (wo *WorkflowOrchestrator) SetWorkspaceLoggers(workspaceDir string) error {
 	infoFile, err := os.OpenFile(filepath.Join(infoDir, "workflow.log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to open info log file: %v", err)
+		return fmt.Errorf("failed to open info log file: %w", err)
 	}
 
 	// Create MultiWriter based on output mode

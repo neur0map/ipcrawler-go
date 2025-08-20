@@ -341,17 +341,17 @@ func (tee *ToolExecutionEngine) SetWorkspaceLoggers(workspaceDir string) error {
 
 	// Create log directories
 	if err := os.MkdirAll(debugsDir, 0755); err != nil {
-		return fmt.Errorf("failed to create debug log directory: %v", err)
+		return fmt.Errorf("failed to create debug log directory: %w", err)
 	}
 	if err := os.MkdirAll(infoDir, 0755); err != nil {
-		return fmt.Errorf("failed to create info log directory: %v", err)
+		return fmt.Errorf("failed to create info log directory: %w", err)
 	}
 
 	// Setup debug logger to write to both console and file
 	debugFile, err := os.OpenFile(filepath.Join(debugsDir, "tools.log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to open debug log file: %v", err)
+		return fmt.Errorf("failed to open debug log file: %w", err)
 	}
 
 	// Create MultiWriter based on output mode (check if outputController exists to get mode)
@@ -372,7 +372,7 @@ func (tee *ToolExecutionEngine) SetWorkspaceLoggers(workspaceDir string) error {
 	infoFile, err := os.OpenFile(filepath.Join(infoDir, "tools.log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to open info log file: %v", err)
+		return fmt.Errorf("failed to open info log file: %w", err)
 	}
 
 	// Create MultiWriter based on output mode
@@ -732,7 +732,7 @@ func (tee *ToolExecutionEngine) ExecuteToolWithContext(ctx context.Context, tool
 			case <-time.After(timeout):
 				// Command timeout - kill it and continue
 				execCmd.Process.Kill()
-				lastErr = fmt.Errorf("command timeout after %v", timeout)
+				lastErr = fmt.Errorf("command timeout after %v: %s %v", timeout, toolExecutable, resolvedArgs)
 				<-done // Wait for the goroutine to finish
 
 				tee.debugLogger.Debug("Command timed out - will check for valid output after reading files", "timeout", timeout)

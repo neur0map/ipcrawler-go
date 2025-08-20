@@ -385,12 +385,14 @@ func runCLI(target string, outputMode output.OutputMode) error {
 
 // Helper functions for CLI mode
 func sanitizeTargetForPath(target string) string {
-	// Replace special characters for safe directory names
-	sanitized := strings.ReplaceAll(target, ".", "_")
-	sanitized = strings.ReplaceAll(sanitized, ":", "_")
-	sanitized = strings.ReplaceAll(sanitized, "/", "_")
-	sanitized = strings.ReplaceAll(sanitized, "\\", "_")
-	return sanitized
+	// Use strings.NewReplacer for more efficient multiple replacements
+	replacer := strings.NewReplacer(
+		".", "_",
+		":", "_",
+		"/", "_",
+		"\\", "_",
+	)
+	return replacer.Replace(target)
 }
 
 func createWorkspaceStructure(workspaceDir string) error {
