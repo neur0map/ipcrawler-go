@@ -1,0 +1,21 @@
+name: "DNS Discovery"
+description: "Comprehensive DNS information gathering and reconnaissance"
+category: "reconnaissance"
+
+# Enhanced workflow-level parallelism controls
+parallel_workflow: true        # Can run simultaneously with port scanning
+independent_execution: true    # No dependencies on other workflows
+max_concurrent_workflows: 3    # Allow multiple DNS workflows
+workflow_priority: "medium"    # Medium priority execution
+
+steps:
+  - name: "DNS SOA Record Lookup"
+    tool: "nslookup"
+    description: "SOA record enumeration for zone information"
+    modes: ["soa_record"]
+    concurrent: false              # Single mode execution
+    combine_results: false         # No result combination needed
+    
+    # Enhanced step-level parallelism controls
+    step_priority: "medium"        # Medium priority for DNS lookup
+    max_concurrent_tools: 1        # Single nslookup instance

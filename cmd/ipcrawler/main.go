@@ -17,9 +17,11 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/charmbracelet/log"
+	"github.com/neur0map/ipcrawler/embedded"
 	"github.com/neur0map/ipcrawler/internal/config"
 	"github.com/neur0map/ipcrawler/internal/executor"
 	"github.com/neur0map/ipcrawler/internal/output"
+	"github.com/neur0map/ipcrawler/internal/userconfig"
 )
 
 // isValidHostname performs basic hostname validation
@@ -178,42 +180,134 @@ func loadWorkflowFromPath(filePath string) (*executor.Workflow, error) {
 	return workflow, nil
 }
 
+// loadWorkflowFromEmbedded loads a workflow from embedded resources
+func loadWorkflowFromEmbedded(path string) (*executor.Workflow, error) {
+	data, err := embedded.ReadWorkflowFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read embedded workflow file %s: %v", path, err)
+	}
+	
+	// Define a temporary struct with proper YAML tags for unmarshaling
+	type yamlWorkflowStep struct {
+		Name                 string   `yaml:"name"`
+		Tool                 string   `yaml:"tool"`
+		Description          string   `yaml:"description"`
+		Modes                []string `yaml:"modes"`
+		Concurrent           bool     `yaml:"concurrent"`
+		CombineResults       bool     `yaml:"combine_results"`
+		StepPriority         string   `yaml:"step_priority"`
+		MaxConcurrentTools   int      `yaml:"max_concurrent_tools"`
+	}
+	
+	type yamlWorkflow struct {
+		Name                   string              `yaml:"name"`
+		Description            string              `yaml:"description"`
+		Category               string              `yaml:"category"`
+		ParallelWorkflow       bool                `yaml:"parallel_workflow"`
+		IndependentExecution   bool                `yaml:"independent_execution"`
+		MaxConcurrentWorkflows int                 `yaml:"max_concurrent_workflows"`
+		WorkflowPriority       string              `yaml:"workflow_priority"`
+		Steps                  []yamlWorkflowStep  `yaml:"steps"`
+	}
+	
+	var yamlWf yamlWorkflow
+	if err := yaml.Unmarshal(data, &yamlWf); err != nil {
+		return nil, fmt.Errorf("failed to parse embedded workflow YAML %s: %v", path, err)
+	}
+	
+	// Convert to executor.Workflow
+	workflow := &executor.Workflow{
+		Name:                    yamlWf.Name,
+		Description:             yamlWf.Description,
+		Category:                yamlWf.Category,
+		ParallelWorkflow:        yamlWf.ParallelWorkflow,
+		IndependentExecution:    yamlWf.IndependentExecution,
+		MaxConcurrentWorkflows:  yamlWf.MaxConcurrentWorkflows,
+		WorkflowPriority:        yamlWf.WorkflowPriority,
+		Steps:                   make([]*executor.WorkflowStep, len(yamlWf.Steps)),
+	}
+	
+	// Convert steps
+	for i, yamlStep := range yamlWf.Steps {
+		workflow.Steps[i] = &executor.WorkflowStep{
+			Name:               yamlStep.Name,
+			Tool:               yamlStep.Tool,
+			Description:        yamlStep.Description,
+			Modes:              yamlStep.Modes,
+			Concurrent:         yamlStep.Concurrent,
+			CombineResults:     yamlStep.CombineResults,
+			StepPriority:       yamlStep.StepPriority,
+			MaxConcurrentTools: yamlStep.MaxConcurrentTools,
+		}
+	}
+	
+	return workflow, nil
+}
+
 // discoverAllWorkflows automatically discovers all workflow files in the workflows directory
 func discoverAllWorkflows() (map[string]*executor.Workflow, error) {
 	workflows := make(map[string]*executor.Workflow)
 	
-	err := filepath.WalkDir("workflows", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		
-		// Skip descriptions.yaml (metadata only)
-		if d.Name() == "descriptions.yaml" {
-			return nil
-		}
-		
-		// Process .yaml files
-		if strings.HasSuffix(d.Name(), ".yaml") {
-			workflow, err := loadWorkflowFromPath(path)
+	// Try to load from filesystem first (for development)
+	if _, err := os.Stat("workflows"); err == nil {
+		err = filepath.WalkDir("workflows", func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
-				// Log warning using simple fmt for now (logger will be enhanced separately)
-				fmt.Fprintf(os.Stderr, "WARN: Failed to load workflow %s: %v\n", path, err)
-				return nil // Continue processing other files
+				return err
 			}
 			
-			workflowKey := strings.TrimSuffix(d.Name(), ".yaml")
+			// Skip descriptions.yaml (metadata only)
+			if d.Name() == "descriptions.yaml" {
+				return nil
+			}
+			
+			// Process .yaml files
+			if strings.HasSuffix(d.Name(), ".yaml") {
+				workflow, err := loadWorkflowFromPath(path)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "WARN: Failed to load workflow %s: %v\n", path, err)
+					return nil
+				}
+				
+				workflowKey := strings.TrimSuffix(d.Name(), ".yaml")
+				workflows[workflowKey] = workflow
+			}
+			
+			return nil
+		})
+		
+		if err == nil && len(workflows) > 0 {
+			return workflows, nil
+		}
+	}
+	
+	// Fallback to embedded resources (for production)
+	fmt.Fprintf(os.Stderr, "INFO: Using embedded workflows (production mode)\n")
+	workflowPaths, err := embedded.GetAllWorkflowPaths()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get embedded workflows: %v", err)
+	}
+	
+	for category, paths := range workflowPaths {
+		for _, path := range paths {
+			workflow, err := loadWorkflowFromEmbedded(path)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "WARN: Failed to load embedded workflow %s: %v\n", path, err)
+				continue
+			}
+			
+			// Create a unique key using category and filename
+			filename := filepath.Base(path)
+			workflowKey := fmt.Sprintf("%s_%s", category, strings.TrimSuffix(filename, ".yaml"))
 			workflows[workflowKey] = workflow
 		}
-		
-		return nil
-	})
+	}
 	
-	return workflows, err
+	return workflows, nil
 }
 
 
 // runCLI executes all workflows in CLI mode without TUI
-func runCLI(target string, outputMode output.OutputMode) error {
+func runCLI(target string, outputMode output.OutputMode, customOutputDir string) error {
 	// Initialize logger for CLI output - suppress if not in verbose/debug mode
 	var logger *log.Logger
 	if outputMode == output.OutputModeVerbose || outputMode == output.OutputModeDebug {
@@ -249,7 +343,16 @@ func runCLI(target string, outputMode output.OutputMode) error {
 	// Create workspace directory
 	sanitizedTarget := sanitizeTargetForPath(target)
 	timestamp := time.Now().Unix()
-	workspaceDir := filepath.Join(cfg.Output.WorkspaceBase, fmt.Sprintf("%s_%d", sanitizedTarget, timestamp))
+	
+	// Use custom output directory if provided, otherwise use config default
+	var baseDir string
+	if customOutputDir != "" {
+		baseDir = customOutputDir
+	} else {
+		baseDir = cfg.Output.WorkspaceBase
+	}
+	
+	workspaceDir := filepath.Join(baseDir, fmt.Sprintf("%s_%d", sanitizedTarget, timestamp))
 	
 	if err := createWorkspaceStructure(workspaceDir); err != nil {
 		return fmt.Errorf("failed to create workspace: %v", err)
@@ -494,13 +597,58 @@ func logRaw(toolName, mode, output string) {
 func main() {
 	// Define flags
 	var (
-		verbose = pflag.BoolP("verbose", "v", false, "Show both logs and raw tool output")
-		debug   = pflag.BoolP("debug", "d", false, "Show only logs, no raw tool output")
-		help    = pflag.BoolP("help", "h", false, "Show this help message")
+		verbose             = pflag.BoolP("verbose", "v", false, "Show both logs and raw tool output")
+		debug               = pflag.BoolP("debug", "d", false, "Show only logs, no raw tool output")
+		help                = pflag.BoolP("help", "h", false, "Show this help message")
+		version             = pflag.Bool("version", false, "Show version information")
+		outputDir           = pflag.StringP("output", "o", "", "Output directory for scan results")
+		setDefaultOutput    = pflag.String("set-default-output", "", "Set permanent default output directory")
+		clearDefaultOutput  = pflag.Bool("clear-default-output", false, "Clear permanent default output directory")
+		showConfig          = pflag.Bool("show-config", false, "Show current configuration")
 	)
 	
 	// Parse flags
 	pflag.Parse()
+	
+	// Load user configuration
+	userConfig, err := userconfig.LoadUserConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to load user config: %v\n", err)
+		userConfig = &userconfig.UserConfig{} // Use empty config as fallback
+	}
+	
+	// Handle version flag
+	if *version {
+		fmt.Printf("IPCrawler v1.0.0\n")
+		fmt.Printf("Built for penetration testing and security assessment\n")
+		os.Exit(0)
+	}
+	
+	// Handle show-config flag
+	if *showConfig {
+		fmt.Print(userConfig.GetConfigInfo())
+		os.Exit(0)
+	}
+	
+	// Handle set-default-output flag
+	if *setDefaultOutput != "" {
+		if err := userConfig.SetDefaultOutputDirectory(*setDefaultOutput); err != nil {
+			fmt.Fprintf(os.Stderr, "Error setting default output directory: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Default output directory set to: %s\n", userConfig.DefaultOutputDirectory)
+		os.Exit(0)
+	}
+	
+	// Handle clear-default-output flag
+	if *clearDefaultOutput {
+		if err := userConfig.ClearDefaultOutputDirectory(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error clearing default output directory: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Default output directory cleared\n")
+		os.Exit(0)
+	}
 	
 	// Show help if requested
 	if *help {
@@ -508,15 +656,26 @@ func main() {
 		fmt.Fprintf(os.Stderr, "       %s registry <command>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "\nFlags:\n")
 		pflag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nOutput Directory Priority:\n")
+		fmt.Fprintf(os.Stderr, "  1. -o flag (highest priority)\n")
+		fmt.Fprintf(os.Stderr, "  2. Default directory (if set)\n")
+		fmt.Fprintf(os.Stderr, "  3. ./ipcrawler_results (fallback)\n")
 		fmt.Fprintf(os.Stderr, "\nOutput Modes:\n")
 		fmt.Fprintf(os.Stderr, "  Normal (default): Only raw tool output\n")
 		fmt.Fprintf(os.Stderr, "  -v, --verbose:    Both logs and raw tool output\n")
 		fmt.Fprintf(os.Stderr, "  -d, --debug:      Only logs, no raw tool output\n")
-		fmt.Fprintf(os.Stderr, "\nExamples:\n")
-		fmt.Fprintf(os.Stderr, "  %s google.com\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -v 192.168.1.1\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s --debug example.com\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s registry list\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\nBasic Examples:\n")
+		fmt.Fprintf(os.Stderr, "  %s 10.10.10.87                        # Scan HTB machine\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s 192.168.1.1 -o /tmp/scan1          # Custom output directory\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s example.com -o Desktop/results     # Relative output path\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -v google.com                      # Verbose output\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\nConfiguration Examples:\n")
+		fmt.Fprintf(os.Stderr, "  %s --set-default-output /opt/scans    # Set permanent default\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s --show-config                      # Show current settings\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s --clear-default-output             # Clear permanent default\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\nRegistry Commands:\n")
+		fmt.Fprintf(os.Stderr, "  %s registry list                      # List available tools\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s registry validate                  # Validate configurations\n", os.Args[0])
 		os.Exit(0)
 	}
 	
@@ -556,9 +715,28 @@ func main() {
 	// Set global output controller before running CLI
 	globalOutputController = output.NewOutputController(outputMode)
 	
-	// Run CLI with target and output mode
+	// Determine effective output directory
 	target := args[0]
-	if err := runCLI(target, outputMode); err != nil {
+	effectiveOutputDir := userConfig.GetEffectiveOutputDirectory(*outputDir, "")
+	
+	// Validate and create output directory
+	if effectiveOutputDir != "" {
+		absOutputDir, err := filepath.Abs(effectiveOutputDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: invalid output directory path: %v\n", err)
+			os.Exit(1)
+		}
+		
+		if err := os.MkdirAll(absOutputDir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: cannot create output directory %s: %v\n", absOutputDir, err)
+			os.Exit(1)
+		}
+		
+		effectiveOutputDir = absOutputDir
+	}
+	
+	// Run CLI with target, output mode, and output directory
+	if err := runCLI(target, outputMode, effectiveOutputDir); err != nil {
 		fmt.Fprintf(os.Stderr, "CLI execution failed: %v\n", err)
 		os.Exit(1)
 	}

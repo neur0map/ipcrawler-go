@@ -1,0 +1,47 @@
+# Workflow descriptions for the TUI
+# This file contains metadata for all available workflows
+
+reconnaissance:
+  name: "Enhanced Reconnaissance"
+  description: "Multi-mode parallel port discovery and comprehensive service enumeration"
+  category: "reconnaissance"
+  tools:
+    - name: naabu
+      requires_sudo: false
+      reason: "Uses connect scans and standard port discovery modes"
+    - name: nmap
+      requires_sudo: true
+      reason: "Uses SYN scan (-sS) for service analysis which requires root privileges"
+  features:
+    - "Parallel port discovery with naabu (fast_scan, common_ports)"
+    - "Service analysis with nmap pipeline mode"
+    - "Result combination and variable passing between steps"
+    - "High-performance concurrent execution"
+
+dns-enumeration:
+  name: "DNS Discovery"
+  description: "Comprehensive DNS information gathering and reconnaissance"
+  category: "reconnaissance"
+  tools:
+    - name: nslookup
+      requires_sudo: false
+      reason: "DNS queries do not require elevated privileges"
+  features:
+    - "Basic DNS information lookup"
+    - "Single-mode execution for targeted reconnaissance"
+
+content-discovery:
+  name: "DNS Information Gathering"
+  description: "Comprehensive DNS reconnaissance and domain information discovery"
+  category: "dns-enumeration"
+  tools:
+    - name: nslookup
+      requires_sudo: false
+      reason: "DNS queries do not require elevated privileges"
+  features:
+    - "Maximum parallelism DNS reconnaissance"
+    - "All DNS record types (A, AAAA, MX, NS, TXT, CNAME, ANY)"
+    - "Authoritative nameserver queries"
+    - "Concurrent execution of up to 9 nslookup instances"
+    - "Complete DNS variable extraction and combination"
+
